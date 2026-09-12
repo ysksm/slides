@@ -4,6 +4,13 @@
 
 ## スライド一覧
 
+### [Playwright 概要 — ライブラリ・CLI・MCP](playwright-overview/index.html)
+
+Playwright の 3 つの利用形態（テストライブラリ/ランナー・CLI・MCP）を、利用シーン・メリット/デメリット・要素技術（Locator / auto-waiting / web-first assertion / アクセシビリティツリーなど）・確実性の高いテストコード作成の順序の観点で整理した解説スライド（全 16 枚）。
+
+- `playwright-overview/index.html` を開き、← → / Space で移動、O で一覧、F で全画面、P で印刷/PDF
+- 詳細: [playwright-overview/README.md](playwright-overview/README.md)
+
 ### [Claude Code コマンド一覧](claude-code-commands/index.html)
 
 Claude Code のスラッシュコマンド・CLI コマンド/フラグ・キー操作をジャンル別に整理し、1 コマンド 1 スライドで解説。公式ベストプラクティスに基づくユースケースと類似コマンドの使い分けもまとめた全 6 デッキ（約 200 枚）。（Issue [#2](https://github.com/ysksm/slides/issues/2)）
@@ -30,6 +37,7 @@ TypeScript 7 の Go ネイティブ言語サーバー `tsc --lsp` のアーキ�
 
 ```
 slides/
+├── playwright-overview/           # Playwright 概要スライド（ライブラリ・CLI・MCP）
 ├── claude-code-commands/          # Claude Code コマンド一覧スライド（Marp 製・全 6 デッキ）
 ├── antigravity-tsc-lsp-research/  # tsc --lsp 徹底調査スライド・実証コード・計測ログ
 ├── tsc-lsp/                       # tsc --lsp 調査報告（初版）

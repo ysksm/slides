@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playwright 概要 — ライブラリ・CLI・MCP</title>
+<meta name="description" content="Playwright の 3 つの利用形態（テストライブラリ・CLI・MCP）を、利用シーン・メリット/デメリット・要素技術・確実なコード作成手順の観点で整理した解説スライド">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F5F8F5;
+    --paper-2: #E9F0E9;
+    --ink: #14231A;
+    --ink-2: #45564A;
+    --ink-3: #7C8B80;
+    --rule: #CBD8CD;
+    --pw: #1E7F2C;          /* Playwright green */
+    --pw-soft: #D8EEDA;
+    --ai: #2F6FBF;          /* MCP / AI blue */
+    --ai-soft: #D9E7F8;
+    --amber: #B7791F;
+    --amber-soft: #FBEBC8;
+    --red: #B4432F;
+    --red-soft: #F6DAD5;
+    --term: #101B12;
+    --term-ink: #DCEEDF;
+    --term-dim: #7E9B85;
+    --term-key: #8FE09B;
+    --term-str: #9EC9E0;
+    --term-num: #F5C97A;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--term);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+  /* ---------- stage ---------- */
+  #stage {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+    padding: 16px;
+  }
+  .deck {
+    width: 1280px; height: 720px;
+    position: relative;
+    transform-origin: center center;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 52px 72px 60px;
+    display: none;
+    flex-direction: column;
+    gap: 20px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "Playwright 概要 — ライブラリ・CLI・MCP";
+    position: absolute; left: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  /* ---------- type ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--pw); margin: 0;
+  }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 62px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 18px; margin: 0 0 6px; }
+  p { margin: 0; }
+  .lead { font-size: 19px; color: var(--ink-2); max-width: 48em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code, dd code {
+    background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: .92em;
+  }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--pw); }
+  b, strong { font-weight: 600; }
+  a { color: var(--pw); text-decoration: none; border-bottom: 1px solid var(--pw-soft); }
+
+  /* ---------- layout helpers ---------- */
+  .cols { display: grid; gap: 26px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.15fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.25fr; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel {
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px;
+  }
+  .panel.pw { border-top: 3px solid var(--pw); }
+  .panel.ai { border-top: 3px solid var(--ai); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 999px; background: var(--pw-soft); color: var(--pw); vertical-align: middle;
+  }
+  .tag.ai { background: var(--ai-soft); color: var(--ai); }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  .good::marker { content: "○ "; color: var(--pw); }
+  .bad::marker { content: "△ "; color: var(--red); }
+  ul.plusminus { list-style: none; padding-left: 1.4em; }
+  ul.plusminus li { text-indent: -1.4em; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--pw); font-weight: 700; }
+  ul.plusminus li.bad::before { content: "△ "; color: var(--red); font-weight: 700; }
+
+  /* ---------- terminal ---------- */
+  .term {
+    background: var(--term); color: var(--term-ink); border-radius: 8px;
+    padding: 14px 18px; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+    overflow: auto; white-space: pre; tab-size: 2;
+  }
+  .term .k { color: var(--term-key); }
+  .term .s { color: var(--term-str); }
+  .term .n { color: var(--term-num); }
+  .term .d { color: var(--term-dim); }
+  .term .c { color: var(--term-dim); font-style: italic; }
+  .term.sm { font-size: 12px; }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 5px 8px; }
+
+  /* ---------- diagram ---------- */
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 10px; }
+  .box { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+  .box .t { font-family: var(--display); font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+  .box.pw { border-color: var(--pw); background: var(--pw-soft); }
+  .box.ai { border-color: var(--ai); background: var(--ai-soft); }
+  .arrow { font-family: var(--mono); color: var(--ink-3); font-size: 12px; text-align: center; line-height: 1.3; align-self: center; }
+  .arrow b { display: block; font-size: 18px; color: var(--pw); }
+
+  /* ---------- step flow (確実性手順) ---------- */
+  .steps { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+  .step { display: grid; grid-template-columns: 46px 220px 1fr; gap: 14px; align-items: start;
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 10px 16px; }
+  .step .no { font-family: var(--display); font-weight: 900; font-size: 26px; color: var(--pw); line-height: 1.2; }
+  .step .name { font-family: var(--display); font-weight: 700; font-size: 16px; line-height: 1.4; }
+  .step .name .tag { margin-left: 0; margin-top: 2px; }
+  .step .desc { font-size: 13.5px; color: var(--ink-2); }
+
+  /* ---------- cover ---------- */
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 80px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; font-size: 72px; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 28px; }
+  .cover .frame {
+    position: absolute; right: 72px; top: 56px; width: 470px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--pw); padding-left: 16px;
+  }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); }
+
+  /* ---------- nav ---------- */
+  #hud {
+    position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7;
+  }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--pw); outline-offset: 2px; }
+
+  /* ---------- overview & print ---------- */
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────── -->
+<section class="slide cover">
+  <div class="frame"><span class="k">$</span> npx playwright codegen https://example.com
+<span class="c"># ブラウザ操作がそのままコードになる</span>
+
+<span class="k">await</span> page.getByRole(<span class="s">'link'</span>, { name: <span class="s">'More information'</span> }).click();
+<span class="k">await</span> expect(page).toHaveURL(/iana/);
+
+<span class="k">$</span> npx @playwright/mcp@latest
+<span class="c"># AI エージェントがブラウザを操作する MCP サーバー</span>
+{<span class="s">"tools"</span>: [<span class="s">"browser_navigate"</span>, <span class="s">"browser_click"</span>,
+          <span class="s">"browser_snapshot"</span>, <span class="s">"browser_type"</span>, …]}</div>
+  <p class="eyebrow">Overview · ysksm/slides</p>
+  <h1>Playwright 概要</h1>
+  <p class="lead">テストライブラリとしての Playwright、コマンドラインツール（CLI）、そして AI エージェント向けの Playwright MCP。3 つの利用形態を、利用シーン・メリット/デメリット・要素技術・確実なコード作成手順の観点で整理する。</p>
+  <p class="meta"><span>2026-09-12</span><span>Playwright / @playwright/test / @playwright/mcp</span><span>Microsoft OSS</span></p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Summary</p>
+  <h2>結論を先に：3 つの顔を使い分ける</h2>
+  <div class="cols cols-3">
+    <div class="panel pw stack">
+      <h3>① ライブラリ / テストランナー <span class="tag">本体</span></h3>
+      <p class="small">Node.js（ほか Python / Java / .NET）から Chromium・Firefox・WebKit を自動操縦する API と、E2E テストランナー <code>@playwright/test</code>。<b>CI で回す回帰テスト</b> の本命。自動待機とリトライ付きアサーションで flaky になりにくい。</p>
+      <p class="xs muted">書いたコードが資産になる。習得コストはあるが確実性は最も高い。</p>
+    </div>
+    <div class="panel amber stack">
+      <h3>② CLI <span class="tag amber">入口と道具箱</span></h3>
+      <p class="small"><code>npx playwright ...</code>。ブラウザの導入（<code>install</code>）、操作の記録からのコード生成（<code>codegen</code>）、テスト実行（<code>test</code>）、デバッグ（<code>--ui</code> / <code>show-trace</code>）まで。<b>コードを書かずに始めて、書いたコードを検証する</b> ための道具箱。</p>
+      <p class="xs muted">codegen は雛形生成、UI モードと Trace Viewer は失敗解析の決定打。</p>
+    </div>
+    <div class="panel ai stack">
+      <h3>③ MCP <span class="tag ai">AI エージェント向け</span></h3>
+      <p class="small"><code>@playwright/mcp</code>。Claude Code や VS Code 等の AI エージェントに <b>ブラウザ操作ツール</b> を与える MCP サーバー。スクリーンショットではなく<b>アクセシビリティツリーのスナップショット</b>で操作するのが特徴。探索・検証・テスト草案づくりに向く。</p>
+      <p class="xs muted">対話的で速いが再現性はエージェント依存。最終成果はコードに落とす。</p>
+    </div>
+  </div>
+  <p class="small muted">確実にテストコードを作るなら：<b>MCP / codegen で探索 → ロケータを堅牢化 → @playwright/test のコードに固定 → Trace で検証 → CI へ</b>（詳細は後半）。</p>
+</section>
+
+<!-- 3 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">What it is</p>
+  <h2>Playwright とは何か</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <ul>
+        <li>Microsoft が 2020 年に公開した <b>ブラウザ自動化フレームワーク</b>（OSS, Apache-2.0）。Puppeteer の開発チームが移籍して開発した後継的存在。</li>
+        <li><b>Chromium・Firefox・WebKit</b>（= Safari 系）の 3 エンジンを単一 API で操作。Google Chrome / Microsoft Edge の branded ブラウザやモバイルエミュレーションにも対応。</li>
+        <li>言語バインディングは <b>TypeScript / JavaScript</b> が第一級。Python・Java・.NET (C#) も公式サポート。</li>
+        <li>E2E テストランナー <code>@playwright/test</code> を同梱：並列実行・fixture・リトライ・レポート・トレース収集まで一体。</li>
+        <li>用途はテストに限らない：<b>スクレイピング、スクリーンショット / PDF 生成、業務の自動操作、AI エージェントのブラウザ操作基盤</b>（MCP）。</li>
+      </ul>
+      <div class="panel">
+        <h3>類似ツールとの位置づけ</h3>
+        <table class="tight small">
+          <tr><td>Selenium</td><td>WebDriver 標準準拠・言語/実ブラウザの網羅性重視。歴史が長い分、待機処理は自前になりがち</td></tr>
+          <tr><td>Cypress</td><td>ブラウザ内で実行する開発者体験重視。マルチタブ・マルチオリジンや WebKit に制約</td></tr>
+          <tr><td>Puppeteer</td><td>Chromium 特化の操作ライブラリ。テストランナーは別途必要</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="term"><span class="c"># インストール（テストランナーごと導入）</span>
+<span class="k">$</span> npm init playwright@latest
+<span class="c"># → playwright.config.ts / tests/ / CI 設定の雛形を生成</span>
+
+<span class="c"># ブラウザ本体のダウンロード</span>
+<span class="k">$</span> npx playwright install --with-deps
+
+<span class="c"># 実行</span>
+<span class="k">$</span> npx playwright test
+Running 6 tests using 3 workers
+  6 passed (4.2s)
+
+<span class="c"># HTML レポート</span>
+<span class="k">$</span> npx playwright show-report</div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Architecture · 要素技術 ①</p>
+  <h2>アーキテクチャ：プロセス外自動化と独自プロトコル</h2>
+  <div class="flow">
+    <div class="box"><div class="t">クライアント</div>テストコード / CLI / MCP サーバー<br><span class="xs muted">言語バインディング（Node が中心。他言語は Node 製ドライバを経由）</span></div>
+    <div class="arrow"><b>⇄</b>Playwright 独自プロトコル<br>(JSON / pipe・WebSocket)</div>
+    <div class="box pw"><div class="t">Playwright ドライバ</div>ブラウザ起動・プロトコル変換・自動待機の制御<br><span class="xs muted">Chromium へは CDP、Firefox / WebKit へは独自パッチのリモートデバッグプロトコルで接続</span></div>
+    <div class="arrow"><b>⇄</b>CDP /<br>独自デバッグ<br>プロトコル</div>
+    <div class="box"><div class="t">ブラウザ</div>Chromium · Firefox · WebKit<br><span class="xs muted">BrowserContext ごとに分離されたプロファイル。1 ブラウザに複数コンテキストを高速生成</span></div>
+  </div>
+  <div class="cols cols-3">
+    <div class="panel">
+      <h3>ブラウザコンテキスト</h3>
+      <p class="small">Cookie・ストレージが分離された「シークレットウィンドウ」相当を数十 ms で生成。<b>テストごとの完全独立</b> と並列実行を安価に実現する。認証状態は <code>storageState</code> で保存・再利用。</p>
+    </div>
+    <div class="panel">
+      <h3>プロセス外 (out-of-process)</h3>
+      <p class="small">Cypress と違いブラウザの外から制御するため、<b>マルチタブ・マルチオリジン・複数ブラウザ同時操作・iframe</b> を自然に扱える。ネットワークの傍受・改変（<code>route</code>）も可能。</p>
+    </div>
+    <div class="panel">
+      <h3>イベント駆動の待機</h3>
+      <p class="small">ポーリングではなくブラウザ内部のイベントを購読して「操作可能になった瞬間」に実行。これが次スライドの <b>auto-waiting</b> の土台。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 5 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Core concepts · 要素技術 ②</p>
+  <h2>確実性を支える中核概念：Locator・Auto-waiting・Web-first assertion</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel pw">
+        <h3>Locator（遅延評価される要素参照）</h3>
+        <p class="small">セレクタを即座に解決せず、<b>操作の瞬間に毎回探し直す</b>。推奨は利用者視点のロケータ：<code>getByRole</code>（アクセシビリティロール）・<code>getByLabel</code>・<code>getByText</code>・<code>getByTestId</code>。CSS/XPath は DOM 構造依存で壊れやすいため最終手段。strict mode により 1 件に絞れない操作はエラーになる。</p>
+      </div>
+      <div class="panel pw">
+        <h3>Auto-waiting（自動待機）</h3>
+        <p class="small"><code>click()</code> 等は対象が「表示されている・安定している・イベントを受け取れる・有効」になるまで自動で待つ。<b><code>sleep</code> / 手書き wait を書かない</b> のが Playwright 流で、flaky テストの主因を設計で潰している。</p>
+      </div>
+      <div class="panel pw">
+        <h3>Web-first assertion（リトライ付き検証）</h3>
+        <p class="small"><code>await expect(locator).toHaveText(...)</code> は条件を満たすまでタイムアウト内で再評価する。非同期描画の SPA でも「いつ検証するか」を人間が調整しなくてよい。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c">// 利用者視点のロケータ + 自動待機 + リトライ付き検証</span>
+<span class="k">import</span> { test, expect } <span class="k">from</span> <span class="s">'@playwright/test'</span>;
+
+test(<span class="s">'ログインできる'</span>, <span class="k">async</span> ({ page }) => {
+  <span class="k">await</span> page.goto(<span class="s">'/login'</span>);
+  <span class="k">await</span> page.getByLabel(<span class="s">'メールアドレス'</span>).fill(<span class="s">'a@example.com'</span>);
+  <span class="k">await</span> page.getByLabel(<span class="s">'パスワード'</span>).fill(<span class="s">'secret'</span>);
+  <span class="k">await</span> page.getByRole(<span class="s">'button'</span>, { name: <span class="s">'ログイン'</span> }).click();
+  <span class="c">// ↑ ボタンが可視・有効・安定になるまで自動で待つ</span>
+
+  <span class="k">await</span> expect(page.getByRole(<span class="s">'heading'</span>, { name: <span class="s">'ダッシュボード'</span> }))
+    .toBeVisible();   <span class="c">// ← 描画完了までリトライ</span>
+});</div>
+      <div class="panel">
+        <h3>その他の要素技術</h3>
+        <ul class="small">
+          <li><b>アクセシビリティツリー</b>：<code>getByRole</code> と MCP のスナップショットの共通基盤</li>
+          <li><b>Trace</b>：実行の全記録（スクリーンショット・DOM・ネットワーク・ソース）を 1 ファイルに</li>
+          <li><b>fixture / project</b>：前提条件の合成と、ブラウザ×設定のマトリクス実行</li>
+          <li><b>ネットワークモック</b>（<code>page.route</code>）・<b>デバイスエミュレーション</b>・<b>ビジュアル比較</b>（<code>toHaveScreenshot</code>）</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Three forms</p>
+  <h2>3 つの利用形態の全体像</h2>
+  <div class="cols" style="grid-template-columns: 1fr;">
+    <table>
+      <tr><th style="width:130px"></th><th>① ライブラリ / @playwright/test</th><th>② CLI（codegen・UI モード等）</th><th>③ MCP（@playwright/mcp）</th></tr>
+      <tr><td><b>操作する人</b></td><td>コード（開発者が書く）</td><td>人間（GUI 操作・コマンド）</td><td>AI エージェント（LLM）</td></tr>
+      <tr><td><b>入力</b></td><td>TypeScript 等のテスト/スクリプト</td><td>ブラウザ上の実操作・コマンド引数</td><td>自然言語の指示 → MCP ツール呼び出し</td></tr>
+      <tr><td><b>出力</b></td><td>テスト結果・レポート・トレース・取得データ</td><td>生成コード・レポート表示・スクリーンショット/PDF</td><td>アクセシビリティスナップショット・操作結果・（エージェントが書く）コード</td></tr>
+      <tr><td><b>再現性</b></td><td><span class="tag">高い（決定的）</span></td><td><span class="tag amber">操作次第</span></td><td><span class="tag red">エージェント依存（非決定的）</span></td></tr>
+      <tr><td><b>主な役割</b></td><td>回帰テスト・自動化の<b>本番</b></td><td>導入・雛形生成・実行・<b>デバッグ</b></td><td><b>探索</b>・検証・テスト草案・自律操作</td></tr>
+    </table>
+  </div>
+  <p class="small muted">3 つは競合ではなく <b>同じエンジンの別インターフェース</b>。CLI と MCP で得た知見を、最終的に①のコードへ固定するのが定石。</p>
+</section>
+
+<!-- 7 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">① Library / test runner · 利用シーン</p>
+  <h2>通常の Playwright：どこで使うか</h2>
+  <div class="cols cols-3">
+    <div class="stack" style="gap:12px">
+      <div class="panel pw"><h3>E2E 回帰テスト <span class="tag">本命</span></h3><p class="small">リリース前の主要導線（ログイン・購入・検索など）を CI で毎回検証。並列・シャーディング・リトライ・トレース収集が揃い、<b>大規模スイートの運用</b>に耐える。</p></div>
+      <div class="panel"><h3>クロスブラウザ検証</h3><p class="small">同じテストを Chromium / Firefox / WebKit の <code>project</code> として実行。Safari 系（WebKit）を Linux CI 上で回せるのは大きい。モバイルは viewport / UA / タッチのエミュレーション。</p></div>
+    </div>
+    <div class="stack" style="gap:12px">
+      <div class="panel"><h3>API + UI の複合テスト</h3><p class="small"><code>request</code> フィクスチャで API を直接叩き、テストデータ準備や事後検証を API で、操作だけ UI で行う。<b>セットアップの高速化</b>と安定化に効く。</p></div>
+      <div class="panel"><h3>ビジュアルリグレッション</h3><p class="small"><code>toHaveScreenshot()</code> でスクリーンショット比較。CSS 崩れやデザイン差分の検出。閾値・マスク指定あり。</p></div>
+    </div>
+    <div class="stack" style="gap:12px">
+      <div class="panel"><h3>スクレイピング・RPA 的自動化</h3><p class="small">テスト以外でも、ログインが必要なサイトからのデータ取得、定型業務のブラウザ操作、スクリーンショット / PDF の定期生成などに library として利用。</p></div>
+      <div class="panel"><h3>モック駆動のフロント開発</h3><p class="small"><code>page.route()</code> でバックエンド未完成でも UI テストを先行。障害系（500・遅延・オフライン）の再現にも。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">① Library / test runner · 評価</p>
+  <h2>通常の Playwright：メリット / デメリット</h2>
+  <div class="cols cols-2">
+    <div class="panel pw stack">
+      <h3>メリット</h3>
+      <ul class="plusminus small">
+        <li class="good"><b>flaky になりにくい設計</b>：auto-waiting + リトライ付きアサーションで待機バグを構造的に排除</li>
+        <li class="good"><b>3 エンジン対応</b>：WebKit 含むクロスブラウザを単一 API・単一 CI で</li>
+        <li class="good"><b>実行が速い</b>：ブラウザコンテキストによる軽量分離 + ワーカー並列 + シャーディング</li>
+        <li class="good"><b>デバッグ体験</b>：Trace Viewer / UI モード / Inspector が標準装備。CI の失敗もトレースで事後解析できる</li>
+        <li class="good"><b>一体型</b>：ランナー・レポート・モック・スクリーンショット比較まで公式で完結し、組み合わせ選定が不要</li>
+        <li class="good"><b>多言語 + 活発な開発</b>：TS/JS・Python・Java・.NET。月次リリースで改善が速い</li>
+      </ul>
+    </div>
+    <div class="panel red stack">
+      <h3>デメリット / 注意点</h3>
+      <ul class="plusminus small">
+        <li class="bad"><b>学習コスト</b>：locator の考え方、fixture、非同期 API（await 忘れ）など、正しく書くための前提知識が要る</li>
+        <li class="bad"><b>ブラウザバイナリの管理</b>：バージョンごとに専用ビルドをダウンロード（数百 MB）。CI キャッシュや <code>--with-deps</code> の運用が必要</li>
+        <li class="bad"><b>「本物のブラウザ」との差</b>：WebKit は Safari そのものではなく、branded Chrome も別途指定が要る。実機検証の完全代替ではない</li>
+        <li class="bad"><b>E2E 自体のコスト</b>：どのツールでも E2E は遅く壊れやすい層。テストピラミッドの上位に薄く置く設計判断は依然必要</li>
+        <li class="bad"><b>古い IE や実デバイス群は対象外</b>：その領域は Selenium ベースのクラウド（BrowserStack 等）と併用</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">② CLI · コマンド一覧</p>
+  <h2>Playwright CLI：導入からデバッグまでの道具箱</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <table class="tight small">
+        <tr><th style="width:250px">コマンド</th><th>役割</th></tr>
+        <tr><td><code>npx playwright install [--with-deps]</code></td><td>ブラウザ本体（+ OS 依存ライブラリ）の導入</td></tr>
+        <tr><td><code>npx playwright codegen [URL]</code></td><td>ブラウザ操作を記録して<b>テストコードを自動生成</b>。ロケータのライブ表示付き</td></tr>
+        <tr><td><code>npx playwright test</code></td><td>テスト実行。<code>--headed</code> <code>--debug</code> <code>--grep</code> <code>--project</code> <code>--shard</code> 等</td></tr>
+        <tr><td><code>npx playwright test --ui</code></td><td><b>UI モード</b>：ウォッチ実行 + タイムトラベルデバッグ</td></tr>
+        <tr><td><code>npx playwright show-report</code></td><td>HTML レポートを開く</td></tr>
+        <tr><td><code>npx playwright show-trace trace.zip</code></td><td><b>Trace Viewer</b>：実行の完全な記録を再生</td></tr>
+        <tr><td><code>npx playwright screenshot / pdf</code></td><td>1 コマンドでページのスクリーンショット / PDF 化</td></tr>
+        <tr><td><code>npx playwright open [URL]</code></td><td>Playwright 制御下のブラウザを対話的に開く</td></tr>
+        <tr><td><code>npx playwright merge-reports</code></td><td>シャーディング実行のレポート結合（CI 向け）</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># 記録してコード生成（デバイス・認証状態の指定も可）</span>
+<span class="k">$</span> npx playwright codegen --device=<span class="s">"iPhone 15"</span> \
+    --save-storage=auth.json https://example.com
+
+<span class="c"># 生成されるコードの例</span>
+<span class="k">await</span> page.getByRole(<span class="s">'textbox'</span>, { name: <span class="s">'検索'</span> })
+  .fill(<span class="s">'playwright'</span>);
+<span class="k">await</span> page.getByRole(<span class="s">'button'</span>, { name: <span class="s">'検索'</span> }).click();
+
+<span class="c"># 失敗時のトレースを収集して事後解析</span>
+<span class="k">$</span> npx playwright test --trace on-first-retry
+<span class="k">$</span> npx playwright show-trace test-results/**/trace.zip</div>
+      <div class="panel">
+        <h3>使い分けの軸</h3>
+        <ul class="small">
+          <li><b>始める</b>：<code>install</code> → <code>codegen</code> で最初の 1 本</li>
+          <li><b>回す</b>：<code>test</code>（CI では <code>--shard</code> + <code>merge-reports</code>）</li>
+          <li><b>直す</b>：<code>--ui</code> / <code>--debug</code> / <code>show-trace</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">② CLI · 利用シーンと評価</p>
+  <h2>CLI：利用シーンとメリット / デメリット</h2>
+  <div class="cols cols-3">
+    <div class="stack" style="gap:12px">
+      <div class="panel amber"><h3>利用シーン</h3><ul class="small">
+        <li><b>導入初日</b>：codegen で操作を記録し、動く雛形を数分で得る</li>
+        <li><b>ロケータ調査</b>：codegen / <code>open</code> の Pick locator で、推奨ロケータを対話的に確認</li>
+        <li><b>テスト開発中</b>：UI モードでウォッチ実行しながら書く</li>
+        <li><b>CI 失敗の解析</b>：trace.zip を手元で再生（スクリーンショット・DOM・ネットワーク・コンソールを時系列で）</li>
+        <li><b>単発作業</b>：screenshot / pdf をシェルスクリプトから</li>
+      </ul></div>
+    </div>
+    <div class="stack" style="gap:12px">
+      <div class="panel pw"><h3>メリット</h3><ul class="plusminus small">
+        <li class="good"><b>コードを書かずに始められる</b>：codegen が locator のベストプラクティス（getByRole 優先）に沿ったコードを吐く</li>
+        <li class="good"><b>デバッグの決定打</b>：Trace Viewer は「CI でだけ落ちる」問題の再現手段として他ツールにない強み</li>
+        <li class="good"><b>学習教材になる</b>：生成コードを読むことが API の学習になる</li>
+        <li class="good">追加インストール不要（本体に同梱）</li>
+      </ul></div>
+    </div>
+    <div class="stack" style="gap:12px">
+      <div class="panel red"><h3>デメリット / 注意点</h3><ul class="plusminus small">
+        <li class="bad"><b>codegen は雛形止まり</b>：アサーションはほぼ手書き。重複・冗長な操作、脆いロケータが混ざることもあり、<b>そのまま資産化しない</b></li>
+        <li class="bad">記録できるのは単線的な操作のみ：条件分岐・データ駆動・fixture 設計は人間の仕事</li>
+        <li class="bad">UI モード・Trace Viewer は GUI 前提。ヘッドレスサーバーでは trace.zip を手元に持ち出す運用になる</li>
+      </ul></div>
+      <p class="xs muted">位置づけ：CLI は「①ライブラリを速く正しく使うための補助輪と計器」。単独で完結する形態ではない。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">③ MCP · what & how</p>
+  <h2>Playwright MCP：AI エージェントにブラウザを渡す</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <ul class="small">
+        <li><b>MCP (Model Context Protocol)</b>：LLM アプリに外部ツールを標準形式で提供するプロトコル（Anthropic 発、2024〜）。<code>@playwright/mcp</code> は Microsoft 公式の MCP サーバー。</li>
+        <li>Claude Code / Claude Desktop / VS Code (Copilot) / Cursor などの MCP クライアントに登録すると、エージェントが <code>browser_navigate</code>・<code>browser_click</code>・<code>browser_type</code> 等のツールでブラウザを操作できる。</li>
+        <li>核心は <b>スナップショットモード</b>：ページを画像ではなく<b>アクセシビリティツリー</b>（役割・名前・状態 + 要素参照 <code>ref</code>）として LLM に渡す。ビジョンモデル不要・軽量・構造的で、操作対象の指定が曖昧にならない。</li>
+        <li>座標ベースで操作するビジョンモード（<code>--caps=vision</code>）、トレース保存、デバイス指定、ヘッドレス切替などのオプションあり。</li>
+      </ul>
+      <div class="term sm"><span class="c"># Claude Code への登録例</span>
+<span class="k">$</span> claude mcp add playwright -- npx @playwright/mcp@latest
+
+<span class="c"># VS Code 等では mcp.json に:</span>
+{ <span class="s">"servers"</span>: { <span class="s">"playwright"</span>: {
+    <span class="s">"command"</span>: <span class="s">"npx"</span>,
+    <span class="s">"args"</span>: [<span class="s">"@playwright/mcp@latest"</span>] } } }</div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># エージェントが受け取るスナップショット（抜粋）</span>
+- banner:
+  - heading <span class="s">"Example Domain"</span> [level=1] [ref=e2]
+- paragraph [ref=e3]: This domain is for use in …
+- link <span class="s">"More information..."</span> [ref=e4]
+  - /url: https://www.iana.org/domains/example
+
+<span class="c"># エージェントのツール呼び出し</span>
+browser_click({ element: <span class="s">"More information リンク"</span>,
+                ref: <span class="s">"e4"</span> })</div>
+      <div class="panel ai">
+        <h3>主なツール群</h3>
+        <p class="small"><code>browser_navigate</code> / <code>browser_snapshot</code> / <code>browser_click</code> / <code>browser_type</code> / <code>browser_fill_form</code> / <code>browser_select_option</code> / <code>browser_take_screenshot</code> / <code>browser_evaluate</code> / <code>browser_console_messages</code> / <code>browser_network_requests</code> / タブ操作 など。</p>
+      </div>
+      <div class="panel">
+        <h3>裏側は同じ Playwright</h3>
+        <p class="small">auto-waiting やロケータ解決など①と同じエンジンが動く。<b>「LLM がクライアントになった Playwright」</b>と捉えるのが正確。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 12 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">③ MCP · 利用シーン</p>
+  <h2>MCP：どこで使うか</h2>
+  <div class="cols cols-3">
+    <div class="stack" style="gap:12px">
+      <div class="panel ai"><h3>実装の動作確認 <span class="tag ai">日常使い</span></h3><p class="small">AI エージェントにコードを書かせた後、<b>そのエージェント自身がブラウザで動作確認</b>し、コンソールエラーやレイアウト崩れを見て自己修正する。「書く→動かす→直す」ループが 1 エージェントで閉じる。</p></div>
+      <div class="panel"><h3>探索的テスト</h3><p class="small">「この画面で入力値の境界を試して、おかしい挙動を報告して」のような<b>自由探索</b>。人間の探索的テストの下調べや、バグの再現手順の特定に。</p></div>
+    </div>
+    <div class="stack" style="gap:12px">
+      <div class="panel"><h3>テストコードの草案生成</h3><p class="small">エージェントが実際に画面を操作して<b>実在するロケータと画面遷移を確認しながら</b> @playwright/test のコードを書く。想像で書くより格段に正確（後述の手順の中核）。公式の Playwright Agents（planner / generator / healer）もこの発想。</p></div>
+      <div class="panel"><h3>Web 操作の自動化</h3><p class="small">「このサイトから◯◯を調べて表にして」のような<b>非定型の調査・操作</b>。毎回コードを書くほどでもない作業を自然言語で。</p></div>
+    </div>
+    <div class="stack" style="gap:12px">
+      <div class="panel"><h3>失敗テストの自己修復</h3><p class="small">落ちたテストのエラーとトレースをエージェントに渡し、MCP で実画面を確認させて修正案を出させる（healer パターン）。UI 変更でロケータが壊れた類の修正に有効。</p></div>
+      <div class="panel red"><h3>向かないこと</h3><p class="small">CI での回帰テスト実行（遅い・非決定的・トークン費用）。<b>検証の本番は常に①のコード</b>で行い、MCP は探索と生成に使う。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">③ MCP · 評価</p>
+  <h2>MCP：メリット / デメリット</h2>
+  <div class="cols cols-2">
+    <div class="panel ai stack">
+      <h3>メリット</h3>
+      <ul class="plusminus small">
+        <li class="good"><b>コード不要・自然言語で即操作</b>：非エンジニアでも「ブラウザで◯◯して」が通る</li>
+        <li class="good"><b>アクセシビリティツリー方式が LLM と相性抜群</b>：画像認識より速く・安く・曖昧さがなく、要素参照（ref）で操作が外れにくい</li>
+        <li class="good"><b>実画面に接地したコード生成</b>：エージェントが実在の DOM を見て書くため、幻覚ロケータが激減する</li>
+        <li class="good"><b>公式サポート</b>：Playwright 本体と同じチームが開発。エンジン・待機戦略をそのまま継承</li>
+        <li class="good"><b>エコシステム</b>：Claude Code / VS Code / Cursor 等、主要な AI コーディング環境がそのまま接続先になる</li>
+      </ul>
+    </div>
+    <div class="panel red stack">
+      <h3>デメリット / 注意点</h3>
+      <ul class="plusminus small">
+        <li class="bad"><b>非決定的</b>：同じ指示でも操作手順が揺れる。回帰テストの実行手段にはならない</li>
+        <li class="bad"><b>トークン消費と遅さ</b>：巨大なページのスナップショットはコンテキストを圧迫。1 操作ごとに LLM の往復が入る</li>
+        <li class="bad"><b>セキュリティ</b>：Web ページ内のテキストによるプロンプトインジェクションの経路になる。認証情報を扱うサイト・書き込み操作は権限設計と人間の確認が必須</li>
+        <li class="bad"><b>複雑 UI の限界</b>：canvas 描画・独自ウィジェット等、アクセシビリティツリーに乗らない UI は苦手（ビジョンモードで補完）</li>
+        <li class="bad"><b>実行環境の管理</b>：ブラウザ常駐・セッション状態・並行利用など、運用の考慮点は通常の Playwright と同様に残る</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 14 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Comparison</p>
+  <h2>使い分け早見表</h2>
+  <div class="cols" style="grid-template-columns: 1fr;">
+    <table class="small">
+      <tr><th style="width:230px">やりたいこと</th><th style="width:180px">最適な形態</th><th>理由</th></tr>
+      <tr><td>リリース前の回帰テストを CI で回す</td><td><span class="tag">① test ランナー</span></td><td>決定的・並列・レポート/トレース完備。資産として蓄積できる</td></tr>
+      <tr><td>初めての 1 本を最速で作る</td><td><span class="tag amber">② codegen</span> → ①</td><td>操作記録から雛形を生成し、アサーションとロケータ整理だけ手を入れる</td></tr>
+      <tr><td>CI でだけ落ちるテストを調べる</td><td><span class="tag amber">② Trace Viewer</span></td><td>失敗時点の DOM・ネットワーク・コンソールを時系列で再生できる</td></tr>
+      <tr><td>AI に実装させて動作確認までさせる</td><td><span class="tag ai">③ MCP</span></td><td>エージェントが自分でブラウザを開き、エラーを見て自己修正できる</td></tr>
+      <tr><td>テストコードを AI に書かせる</td><td><span class="tag ai">③ MCP</span> → ①</td><td>実画面を探索して実在ロケータで書かせ、成果物は①のコードで固定</td></tr>
+      <tr><td>非定型の Web 調査・操作</td><td><span class="tag ai">③ MCP</span></td><td>コードを書くほどでない単発作業を自然言語で</td></tr>
+      <tr><td>スクレイピング・定期バッチ</td><td><span class="tag">① library</span></td><td>再現性と速度が必要。ランナーなしの素の API で十分</td></tr>
+      <tr><td>スクリーンショット / PDF を 1 回だけ</td><td><span class="tag amber">② CLI</span></td><td><code>npx playwright screenshot / pdf</code> の 1 行で済む</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- 15 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Reliable workflow</p>
+  <h2>確実性の高いテストコード作成の順序</h2>
+  <div class="steps">
+    <div class="step"><div class="no">1</div><div class="name">探索 <span class="tag ai">MCP</span> <span class="tag amber">codegen</span></div><div class="desc">対象画面を <b>実際に操作して</b> 構造を把握する。MCP なら「◯◯のフローを一通り操作して要素を報告して」、手動なら codegen / Pick locator。想像でロケータを書かない——ここが確実性の出発点。</div></div>
+    <div class="step"><div class="no">2</div><div class="name">雛形生成 <span class="tag amber">codegen</span> <span class="tag ai">MCP + エージェント</span></div><div class="desc">操作記録 or エージェントに <code>@playwright/test</code> の草案を出させる。この時点では動くことだけを確認すればよい。</div></div>
+    <div class="step"><div class="no">3</div><div class="name">ロケータの堅牢化 <span class="tag">手作業 / レビュー</span></div><div class="desc"><code>getByRole</code> / <code>getByLabel</code> / <code>getByTestId</code> へ寄せ、CSS / XPath / nth() を排除する。1 意に定まらないものは <code>data-testid</code> をアプリ側に追加。<b>壊れないテストはロケータで決まる</b>。</div></div>
+    <div class="step"><div class="no">4</div><div class="name">検証の設計 <span class="tag">web-first assertion</span></div><div class="desc">「操作できた」ではなく「ユーザーに見える結果」を <code>expect(locator).toBeVisible() / toHaveText() / toHaveURL()</code> で検証。<code>waitForTimeout</code>（sleep）は使わない。前提データは fixture / API で用意し、テスト間の依存をなくす。</div></div>
+    <div class="step"><div class="no">5</div><div class="name">安定性の証明 <span class="tag amber">CLI</span></div><div class="desc"><code>npx playwright test --repeat-each=5</code> と <code>--project</code> 全ブラウザで flaky を炙り出し、<code>--trace on-first-retry</code> で原因を特定して潰す。<b>初回から安定して通るまでがコード作成</b>。</div></div>
+    <div class="step"><div class="no">6</div><div class="name">CI へ固定・保守 <span class="tag">test ランナー</span> <span class="tag ai">healer</span></div><div class="desc">CI に組み込み（install --with-deps・シャーディング・レポート）、以後の失敗はトレースで解析。UI 変更で壊れたら、エラー + MCP で実画面をエージェントに見せて修正させる（自己修復）。</div></div>
+  </div>
+</section>
+
+<!-- 16 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Wrap-up</p>
+  <h2>まとめと参考資料</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel pw">
+        <h3>要点</h3>
+        <ul class="small">
+          <li>Playwright は <b>1 つのエンジンに 3 つの入口</b>：コード（①）・人間の手（②）・AI エージェント（③）。</li>
+          <li>確実性の源泉は <b>Locator + auto-waiting + web-first assertion</b>。どの入口を使ってもこの土台の上に乗る。</li>
+          <li>MCP は「探索と生成」、CLI は「導入とデバッグ」、テストランナーが「検証の本番」。<b>探索は柔らかく、資産は固く</b>。</li>
+          <li>AI 時代のワークフロー：MCP で実画面に接地させてコードを書かせ、人間がロケータとアサーションをレビューし、CI で決定的に回す。</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>次の一歩</h3>
+        <ul class="small">
+          <li><code>npm init playwright@latest</code> → <code>npx playwright codegen</code> で 1 本作る</li>
+          <li><code>claude mcp add playwright -- npx @playwright/mcp@latest</code> でエージェントにブラウザを渡してみる</li>
+          <li>既存テストがあるなら <code>--ui</code> と Trace Viewer から導入すると効果を体感しやすい</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><a href="https://playwright.dev/">playwright.dev</a> — 公式ドキュメント（Getting started / Locators / Auto-waiting / Assertions）</li>
+        <li><a href="https://playwright.dev/docs/test-cli">Command line</a> / <a href="https://playwright.dev/docs/codegen">Test generator (codegen)</a> / <a href="https://playwright.dev/docs/trace-viewer">Trace Viewer</a> / <a href="https://playwright.dev/docs/test-ui-mode">UI Mode</a></li>
+        <li><a href="https://github.com/microsoft/playwright">microsoft/playwright</a> — 本体リポジトリ</li>
+        <li><a href="https://github.com/microsoft/playwright-mcp">microsoft/playwright-mcp</a> — MCP サーバー（ツール一覧・設定・スナップショット/ビジョンモード）</li>
+        <li><a href="https://playwright.dev/docs/test-agents">Playwright Agents</a> — planner / generator / healer による AI テスト生成ワークフロー</li>
+        <li><a href="https://modelcontextprotocol.io/">modelcontextprotocol.io</a> — MCP 仕様</li>
+        <li><a href="https://playwright.dev/docs/best-practices">Best Practices</a> — ロケータ選択・テスト分離・アサーション指針（スライド 15 の手順の根拠）</li>
+      </ul>
+      <p class="xs muted">本スライドは 2026-09-12 時点の公式ドキュメント・リポジトリの情報に基づく。バージョン固有の仕様は各リンク先で最新を確認のこと。</p>
+    </div>
+  </div>
+</section>
+
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷/PDF</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    deck.style.transform = 'scale(' + Math.min(w / 1280, h / 720) + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>
