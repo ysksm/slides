@@ -70,7 +70,8 @@ slides/
 │   ├── examples/                  #   実証クライアント・Claude Code プラグイン・MCP サーバー
 │   └── evidence/                  #   実機計測ログ・検証用フィクスチャ
 ├── tsc-lsp/                       # tsc --lsp 調査報告（初版）
-├── docs/                          # GitHub Pages 公開用ディレクトリ（現状はプレースホルダーのみ）
+├── index.html                     # GitHub Pages のトップページ（スライド目次）
+├── .nojekyll                      # Pages で Jekyll 処理を無効化
 └── .github/workflows/             # GitHub Pages デプロイワークフロー
 ```
 
@@ -101,6 +102,10 @@ cd claude-code-commands
 ./build.sh --pdf      # PDF も併せて出力
 ```
 
-## デプロイ
+## 公開サイト
 
-`main` への push で `.github/workflows/deploy-pages.yml` が動き、`docs/` の内容が GitHub Pages に公開されます。現在 `docs/index.html` はプレースホルダーのため、各スライドは公開サイトからは辿れません。リポジトリを clone するか、GitHub 上で HTML を直接開いて閲覧してください。
+<https://ysksm.github.io/slides/>
+
+`main` への push で `.github/workflows/deploy-pages.yml` が動き、リポジトリルートがそのまま GitHub Pages に公開されます。ルートの `index.html` が全スライドの目次で、各スライドは `https://ysksm.github.io/slides/<ディレクトリ名>/` で開けます。
+
+`.nojekyll` を置いて Jekyll による変換を無効化しているため、HTML・CSS・JS はリポジトリ内のファイルがそのまま配信されます。新しいスライドを追加した場合は、ルートの `index.html` にもリンクを追加してください。
