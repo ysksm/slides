@@ -21,17 +21,18 @@
 
     <!-- ==================== Slide 1: Cover ==================== -->
     <section class="slide cover">
-      <p class="eyebrow"><span class="badge">Research Report</span> ysksm/slides #1</p>
-      <h1><code>tsc --lsp</code> 徹底調査<br><span style="font-size: 0.75em; color: var(--ts-blue);">TypeScript 7 ネイティブ言語サーバーの全貌</span></h1>
-      <p class="lead">Go 実装への大転換がもたらす圧倒的な起動速度・省メモリと、AI コーディングエージェント（Claude Code / Antigravity / Orca）への破壊的インパクト</p>
+      <p class="eyebrow"><span class="badge">Antigravity Research Report</span> ysksm/slides #1</p>
+      <h1><code>tsc --lsp</code> 徹底調査<br><span style="font-size: 0.7em; color: var(--ts-blue);">機能・利用ケースと AI エージェントによるプログラム構造理解・品質向上の評価</span></h1>
+      <p class="lead">TypeScript 7 ネイティブ言語サーバーの機能・性能から、AI コーディングエージェントがプログラム構造（型・AST・依存グラフ）を正確に読み込み、開発サイクルを劇的に向上させるメカニズムまで徹底解剖</p>
       <div class="cover-meta">
+        <span>🤖 調査・制作: Antigravity</span>
         <span>📅 2026-09-12</span>
         <span>⚡ TypeScript 7.0.2 実機実証済</span>
-        <span>💻 macOS arm64 (Apple Silicon)</span>
+        <span>💻 macOS arm64</span>
       </div>
       <div class="notes">
         <h4>発表者ノート</h4>
-        <p>本発表は GitHub Issue #1「tsc --lspについての調査」に対する技術調査報告です。TypeScript 7.0 で導入されたネイティブ言語サーバーのアーキテクチャ、実測性能、AI エージェント連携手法、現行制約を網羅的に解説します。</p>
+        <p>本発表は GitHub Issue #1「tsc --lspについての調査」に対する Antigravity による技術調査報告です。TypeScript 7.0 ネイティブ言語サーバーのアーキテクチャ、実測性能、AI エージェントによるプログラム構造理解と品質向上の手法、現行制約を網羅的に解説します。</p>
       </div>
     </section>
 
@@ -725,8 +726,8 @@
 
     <!-- ==================== Slide 14: Why AI Agents Need LSP ==================== -->
     <section class="slide">
-      <p class="eyebrow purple"><span class="badge">AI Agents</span> なぜ AI に LSP が必要なのか</p>
-      <h2>grep・全文検索・tsc --noEmit の限界を打破する</h2>
+      <p class="eyebrow purple"><span class="badge">AI Agents</span> プログラム構造の理解</p>
+      <h2>なぜ AI に LSP が不可欠か？ プログラム構造理解と品質向上</h2>
       <div class="cols cols-3">
         <div class="panel accent-rose">
           <h3>grep / 全文検索の限界</h3>
@@ -749,15 +750,15 @@
         <div class="panel accent-go">
           <h3><code>tsc --lsp</code> の解決策</h3>
           <ul class="small">
-            <li><b>ミリ秒単位の事実確認</b>: 正確な型情報・定義箇所を即座に取得してハルシネーションを根絶。</li>
-            <li><b>ピンポイント Pull 診断</b>: 編集したファイルだけを <b>1〜20ms</b> で検査。</li>
-            <li><b>トークン消費の極小化</b>: 必要なシンボルのシグネチャだけをピンポイントで抽出。</li>
+            <li><b>セマンティック構造の把握</b>: 型チェッカーが解決した AST・シンボルツリー・参照グラフをそのまま活用。</li>
+            <li><b>ピンポイント Pull 診断</b>: 編集したファイルだけを <b>1〜20ms</b> で即座検査し品質向上。</li>
+            <li><b>トークン消費の極小化</b>: 必要な定義・シグネチャだけをピンポイント抽出しコンテキスト節約。</li>
           </ul>
         </div>
       </div>
       <div class="notes">
         <h4>発表者ノート</h4>
-        <p>AI エージェントにとって「間違った推論をさせないための事実確認（Grounding）」と「高速な試行錯誤ループ」の2点が開発体験を左右します。</p>
+        <p>AI エージェントにとって「間違った推論をさせないための構造把握（Grounding）」と「高速な試行錯誤ループ」の2点が開発体験を左右します。</p>
       </div>
     </section>
 
@@ -820,7 +821,7 @@
             <p class="small">リポジトリルートに以下の <code>.lsp.json</code> を置くだけで、Claude Code の組み込み LSP ツールが直接 <code>tsc --lsp --stdio</code> を利用するようになります。</p>
           </div>
           <div class="callout tip">
-            <span>📁 <b>雛形ファイルを同梱:</b> <code>tsc-lsp/examples/claude-code-plugin/</code> 内のファイルをそのままコピーして利用可能です。</span>
+            <span>📁 <b>雛形ファイルを同梱:</b> <code>antigravity-tsc-lsp-research/examples/claude-code-plugin/</code> 内のファイルをそのままコピーして利用可能です。</span>
           </div>
         </div>
 
@@ -1023,11 +1024,11 @@
             <table class="data-table">
               <tbody>
                 <tr>
-                  <td><code>tsc-lsp/index.html</code></td>
+                  <td><code>antigravity-tsc-lsp-research/index.html</code></td>
                   <td>本スライド本体（← → で移動、O で一覧、N でノート、F で全画面）</td>
                 </tr>
                 <tr>
-                  <td><code>tsc-lsp/research.md</code></td>
+                  <td><code>antigravity-tsc-lsp-research/research.md</code></td>
                   <td>詳細技術調査報告書（背景・仕様・実測・移行ガイド）</td>
                 </tr>
                 <tr>
@@ -1060,13 +1061,13 @@
             <h3>プローブの再現実行手順</h3>
             <div class="term-box" style="height: 110px;">
 <span class="t-muted"># Node.js での実証実行</span>
-<span class="t-green">$</span> node tsc-lsp/examples/lsp-probe.mjs
+<span class="t-green">$</span> node antigravity-tsc-lsp-research/examples/lsp-probe.mjs
 
 <span class="t-muted"># Python 3 での実証実行</span>
-<span class="t-green">$</span> python3 tsc-lsp/examples/probe_lsp.py
+<span class="t-green">$</span> python3 antigravity-tsc-lsp-research/examples/probe_lsp.py
 
 <span class="t-muted"># MCP サーバーの単体テスト</span>
-<span class="t-green">$</span> node tsc-lsp/examples/agent-mcp/mcp-server.mjs
+<span class="t-green">$</span> node antigravity-tsc-lsp-research/examples/agent-mcp/mcp-server.mjs
             </div>
             <p class="xs t-muted">検証環境: TypeScript 7.0.2 / Node 22.14.0 / Python 3.13 / macOS Darwin arm64</p>
           </div>

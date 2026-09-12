@@ -106,7 +106,7 @@ html, body {
 
 /* スライドヘッダー & フッター装飾 */
 .slide::before {
-  content: "TypeScript 7 · tsc --lsp 調査報告";
+  content: "Antigravity · tsc --lsp 調査報告";
   position: absolute;
   left: 64px;
   bottom: 22px;

@@ -9,7 +9,7 @@ TypeScript 7.0 で導入された Go 言語ネイティブの言語サーバー 
 ## 📂 収録ファイル構成
 
 ```
-tsc-lsp/
+antigravity-tsc-lsp-research/
 ├── index.html                  # プレゼンテーションスライド本体 (全20枚)
 ├── style.css                   # スライド・印刷・一覧表示用スタイルシート
 ├── slides.js                   # キーボード操作・一覧・発表者ノート・全画面制御スクリプト
@@ -57,20 +57,20 @@ tsc-lsp/
 ### 1. Node.js 版プローブの実行
 ```sh
 # 付属の fixture を対象に実行
-node tsc-lsp/examples/lsp-probe.mjs
+node antigravity-tsc-lsp-research/examples/lsp-probe.mjs
 
 # JSON 形式で全トレースを取得
-node tsc-lsp/examples/lsp-probe.mjs --json
+node antigravity-tsc-lsp-research/examples/lsp-probe.mjs --json
 ```
 
 ### 2. Python 3 版プローブの実行
 ```sh
-python3 tsc-lsp/examples/probe_lsp.py
+python3 antigravity-tsc-lsp-research/examples/probe_lsp.py
 ```
 
 ### 3. AI エージェント向け MCP サーバーの起動
 ```sh
-node tsc-lsp/examples/agent-mcp/mcp-server.mjs
+node antigravity-tsc-lsp-research/examples/agent-mcp/mcp-server.mjs
 ```
 
 ---

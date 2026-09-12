@@ -1,11 +1,12 @@
-# tsc --lsp 技術調査報告書：TypeScript 7 ネイティブ言語サーバーの全貌と AI エージェント活用
+# tsc --lsp 技術調査報告書：機能・利用ケースと AI エージェントによるプログラム構造理解・品質向上の徹底評価
 
+- **調査・報告**: Antigravity
 - **調査日**: 2026年9月12日
 - **対象 Issue**: [ysksm/slides#1 (tsc --lspについての調査)](https://github.com/ysksm/slides/issues/1)
 - **検証環境**: TypeScript 7.0.2, Node.js v22.14.0, macOS Darwin 25.6 (arm64, Apple Silicon)
 - **成果物**:
-  - スライド本体: [`tsc-lsp/index.html`](index.html)
-  - 調査報告書: 本ドキュメント (`tsc-lsp/research.md`)
+  - スライド本体: [`antigravity-tsc-lsp-research/index.html`](index.html)
+  - 調査報告書: 本ドキュメント (`antigravity-tsc-lsp-research/research.md`)
   - 実証クライアント (Node.js): [`examples/lsp-probe.mjs`](examples/lsp-probe.mjs)
   - 実証クライアント (Python 3): [`examples/probe_lsp.py`](examples/probe_lsp.py)
   - Claude Code プラグイン雛形: [`examples/claude-code-plugin/`](examples/claude-code-plugin/)
