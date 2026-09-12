@@ -51,7 +51,9 @@
     const availableW = window.innerWidth - pad;
     const availableH = window.innerHeight - pad;
     const scale = Math.min(availableW / 1280, availableH / 720);
-    deck.style.transform = `scale(${scale})`;
+    // transform-origin は左上。ビューポート中央に絶対配置しているので、
+    // 縮小後サイズの半分だけ戻して中央に置く。
+    deck.style.transform = `translate(${-640 * scale}px, ${-360 * scale}px) scale(${scale})`;
   }
 
   function toggleOverview() {
