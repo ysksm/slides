@@ -48,13 +48,15 @@
   /* ---------- stage ---------- */
   #stage {
     position: fixed; inset: 0;
-    display: grid; place-items: center;
     padding: 16px;
   }
+  /* deck はレイアウト上 1280x720 のまま transform で縮小する。グリッド/フレックスの
+     中央寄せはコンテナより大きい要素だと start 寄せに落ちてスライドが画面外に出るため、
+     ビューポート中央に絶対配置し、fit() が縮小後サイズの半分だけ戻す。 */
   .deck {
     width: 1280px; height: 720px;
-    position: relative;
-    transform-origin: center center;
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: 0 0;
   }
   .slide {
     position: absolute; inset: 0;
@@ -195,12 +197,12 @@
 
   /* ---------- overview & print ---------- */
   body.overview #stage { display: block; overflow: auto; padding: 24px; }
-  body.overview .deck { width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
   @media print {
     body { overflow: visible; background: #fff; }
     #stage { position: static; display: block; padding: 0; }
-    .deck { width: 1280px; height: auto; transform: none !important; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
     .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
     #hud { display: none; }
   }
@@ -690,7 +692,8 @@ browser_click({ element: <span class="s">"More information リンク"</span>,
   function fit() {
     if (document.body.classList.contains('overview')) return;
     const w = innerWidth - 32, h = innerHeight - 32;
-    deck.style.transform = 'scale(' + Math.min(w / 1280, h / 720) + ')';
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
   }
   addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;

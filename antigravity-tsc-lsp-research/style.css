@@ -70,9 +70,6 @@ html, body {
 #stage {
   position: fixed;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 16px;
   background: radial-gradient(circle at center, #131d31 0%, #080d16 100%);
 }
@@ -80,8 +77,10 @@ html, body {
 #deck {
   width: var(--slide-w);
   height: var(--slide-h);
-  position: relative;
-  transform-origin: center center;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: 0 0;
   box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
   border-radius: 12px;
   overflow: hidden;
@@ -531,6 +530,9 @@ body.overview #stage {
 }
 
 body.overview #deck {
+  position: static;
+  left: auto;
+  top: auto;
   width: 100%;
   height: auto;
   display: grid;
