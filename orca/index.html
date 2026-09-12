@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orca オーケストレーターIDE</title>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#F2F6F8; --surface:#FFFFFF; --surface-2:#E7EEF2;
+  --ink:#10202B; --ink-2:#3C4E5A; --muted:#63757F;
+  --line:#CFDAE1; --line-2:#B7C6CF;
+  --accent:#0B7FB8; --accent-ink:#FFFFFF; --accent-soft:#D9EDF7;
+  --amber:#D97A1F; --amber-soft:#FBE9D5;
+  --green:#2C8C5A; --green-soft:#DCF1E4;
+  --red:#C24A3A; --red-soft:#F8DEDA;
+  --code-bg:#0F1E29; --code-ink:#E6EEF3; --code-accent:#7FD1F5;
+  --shadow:0 18px 50px rgba(16,32,43,.16);
+  --serif:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  --sans:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0A131A; --surface:#111F29; --surface-2:#182A36;
+    --ink:#E8EEF2; --ink-2:#BFCCD4; --muted:#8FA1AC;
+    --line:#26384499; --line-2:#334A58;
+    --accent:#52B8E8; --accent-ink:#06202E; --accent-soft:#12364A;
+    --amber:#F0A55B; --amber-soft:#3F2B15;
+    --green:#5FC489; --green-soft:#15352A;
+    --red:#EF8B7E; --red-soft:#3F1F1B;
+    --code-bg:#08141C; --code-ink:#DCE7EE; --code-accent:#7FD1F5;
+    --shadow:0 18px 50px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0A131A; --surface:#111F29; --surface-2:#182A36;
+  --ink:#E8EEF2; --ink-2:#BFCCD4; --muted:#8FA1AC;
+  --line:#26384499; --line-2:#334A58;
+  --accent:#52B8E8; --accent-ink:#06202E; --accent-soft:#12364A;
+  --amber:#F0A55B; --amber-soft:#3F2B15;
+  --green:#5FC489; --green-soft:#15352A;
+  --red:#EF8B7E; --red-soft:#3F1F1B;
+  --code-bg:#08141C; --code-ink:#DCE7EE; --code-accent:#7FD1F5;
+  --shadow:0 18px 50px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd{font-family:var(--mono);font-size:.88em}
+kbd{background:var(--surface-2);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:0 6px}
+p{margin:0}
+ul,ol{margin:0;padding-left:1.3em}
+li{margin:.2em 0}
+li::marker{color:var(--accent)}
+strong{color:var(--ink);font-weight:700}
+h1,h2,h3{margin:0;text-wrap:balance}
+
+/* ---------- viewport / stage ---------- */
+.viewport{position:fixed;inset:0;display:grid;place-items:center;padding:16px;padding-block:18px 56px}
+.stage{width:1280px;height:720px;position:relative;transform-origin:center center;background:var(--surface);box-shadow:var(--shadow);border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+.slide{position:absolute;inset:0;padding:56px 72px 64px;display:none;flex-direction:column;gap:22px}
+.slide.active{display:flex}
+.slide .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:12px}
+.slide .eyebrow::after{content:"";height:1px;flex:1;background:var(--line)}
+.slide h2{font-family:var(--serif);font-weight:700;font-size:40px;line-height:1.2;letter-spacing:.01em}
+.slide h2 small{display:block;font-family:var(--sans);font-weight:400;font-size:17px;color:var(--muted);letter-spacing:0;margin-top:8px}
+.slide h3{font-size:17px;font-weight:700;color:var(--ink)}
+.slide .body{flex:1;min-height:0;display:flex;flex-direction:column;gap:18px;font-size:16.5px}
+.slide .body.cols{flex-direction:row;gap:36px}
+.slide .body.cols > *{flex:1;min-width:0}
+.slide .body.cols > .w60{flex:1.5}
+.slide .body.cols > .w40{flex:1}
+.slide .lead{font-size:20px;color:var(--ink-2);max-width:62ch}
+.slide .note{font-size:14px;color:var(--muted);margin-top:auto}
+.stack{display:flex;flex-direction:column;gap:12px}
+.slide-num{position:absolute;right:28px;bottom:22px;font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.slide-src{position:absolute;left:72px;bottom:22px;font-size:12px;color:var(--muted)}
+
+/* tables */
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;border-bottom:1.5px solid var(--line-2)}
+td:first-child{font-weight:700;white-space:nowrap}
+table.dense td,table.dense th{padding:5px 8px;font-size:13.5px}
+table.dense td:first-child{width:180px}
+td code{font-size:.85em;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+
+/* chips / pills */
+.pill{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.04em;padding:2px 9px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
+.pill.accent{background:var(--accent-soft);color:var(--accent)}
+.pill.amber{background:var(--amber-soft);color:var(--amber)}
+.pill.green{background:var(--green-soft);color:var(--green)}
+.pill.red{background:var(--red-soft);color:var(--red)}
+.pill.exp{background:transparent;border:1px dashed var(--line-2);color:var(--muted)}
+
+/* code */
+pre{margin:0;background:var(--code-bg);color:var(--code-ink);font-family:var(--mono);font-size:13px;line-height:1.55;padding:14px 18px;border-radius:10px;overflow-x:auto;white-space:pre}
+pre .c{color:#7E94A2}
+pre .k{color:var(--code-accent)}
+pre .s{color:#F5C77A}
+
+/* panels */
+.panel{background:var(--surface-2);border-radius:10px;padding:14px 18px}
+.panel h3{margin-bottom:6px}
+.panel.accent{background:var(--accent-soft)}
+.panel.amber{background:var(--amber-soft)}
+.panel.green{background:var(--green-soft)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.grid2>*,.grid3>*,.grid4>*,.body.cols>*{min-width:0}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--surface)}
+.card h3{font-size:16px;margin-bottom:6px}
+.card p,.card li{font-size:14px;color:var(--ink-2)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14.5px}
+.kv dt{font-weight:700;white-space:nowrap;color:var(--ink)}
+.kv dd{margin:0;color:var(--ink-2)}
+.kv dd code{background:var(--surface-2);padding:1px 5px;border-radius:4px}
+
+/* flow */
+.flow{display:flex;align-items:stretch;gap:0;counter-reset:step}
+.flow .step{flex:1;position:relative;padding:14px 16px 14px 18px;background:var(--surface-2);border-radius:10px;margin-right:14px}
+.flow .step:last-child{margin-right:0}
+.flow .step::before{counter-increment:step;content:counter(step);font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.1em;display:block;margin-bottom:4px}
+.flow .step:not(:last-child)::after{content:"";position:absolute;right:-14px;top:50%;width:14px;height:1.5px;background:var(--line-2)}
+.flow .step b{display:block;font-size:16px;margin-bottom:3px}
+.flow .step span{font-size:13px;color:var(--ink-2)}
+
+/* tree diagram */
+.tree{font-family:var(--mono);font-size:13px;line-height:1.7;background:var(--surface-2);border-radius:10px;padding:14px 18px;white-space:pre;overflow-x:auto}
+.tree .d{color:var(--muted)}
+.tree .a{color:var(--accent);font-weight:600}
+.tree .m{color:var(--amber)}
+
+/* title slide */
+.slide.title{justify-content:flex-end;background:
+  radial-gradient(1200px 500px at 85% -10%, var(--accent-soft) 0%, transparent 60%),
+  var(--surface)}
+.slide.title h1{font-family:var(--serif);font-weight:700;font-size:74px;line-height:1.08;letter-spacing:.01em}
+.slide.title h1 span{display:block;font-size:30px;font-weight:600;color:var(--accent);margin-bottom:14px;letter-spacing:.04em}
+.slide.title .sub{font-size:19px;color:var(--ink-2);max-width:60ch;margin-top:10px}
+.slide.title .meta{display:flex;gap:24px;flex-wrap:wrap;font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:28px;letter-spacing:.02em}
+.orca-mark{position:absolute;right:72px;top:64px;width:240px;height:240px;opacity:.9}
+
+/* section divider */
+.slide.section{justify-content:center;background:linear-gradient(135deg,var(--surface) 0%,var(--surface-2) 100%)}
+.slide.section .eyebrow::after{display:none}
+.slide.section h2{font-size:56px}
+.slide.section .lead{font-size:20px}
+
+/* chrome */
+.progress{position:fixed;left:0;top:0;height:3px;background:var(--accent);width:0;transition:width .25s ease;z-index:5}
+.chrome{position:fixed;left:0;right:0;bottom:0;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-family:var(--mono);font-size:12.5px;color:var(--muted);z-index:5}
+.chrome .left,.chrome .right{display:flex;align-items:center;gap:10px}
+.chrome button{background:var(--surface);border:1px solid var(--line-2);border-radius:7px;padding:4px 10px;cursor:pointer;color:var(--ink-2)}
+.chrome button:hover{border-color:var(--accent);color:var(--accent)}
+.chrome button:focus-visible,.toc button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chrome .counter{font-variant-numeric:tabular-nums;min-width:64px;text-align:center}
+.chrome .hint{opacity:.8}
+@media (max-width:700px){.chrome .hint{display:none}}
+
+.toc{position:fixed;top:0;right:0;bottom:0;width:min(420px,92vw);background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--shadow);z-index:6;transform:translateX(102%);transition:transform .25s ease;display:flex;flex-direction:column}
+.toc.open{transform:none}
+.toc header{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line);font-family:var(--serif);font-weight:700;font-size:18px}
+.toc header button{background:none;border:1px solid var(--line-2);border-radius:7px;padding:3px 9px;cursor:pointer;font-family:var(--sans);font-size:13px}
+.toc ol{list-style:none;margin:0;padding:10px 8px;overflow:auto;flex:1}
+.toc li{margin:0}
+.toc li.sec{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);padding:14px 12px 4px}
+.toc li button{width:100%;text-align:left;background:none;border:0;padding:6px 12px;border-radius:7px;cursor:pointer;display:flex;gap:12px;font-size:14px;color:var(--ink-2)}
+.toc li button:hover{background:var(--surface-2)}
+.toc li button.now{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.toc li button .n{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:2ch;text-align:right;font-variant-numeric:tabular-nums}
+
+@media (prefers-reduced-motion: reduce){.progress,.toc{transition:none}}
+
+/* print: every slide on its own page */
+@media print{
+  body{overflow:visible;background:#fff}
+  .viewport{position:static;display:block;padding:0}
+  .stage{transform:none!important;width:1280px;height:720px;box-shadow:none;border:0;border-radius:0;page-break-after:always;position:relative;margin:0 auto}
+  .slide{display:flex!important;position:absolute}
+  .chrome,.progress,.toc{display:none}
+}
+</style>
+
+<div class="progress" id="progress"></div>
+
+<div class="viewport">
+<div class="stage" id="stage">
+
+<!-- 1 -->
+<section class="slide title" data-sec="はじめに" data-title="表紙">
+  <svg class="orca-mark" viewBox="0 0 240 240" aria-hidden="true">
+    <circle cx="120" cy="120" r="112" fill="none" stroke="var(--line-2)" stroke-width="1"/>
+    <circle cx="120" cy="120" r="84" fill="none" stroke="var(--line)" stroke-width="1"/>
+    <path d="M40 150 C 80 90, 160 90, 205 135 C 190 150, 175 158, 160 160 C 150 175, 138 182, 120 182 C 80 182, 52 168, 40 150 Z" fill="var(--ink)"/>
+    <path d="M118 108 C 120 84, 128 70, 140 58 C 138 82, 134 98, 128 110 Z" fill="var(--ink)"/>
+    <path d="M62 152 C 90 128, 120 124, 150 130 C 140 146, 118 156, 96 158 C 84 158, 72 156, 62 152 Z" fill="var(--surface)"/>
+    <circle cx="176" cy="132" r="9" fill="var(--surface)"/>
+    <path d="M40 150 C 34 156, 30 164, 30 172 C 38 168, 44 160, 44 152 Z" fill="var(--ink)"/>
+  </svg>
+  <div>
+    <h1><span>AIエージェント時代のオーケストレーターIDE</span>Orca 解説</h1>
+    <p class="sub">Claude Code・Codex・Cursor CLI などのエージェントを、タスクごとに独立した git worktree で並列に走らせ、一か所で追跡・レビュー・出荷するためのデスクトップIDE。機能一覧、機能ごとの設定、そして機能の組み合わせ方をまとめました。</p>
+    <div class="meta">
+      <span>stablyai/orca · MIT License</span>
+      <span>Desktop v1.4.200（2026-09-12 時点）</span>
+      <span>macOS / Windows / Linux + iOS / Android</span>
+      <span>onorca.dev</span>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="slide" data-sec="はじめに" data-title="Orcaとは">
+  <div class="eyebrow">はじめに</div>
+  <h2>Orca とは何か<small>「100x ビルダーのための AI オーケストレーター」。モデルでも git の代替でもなく、既存の CLI エージェントを並列に運用する土台。</small></h2>
+  <div class="body cols">
+    <div class="stack">
+      <p class="lead">1 タスク = 1 worktree = 1 エージェント端末 = 1 ブラウザタブ。stash やブランチの切り替えなしに、複数のエージェントに仕事を配って結果を比べ、勝ったものをマージする。</p>
+      <div class="grid2">
+        <div class="card"><h3>Orca がやること</h3><ul><li>worktree の作成・一覧・削除と、その中のエージェント状態の追跡</li><li>AI 差分のレビュー、コミット、PR 作成、CI チェック確認</li><li>GitHub / GitLab / Linear / Jira のタスクと worktree の紐づけ</li><li>スケジュール実行（オートメーション）と多エージェント協調（オーケストレーション）</li></ul></div>
+        <div class="card"><h3>Orca がやらないこと</h3><ul><li><b>モデルではない</b>：Claude / Codex / OpenCode などの契約は自分で用意</li><li><b>git の代替ではない</b>：全 worktree は本物の git worktree。<code>cd</code> して素の git が使える</li><li><b>ホスティング VPS ではない</b>：リモート実行は自分の SSH ホスト・クラウド口座で</li></ul></div>
+      </div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel accent"><h3>対応エージェント</h3><p style="font-size:14px">Claude Code, Codex, Cursor CLI, Gemini, GitHub Copilot, OpenCode, Pi, Amp, Grok, Devin, Goose, Droid, Kimi, Kiro, Qwen Code, Cline, Continue, Rovo Dev … <b>ターミナルで動く CLI なら何でも</b>。</p></div>
+      <div class="panel"><h3>誰向けか</h3><p style="font-size:14px">差分を読み、コミットに責任を持ち、worktree を整理して使う「コードを書く人」向け。ノーコードツールではない。</p></div>
+      <div class="panel"><h3>技術スタック</h3><p style="font-size:14px">Electron + React（renderer）、VS Code 由来の Monaco エディタ、xterm ベースの WebGL 端末、Node 製 CLI（<code>orca</code>）、モバイル用リレー（<code>cloud/</code>）。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="slide" data-sec="はじめに" data-title="基本フロー">
+  <div class="eyebrow">はじめに</div>
+  <h2>基本フロー：add → worktree → agent → split → diff → ship<small>公式ドキュメント曰く「この流れが Orca の全て。他のページは各ステップの深掘り」。</small></h2>
+  <div class="body">
+    <div class="flow">
+      <div class="step"><b>リポジトリを追加</b><span>ローカル checkout を指定。デフォルトブランチが <b>base ref</b>（全 worktree の分岐元）になる</span></div>
+      <div class="step"><b>worktree を作る</b><span>タスク名を入力し start-from ref を選ぶ。<code>git worktree add</code> はバックグラウンドで走る</span></div>
+      <div class="step"><b>エージェントを選ぶ</b><span>端末の agent コンボボックスから Claude Code 等を起動。作業ディレクトリと認証は Orca が渡す</span></div>
+      <div class="step"><b>ペインを分割</b><span>worktree タブを端にドラッグして分割。3 エージェントを同時に眺める</span></div>
+      <div class="step"><b>差分をレビュー</b><span>start-from ref との diff。行コメントを束ねてエージェントに返す（Annotate AI Diff）</span></div>
+      <div class="step"><b>出荷</b><span>Orca 内でコミット・push・PR 作成・チェック待ち。負けた worktree はワンクリック削除</span></div>
+    </div>
+    <div class="grid3">
+      <div class="panel"><h3>worktree の実体</h3><p style="font-size:14px">Orca 管理ディレクトリに本物の worktree が作られる。例（このマシン）：<code>~/orca/workspaces/&lt;repo&gt;/&lt;task名&gt;</code>。ブランチ名はタスク名や紐づけた Issue から自動導出。</p></div>
+      <div class="panel"><h3>名前を空にすると</h3><p style="font-size:14px">海の生き物の名前が自動で付く（Settings → General → Default new-worktree name で接頭辞に変更可）。<code>:rocket:</code> 形式の絵文字ショートコードも使える。</p></div>
+      <div class="panel"><h3>3 エージェント競争</h3><p style="font-size:14px">同じタスクで worktree を 3 つ作り、Claude Code / Codex / Cursor CLI に同じプロンプトを貼る。3 ブランチ・3 差分から勝者を選び、他は削除。これが「最初の 5 分」の公式チュートリアル。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="slide" data-sec="機能一覧" data-title="機能一覧① ワークスペース／エージェント">
+  <div class="eyebrow">機能一覧 1 / 6</div>
+  <h2>ワークスペース<small>各機能を 1 行で。詳細は後のスライドで個別に解説。</small></h2>
+  <div class="body">
+    <table class="dense">
+      <thead><tr><th>機能</th><th>1 行解説</th><th>主な設定場所</th></tr></thead>
+      <tbody>
+        <tr><td>Worktree</td><td>タスクごとに独立した git worktree・ブランチ・端末群を持たせる、Orca の中心モデル</td><td>サイドバー「+」／<code>orca worktree create</code></td></tr>
+        <tr><td>Start-from picker</td><td>base ref・別ブランチ・特定 SHA・リモートブランチのどこから分岐するかを作成時に選ぶ</td><td>Create Worktree ダイアログ</td></tr>
+        <tr><td>共有ディレクトリ</td><td><code>node_modules</code> や <code>.env</code> など gitignore 済みの資産を新 worktree に自動で共有／コピー</td><td><code>orca.yaml</code> / <code>.worktreeinclude</code> / Settings → Repository</td></tr>
+        <tr><td>Setup hooks</td><td>worktree 作成直後に <code>pnpm install</code> などを自動実行</td><td>Settings → Repository → Hooks、<code>orca.yaml scripts.setup</code></td></tr>
+        <tr><td>プロジェクトグループ</td><td>親フォルダ配下の複数リポジトリをサイドバーで 1 グループに束ねる</td><td>親フォルダを Add Repo</td></tr>
+        <tr><td>フォルダワークスペース</td><td>グループ階層に置く worktree 風の作業単位。タスクソースは配下のいずれかのリポに紐づく</td><td>グループ行の「+」</td></tr>
+        <tr><td>親子 worktree</td><td>worktree を入れ子にしてサイドバーで系譜管理。「子孫ごとスリープ／削除」が可能</td><td>Advanced → Parent workspace、<code>--parent-worktree</code></td></tr>
+        <tr><td>Floating Workspace</td><td>どのリポにも属さない端末・ブラウザ・Markdown タブのための全体作業面</td><td>Settings → Floating Workspace</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 4b -->
+<section class="slide" data-sec="機能一覧" data-title="機能一覧② エージェント">
+  <div class="eyebrow">機能一覧 2 / 6</div>
+  <h2>エージェント</h2>
+  <div class="body">
+    <table class="dense">
+      <thead><tr><th>機能</th><th>1 行解説</th><th>主な設定場所</th></tr></thead>
+      <tbody>
+        <tr><td>Agents &amp; sessions</td><td>作業中／要対応／完了／失敗／待機 の状態を OSC タイトルとフックから検出して表示</td><td>Settings → Agents → Agent status hooks</td></tr>
+        <tr><td>Launch defaults</td><td>全エージェントを全自動権限（Yolo）で起動。worktree そのものがサンドボックス、という思想</td><td>Settings → Agents → Agent Permissions / launch arguments</td></tr>
+        <tr><td>Agent Dashboard</td><td>Needs You / Working / Done / Idle のカンバンで全 worktree のエージェントを俯瞰</td><td>Settings → Experimental <span class="pill exp">実験的</span></td></tr>
+        <tr><td>Agents feed</td><td>完了・ブロック・worktree 作成イベントを時系列に並べた Slack 風フィード</td><td>サイドバー「Agents」</td></tr>
+        <tr><td>Hibernation</td><td>完了後 30 分（既定）放置した背景エージェントを停止し、再訪時に同セッションを再開</td><td>Settings → Experimental <span class="pill exp">実験的</span></td></tr>
+        <tr><td>Session history / restore</td><td>過去のエージェントセッションを右サイドバーから再開。アプリ再起動後もレイアウトと scrollback を復元</td><td>右サイドバー／自動</td></tr>
+        <tr><td>Usage &amp; account hot-swap</td><td>Claude・Codex の使用量とレート制限リセットを表示し、再ログインなしでアカウントを切替</td><td>ステータスバー、Settings → Agents</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="slide" data-sec="機能一覧" data-title="機能一覧② レビュー／タスク／自動化">
+  <div class="eyebrow">機能一覧 3 / 6</div>
+  <h2>レビューと出荷</h2>
+  <div class="body">
+    <table class="dense">
+      <thead><tr><th>機能</th><th>1 行解説</th><th>主な設定場所</th></tr></thead>
+      <tbody>
+        <tr><td>Diff viewer</td><td>start-from ref との差分をファイルツリー付きで閲覧。ワードラップ・キーボード操作対応</td><td>worktree タブ</td></tr>
+        <tr><td>Annotate AI Diff</td><td>差分の任意行にコメントを付け、まとめて 1 プロンプトとしてエージェントへ返す</td><td>Diff 上の「Send to agent」</td></tr>
+        <tr><td>Attribution</td><td>AI が書いた行と人間が書いた行をガター表示で区別（ローカルのみ、コミットされない）</td><td>Diff ツールバー</td></tr>
+        <tr><td>Commit &amp; push</td><td>コミットメッセージ・PR 本文の AI 生成、push、PR 作成、amend まで Orca 内で完結</td><td>Source Control パネル</td></tr>
+        <tr><td>AI action recipes</td><td>「Generate with AI」等の背後で使うエージェント・引数・プロンプト雛形をリポ単位で上書き</td><td>Settings → Git &amp; Source Control → Action recipes</td></tr>
+        <tr><td>Hosted reviews</td><td>GitHub / GitLab / Bitbucket / Azure DevOps / Gitea の PR・MR 状態、チェック、コメントを worktree にインライン表示</td><td>Settings → Integrations</td></tr>
+        <tr><td>Stacked PR / Auto-merge</td><td>GitHub Stack への積み上げ作成、条件成立で自動マージ、Merge queue 対応</td><td>PR ビュー</td></tr>
+        <tr><td>Fix broken checks</td><td>失敗した GitHub Actions のジョブ名とリンクをエージェントに渡して修正させる</td><td>PR ビュー</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 5b -->
+<section class="slide" data-sec="機能一覧" data-title="機能一覧④ タスク管理・自動化">
+  <div class="eyebrow">機能一覧 4 / 6</div>
+  <h2>タスク管理・自動化・CLI</h2>
+  <div class="body">
+    <table class="dense">
+      <thead><tr><th>機能</th><th>1 行解説</th><th>主な設定場所</th></tr></thead>
+      <tbody>
+        <tr><td>Issues / Tasks</td><td>GitHub・GitLab Issue の閲覧・編集、GitHub Projects ボードから worktree を作成</td><td>サイドバー「Tasks」</td></tr>
+        <tr><td>Linear / Jira 連携</td><td>Issue 一覧・編集・worktree 紐づけ。Linear のブランチ名提案や画像添付をプロンプトに同梱</td><td>Settings → Integrations、Tasks → Jira</td></tr>
+        <tr><td>Workspace status / checkpoints</td><td>worktree カードの状態（todo〜completed）と自由文コメントをエージェント自身が CLI で更新</td><td><code>orca worktree set</code></td></tr>
+        <tr><td>Notifications</td><td>エージェント完了時に通知・音・チップ。ヘッダーのベル、Dock バッジ、未読に戻す</td><td>Settings → Notifications</td></tr>
+        <tr><td>Orchestration</td><td>Run / Task / Dispatch / Message / Gate による監督型の多エージェント協調</td><td>Settings → Experimental、<code>orca orchestration</code> <span class="pill exp">実験的</span></td></tr>
+        <tr><td>Automations</td><td>cron / RRULE でプロンプトを定期実行。precheck・セッション再利用・ホスト横断管理</td><td>Automations ページ、<code>orca automations</code></td></tr>
+        <tr><td>Orca CLI / Skills</td><td>worktree・端末・ファイル・ブラウザを外部から操作。エージェント向けスキルを配布</td><td>Settings → General → Orca CLI、<code>npx skills add</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="slide" data-sec="機能一覧" data-title="機能一覧③ 実行環境／端末／その他">
+  <div class="eyebrow">機能一覧 5 / 6</div>
+  <h2>実行環境・モバイル・端末</h2>
+  <div class="body">
+    <table class="dense">
+      <thead><tr><th>機能</th><th>1 行解説</th><th>主な設定場所</th></tr></thead>
+      <tbody>
+        <tr><td>SSH worktrees</td><td>リモートホスト上で <code>git worktree add</code> とエージェントを実行。UI とレビューは手元</td><td>Settings → SSH、Create → Run on</td></tr>
+        <tr><td>Remote Orca Server</td><td>別マシンに Orca ランタイム全体を置き、デスクトップ・ブラウザ・スマホからペアリング</td><td>Settings → Remote Orca Servers、<code>orca serve</code></td></tr>
+        <tr><td>Cloud VM（per-workspace env）</td><td>worktree ごとに使い捨てのサンドボックス／VM／Docker を <code>orca.yaml</code> のレシピで起動</td><td>Settings → Experimental → Cloud VM <span class="pill exp">実験的</span></td></tr>
+        <tr><td>Mobile companion</td><td>iOS / Android から進捗監視、フォローアップ送信、workspace 作成、Quick Commands 実行</td><td>デスクトップとペアリング</td></tr>
+        <tr><td>Terminal splits</td><td>WebGL 描画の Ghostty 級端末。無限分割、再起動後も残る scrollback、テーマ取込</td><td>Settings → Terminal</td></tr>
+        <tr><td>Floating terminal</td><td><kbd>⌘⌥A</kbd> で呼び出す全体端末パネル。worktree ペインを占有せず背景実行を開始</td><td>Settings → Terminal → Floating terminal</td></tr>
+        <tr><td>Quick Commands</td><td><code>pnpm test</code> やエージェント用プロンプトを Global / Project スコープで保存・実行</td><td>Settings → Quick Commands</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 6b -->
+<section class="slide" data-sec="機能一覧" data-title="機能一覧⑥ エディタ・ブラウザ・その他">
+  <div class="eyebrow">機能一覧 6 / 6</div>
+  <h2>エディタ・ナビゲーション・ブラウザ・その他</h2>
+  <div class="body">
+    <table class="dense">
+      <thead><tr><th>機能</th><th>1 行解説</th><th>主な設定場所</th></tr></thead>
+      <tbody>
+        <tr><td>Monaco editor</td><td>VS Code のエディタ。全所オートセーブ、マルチカーソル、Changes 表示モード</td><td>Settings → Appearance</td></tr>
+        <tr><td>Viewers</td><td>Markdown（リッチ編集）、HTML、Mermaid、PDF、画像、CSV、Jupyter を worktree 内で表示</td><td>ファイルを開く</td></tr>
+        <tr><td>Quick Open / Jump Palette</td><td><kbd>⌘P</kbd> でファイル、<kbd>⌘J</kbd> で worktree・タブ・最近のセッションを横断ジャンプ</td><td>キーボード／サイドバー Search</td></tr>
+        <tr><td>Per-worktree browser</td><td>worktree ごとの Chromium タブ。プロファイル分離、端末デバイスエミュレーション</td><td>Settings → Browser</td></tr>
+        <tr><td>Design Mode</td><td>ブラウザ上の UI 要素をクリックすると HTML・CSS・切り抜き画像がプロンプトに入る</td><td>ブラウザツールバー</td></tr>
+        <tr><td>Browser automation</td><td><code>orca snapshot / click / fill / screenshot</code> でエージェントが内蔵ブラウザを操作</td><td>Orca CLI</td></tr>
+        <tr><td>Computer use / Emulator</td><td>アクセシビリティツリー経由でデスクトップアプリを操作。iOS Simulator・Android も</td><td>Orca CLI、スキル</td></tr>
+        <tr><td>Artifacts</td><td>HTML / Markdown を公開ビューリンクとして共有（オプトイン）</td><td>Settings → Artifacts</td></tr>
+        <tr><td>Plugins</td><td>git マーケットプレイスからパネル・コマンド・言語パック・VM レシピを追加</td><td>Settings → Plugins <span class="pill exp">実験的</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="slide section" data-sec="ワークスペース設計" data-title="章：ワークスペース設計">
+  <div class="eyebrow">第 1 章</div>
+  <h2>ワークスペース設計<small style="font-size:20px">リポジトリの切り方、ワークスペースの切り方、そしてマルチリポで 1 タスクを回す方法</small></h2>
+  <p class="lead">Orca では「プロジェクト（= リポジトリ）」と「ワークスペース（= worktree または フォルダワークスペース）」を分けて考える。前者は登録、後者はタスクの単位。</p>
+</section>
+
+<!-- 8 -->
+<section class="slide" data-sec="ワークスペース設計" data-title="Worktree モデル">
+  <div class="eyebrow">ワークスペース設計</div>
+  <h2>Worktree モデル<small>ひとつの checkout で branch と stash を繰り返す代わりに、タスクごとに「ディスク上の別コピー」を持つ。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <dl class="kv">
+        <dt>base ref</dt><dd>リポごとに 1 つ。通常 <code>origin/main</code>。全 worktree の既定分岐元</dd>
+        <dt>start-from ref</dt><dd>worktree ごとに 1 つ。base ref／別ローカルブランチ（PR に積む時）／SHA／リモートブランチ</dd>
+        <dt>worktree が持つもの</dt><dd>専用ブランチ、専用ファイル、専用のエージェント端末・エディタタブ・ブラウザタブ・ペイン構成</dd>
+        <dt>削除</dt><dd>ディレクトリとブランチを同時に消す（確認あり）。未マージの可能性がある branch は保護され「Review N Branches」で個別判断</dd>
+        <dt>作成の裏側</dt><dd>ダイアログは即閉じ、<code>git fetch</code> と <code>git worktree add</code> はバックグラウンド。進捗行が出て失敗時は Retry</dd>
+      </dl>
+      <div class="tree"><span class="d">~/orca/workspaces/</span>
+<span class="d">└─</span> slides/                       <span class="d">← プロジェクト（1 リポ）</span>
+   <span class="d">├─</span> <span class="a">ai-ide/</span>       <span class="d">branch: ysksm/ai-ide      agent: Claude Code</span>
+   <span class="d">├─</span> <span class="a">claude-code/</span>  <span class="d">branch: ysksm/claude-code agent: Codex</span>
+   <span class="d">└─</span> <span class="a">tsc-lsp/</span>      <span class="d">branch: ysksm/tsc-lsp     agent: Claude Code</span>
+<span class="d">└─</span> .orca-preparing/              <span class="d">← 作成中の一時領域</span></div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>ライフサイクル</h3><ol style="font-size:14px"><li><b>Create</b>：名前、start-from、GitHub / Linear / Jira / GitLab リンク</li><li><b>Work</b>：端末・エディタ・ブラウザが全部この worktree スコープ</li><li><b>Review</b>：diff、Annotate AI Diff、Attribution</li><li><b>Ship</b>：commit → push → PR → チェック待ち</li><li><b>Archive / Delete</b>：ワンクリック</li></ol></div>
+      <div class="panel accent"><h3>素の git も OK</h3><p style="font-size:14px">全部本物の worktree なので <code>git rebase</code> や <code>cherry-pick</code> を端末で叩いてよい。自分で <code>git worktree add</code> したものは「Non-Orca worktrees」から表示に切り替え可能（Claude Code の worktree も認識）。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="slide" data-sec="ワークスペース設計" data-title="リポジトリの切り方">
+  <div class="eyebrow">ワークスペース設計</div>
+  <h2>リポジトリの切り方<small>「プロジェクト」= 1 つの git リポ、または関連リポの集まり。サイドバーの最上位行になる。</small></h2>
+  <div class="body cols">
+    <div class="stack">
+      <div class="card"><h3>A. 1 リポ = 1 プロジェクト（基本）</h3><p>Add Repo でローカル checkout を登録。デフォルトブランチが base ref。リポ設定でアイコン・バッジ色・base ref・Hooks・Shared Paths・AI 上書きを持つ。</p></div>
+      <div class="card"><h3>B. 親フォルダをまとめて登録</h3><p>複数リポを含むフォルダを追加すると「個別にインポート」か「1 つの<b>プロジェクトグループ</b>に束ねる」かを選べる。マイクロサービス群、フロント + バック、モノレポ外の関連リポに向く。</p></div>
+      <div class="card"><h3>C. リモートホスト上のリポ</h3><p>SSH ホストや Remote Orca Server の checkout を「Run on」でそのホストを選んで登録。同じプロジェクトを複数ホストで「Set project location」できる。</p></div>
+    </div>
+    <div class="stack">
+      <div class="panel"><h3>リポ設定（Settings → Repository）でやること</h3>
+        <ul style="font-size:14px">
+          <li><b>base ref</b>：全 worktree の分岐元。trunk が <code>develop</code> のリポなら変更</li>
+          <li><b>Hooks</b>：worktree 作成後に自動実行するコマンド（依存インストール、<code>.env</code> 復元）</li>
+          <li><b>Worktree Shared Paths</b>：gitignore 済みパスを主 checkout から各 worktree へ（macOS は APFS clone、他は symlink）</li>
+          <li><b>Source Control AI overrides</b>：コミットメッセージ・PR 本文・ブランチ名の生成ルールをリポ単位で</li>
+          <li><b>アイコン／色</b>：絵文字・画像・favicon・GitHub アバター。複数リポを並べた時の識別に</li>
+        </ul></div>
+      <div class="panel amber"><h3>切り方の指針</h3><ul style="font-size:14px"><li>PR を出す単位でプロジェクトを切る（PR は必ずリポ単位）</li><li>一緒に変更することが多いリポは <b>プロジェクトグループ</b>に</li><li>サイドバーが伸びたら「Hide sleeping / default branch / automation-created / CLI-created」フィルタで隠す。<kbd>⌘J</kbd> からは検索で届く</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="slide" data-sec="ワークスペース設計" data-title="ワークスペースの種類">
+  <div class="eyebrow">ワークスペース設計</div>
+  <h2>ワークスペースの切り方：5 種類<small>「リポではない切り方」も含めて。どれもサイドバーの 1 行で、端末・ブラウザ・タブ構成を独立して持つ。</small></h2>
+  <div class="body">
+    <table>
+      <thead><tr><th>種類</th><th>何を切る単位か</th><th>作り方</th><th>向いているケース</th></tr></thead>
+      <tbody>
+        <tr><td>リポ worktree</td><td>1 リポの 1 ブランチ。ファイルも端末もブランチも独立</td><td>プロジェクト行の「+」／<code>orca worktree create --repo id:… --name …</code></td><td>通常の機能開発・バグ修正。PR 1 本になる仕事</td></tr>
+        <tr><td>フォルダワークスペース</td><td>プロジェクトグループ（親フォルダ）階層に置く作業面。タスクソースは配下の 1 リポに結びつける</td><td>グループ行の「+」→ Create Folder Workspace → ソースプロジェクト選択</td><td>複数リポにまたがる 1 タスク。Issue 紐づけとレビューを「主リポ」に付けたい時</td></tr>
+        <tr><td>親子 worktree</td><td>既存 worktree の下にネストした worktree。git 的には独立、サイドバー上で系譜管理</td><td>Advanced → Parent workspace／CLI から作ると自動で子に。<code>--parent-worktree active</code> / <code>--no-parent</code></td><td>コーディネーターが子ワーカーを作るオーケストレーション。調査 → 実装の派生</td></tr>
+        <tr><td>Floating Workspace</td><td>リポに属さない端末・ブラウザ・Markdown タブの集合</td><td>Settings → Floating Workspace を有効化。開始ディレクトリ（既定 <code>~</code>）を設定</td><td>横断的なメモ、監視ダッシュボード、リポに紐づかない CLI 作業</td></tr>
+        <tr><td>Non-Orca worktree</td><td>自分や Claude Code が作った外部 worktree</td><td>「hidden worktrees」カード → Show。Settings → General → Workspace でソース既定を設定</td><td>既存の <code>git worktree add</code> 運用を Orca に段階的に取り込む</td></tr>
+      </tbody>
+    </table>
+    <div class="grid3">
+      <div class="panel"><h3>共通の操作</h3><p style="font-size:14px">pin（上部固定）、rename（タイトルをダブルクリック）、archive / sleep / delete、<kbd>⌘</kbd> / <kbd>Shift</kbd> クリックで複数選択、<kbd>⌘⇧⌫</kbd> で削除開始。</p></div>
+      <div class="panel"><h3>子孫ごと操作</h3><p style="font-size:14px">親 worktree の右クリックに「Sleep with Descendants (N)」「Delete with Descendants…」。同じプロジェクト・リポ・ホスト内の子だけが対象。</p></div>
+      <div class="panel"><h3>Resource Manager</h3><p style="font-size:14px">「Clean up workspaces」でローカル worktree・main worktree・フォルダワークスペース・切断中 SSH ホストの workspace をサイズ・git 状態・レビュー付きで一括整理。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="slide" data-sec="ワークスペース設計" data-title="新規 worktree の初期化設定">
+  <div class="eyebrow">ワークスペース設計</div>
+  <h2>新規 worktree を「すぐ動く状態」にする設定<small>新しい worktree はクリーンな checkout。gitignore された依存・キャッシュ・秘密情報は無いので、4 つの仕組みで埋める。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <table class="dense">
+        <thead><tr><th>仕組み</th><th>置き場所</th><th>挙動</th><th>使い分け</th></tr></thead>
+        <tbody>
+          <tr><td>Worktree Shared Paths</td><td>Settings → Repository（ユーザーごと）</td><td>主 checkout から clone-copy / symlink</td><td>個人環境依存のパス</td></tr>
+          <tr><td><code>worktree.sharedDirectories</code></td><td><code>orca.yaml</code>（リポにコミット）</td><td>gitignore 済み<b>ディレクトリ</b>を共有（コピーしない）</td><td><code>node_modules</code>、<code>.cache</code> など巨大で再生成可能なもの</td></tr>
+          <tr><td><code>.worktreeinclude</code></td><td>リポルート（コミット）</td><td>gitignore 済み<b>ファイル／ディレクトリ</b>を<b>コピー</b>（worktree ごとに独立）</td><td><code>.env</code>、<code>.vscode/settings.json</code>。glob 不可、リテラルのみ</td></tr>
+          <tr><td>Setup hooks</td><td>Settings → Repository → Hooks、<code>orca.yaml scripts.setup</code></td><td>作成直後にコマンド実行</td><td><code>pnpm install</code>、<code>direnv allow</code>、DB マイグレーション</td></tr>
+        </tbody>
+      </table>
+      <pre><span class="c"># orca.yaml（リポルート）</span>
+<span class="k">scripts</span>:
+  <span class="k">setup</span>: |
+    pnpm install
+<span class="k">worktree</span>:
+  <span class="k">sharedDirectories</span>: [node_modules, .cache]
+
+<span class="c"># .worktreeinclude（リポルート）</span>
+.env
+.vscode/settings.json</pre>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>CLI からの制御</h3><pre style="font-size:12.5px">orca worktree create --name review-api \
+  --agent claude --setup run --json
+orca worktree create --name quick-check \
+  --agent codex --prompt "…" --setup skip --json</pre><p style="font-size:13.5px;margin-top:8px"><code>--setup run|skip|inherit</code>（<code>inherit</code> はリポの方針）。<code>--agent</code> で最初の端末にエージェント起動、<code>--prompt</code> で初手を送る。</p></div>
+      <div class="panel accent"><h3>優先順位と注意</h3><ul style="font-size:13.5px"><li><code>orca.yaml</code> の共有ディレクトリはユーザー設定に<b>追加</b>（置換しない）</li><li>共有済みパスは <code>.worktreeinclude</code> で再コピーされない。追跡中・不在・非 gitignore は警告してスキップ</li><li><code>.claude/</code> <code>.codex/</code> <code>CLAUDE.md</code> <code>AGENTS.md</code> は Orca が読むだけで触らない</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 12 -->
+<section class="slide" data-sec="ワークスペース設計" data-title="マルチリポで 1 タスク：3 パターン">
+  <div class="eyebrow">ワークスペース設計</div>
+  <h2>マルチリポで 1 タスクを回す：3 パターン<small>PR はリポ単位なので、git 上は「リポごとのブランチ」になる。Orca でそれをどう 1 つのタスクとして束ねるかの選択。</small></h2>
+  <div class="body">
+    <div class="grid3">
+      <div class="card"><h3><span class="pill accent">推奨</span>&nbsp;① プロジェクトグループ + フォルダワークスペース</h3>
+        <ul><li>親フォルダを Add Repo → 「グループに束ねる」</li><li>グループ行の「+」で Create Folder Workspace。<b>ソースプロジェクト</b>（Issue / PR を紐づける主リポ）を選ぶ</li><li>ワークスペース内の端末は親フォルダ起点。エージェントは配下リポを跨いで編集できる</li><li>リポごとの diff・コミット・PR は各プロジェクトの worktree／Source Control で</li></ul>
+        <p><b>向く</b>：フロント + バック + 共有スキーマのような「常に一緒に触る」構成。<b>注意</b>：フォルダワークスペースは worktree ではなく、配下リポの checkout をそのまま使うので、同時に 2 つのマルチリポタスクを走らせるなら②③と組む。</p></div>
+      <div class="card"><h3>② 親 worktree + リポごとの子 worktree</h3>
+        <ul><li>主リポで worktree を作り、そこをコーディネーター席にする</li><li>子は CLI で：<code>orca worktree create --repo id:&lt;他リポ&gt; --name task-api --parent-worktree active</code></li><li>サイドバーで親の下にネスト。「Sleep / Delete with Descendants」で一括操作</li><li>各子 worktree は独立ブランチなので<b>同一タスクを複数並行</b>できる</li></ul>
+        <p><b>向く</b>：リポ間の依存が薄く、それぞれ独立に PR を出したい。<b>注意</b>：親子リンクはサイドバー表示専用で、git 履歴には影響しない。</p></div>
+      <div class="card"><h3>③ オーケストレーション Run でリポ横断</h3>
+        <ul><li><code>run-create</code> で Run を作り、リポごとに Task を切る</li><li><code>worker-start --worktree new-top-level --repo &lt;selector&gt;</code> で各リポに新 worktree + ワーカーを配置（別ホストなら <code>--on</code>）</li><li>ワーカーは <code>worker_done</code> / <code>ask</code> で報告。決定は Gate で止める</li><li>「共有 API の変更を先に完了 → フロント着手」は Task の依存関係で表現</li></ul>
+        <p><b>向く</b>：順序依存があり、ワーカーの完了を追跡したい。<b>注意</b>：実験的機能。Settings → Experimental で有効化が必要。</p></div>
+    </div>
+    <div class="panel"><h3>組み合わせの現実解</h3><p style="font-size:14.5px">① でグループを作って Issue を主リポに紐づけ、② or ③ で実際の作業ブランチをリポごとに切る。フォルダワークスペースは「タスクの入口と統合テストの場」、リポ worktree は「PR の単位」として使い分けると、サイドバー上も git 上も破綻しない。</p></div>
+  </div>
+</section>
+
+<!-- 13 -->
+<section class="slide" data-sec="ワークスペース設計" data-title="マルチリポ：具体手順">
+  <div class="eyebrow">ワークスペース設計</div>
+  <h2>マルチリポ：具体手順の例<small>「API スキーマ変更 → バックエンド実装 → フロント追従」を 1 タスクとして流す。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <pre><span class="c"># 0) 準備（1 回だけ）：親フォルダを Add Repo → プロジェクトグループ化
+#    各リポの orca.yaml に scripts.setup / sharedDirectories を用意</span>
+
+<span class="c"># 1) タスクの入口：グループ行「+」→ Create Folder Workspace
+#    ソースプロジェクト = schema リポ、Issue #42 を紐づけ、名前 "checkout-v2"</span>
+
+<span class="c"># 2) コーディネーター席（folder workspace の端末）から Run を作る</span>
+orca orchestration run-create --objective <span class="s">"checkout v2: schema/api/web"</span> --json
+orca orchestration task-create --task-title <span class="s">"schema: v2 types"</span> --spec <span class="s">"…"</span> --json
+orca orchestration task-create --task-title <span class="s">"api: /checkout/v2"</span> --spec <span class="s">"…"</span> --json  <span class="c"># depends: schema</span>
+orca orchestration task-create --task-title <span class="s">"web: v2 client"</span>    --spec <span class="s">"…"</span> --json  <span class="c"># depends: api</span>
+
+<span class="c"># 3) リポごとに新 worktree を切ってワーカーを置く</span>
+orca orchestration worker-start --task &lt;schemaTask&gt; --worktree new-top-level \
+  --repo id:&lt;schemaRepo&gt; --name checkout-v2 --agent claude --setup run --json
+
+<span class="c"># 4) 完了を待って次のリポへ（依存が解けた Task が ready になる）</span>
+orca orchestration check --wait --types worker_done,escalation,question \
+  --timeout-ms 900000 --json
+orca orchestration worker-start --task &lt;apiTask&gt; --worktree new-top-level \
+  --repo id:&lt;apiRepo&gt; --name checkout-v2 --agent codex --setup run --json
+
+<span class="c"># 5) 各 worktree の Source Control から PR（本文は {linkedIssue} 入り recipe で生成）</span></pre>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>手作業で回すなら</h3><ol style="font-size:14px"><li>① と同様に folder workspace を作る</li><li>端末から <code>orca worktree create --repo id:&lt;api&gt; --name checkout-v2 --parent-worktree active --agent codex --prompt "…"</code> をリポ分だけ叩く</li><li>親の下に 3 つの子が並ぶ。<kbd>⌘J</kbd> で "checkout" と打てば全部出る</li><li>統合テストは folder workspace の端末で</li></ol></div>
+      <div class="panel accent"><h3>設定のポイント</h3><ul style="font-size:13.5px"><li>各リポで<b>同じ worktree 名</b>を使うとサイドバーと <kbd>⌘J</kbd> の検索でひとまとまりに見える</li><li>Issue は 1 workspace に 1 つ。主リポの workspace に付け、他は PR 本文で参照</li><li>Agent Dashboard の Filter → Project で 3 リポを選べば、そのタスクのワーカーだけをカンバンで追える</li><li>終わったら親を「Delete with Descendants…」。グループ削除時は「contained projects も削除」チェックで一掃</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 -->
+<section class="slide section" data-sec="エージェントとタスク管理" data-title="章：エージェントとタスク管理">
+  <div class="eyebrow">第 2 章</div>
+  <h2>エージェントとタスク管理<small style="font-size:20px">状態の追跡、ダッシュボード、Issue トラッカー連携、チェックポイント</small></h2>
+  <p class="lead">Orca は「ターミナル」ではなく「エージェント」を動かしている自覚がある。だから、いつ終わったか・いつ人を待っているかを知っていて、それを人間側のタスク管理に流す。</p>
+</section>
+
+<!-- 15 -->
+<section class="slide" data-sec="エージェントとタスク管理" data-title="Agents & sessions">
+  <div class="eyebrow">エージェントとタスク管理</div>
+  <h2>Agents &amp; sessions：状態の検出と起動既定<small>1 セッション = 1 CLI エージェント × 1 端末 × 1 worktree。状態は端末の OSC タイトル列とエージェントフックから取る。</small></h2>
+  <div class="body cols">
+    <div class="stack">
+      <table class="dense">
+        <thead><tr><th>表示</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td>スピナー</td><td>作業中</td></tr>
+          <tr><td><span class="pill amber">? 琥珀</span></td><td>あなた待ち（権限／質問）。サイドバーの「Needs You」件数と同じ</td></tr>
+          <tr><td><span class="pill green">✓ 緑</span></td><td>完了（ダッシュボード）／静かに稼働中（サイドバー緑点）</td></tr>
+          <tr><td><span class="pill red">● 赤</span></td><td>ブロック・中断・失敗</td></tr>
+          <tr><td>● 灰</td><td>待機</td></tr>
+          <tr><td>表示なし</td><td>素のシェル、または認識されないエージェント（コンボボックスから起動すれば認識される）</td></tr>
+        </tbody>
+      </table>
+      <div class="panel"><h3>Restart chip</h3><p style="font-size:14px">エージェントが終了（正常・異常）するとタブに Restart チップ。同じ作業ディレクトリで同じエージェントを再起動。Codex はアカウントも保持。</p></div>
+    </div>
+    <div class="stack">
+      <div class="panel amber"><h3>Launch defaults：既定は「全自動権限」</h3><p style="font-size:14px">Claude → <code>--dangerously-skip-permissions</code>、Codex → <code>--dangerously-bypass-approvals-and-sandbox</code>、Gemini → <code>--yolo</code>。「worktree 自体がサンドボックス」という思想で、ツール承認プロンプトに流れを切らせない。</p>
+      <ul style="font-size:13.5px;margin-top:6px"><li><b>Settings → Agents → Agent Permissions</b>：Yolo / Manual を切替</li><li>エージェント行を展開して <b>launch arguments</b> を編集。Reset で出荷時に戻す</li><li>Settings → Agents で検出済み CLI を有効／無効にし、起動メニューを絞る</li></ul></div>
+      <div class="panel"><h3>Agent status hooks</h3><p style="font-size:14px">Settings → Agents → Agent status hooks。Orca 管理のフックを Claude / Codex に入れて working / waiting / done を UI に流す。オフにすると削除、オンで再インストール（再起動不要）。CLI：<code>orca agent hooks status|on|off</code>。エンドポイントはディスクに書かれ、アプリ再起動後もセッションが生き残る。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 16 -->
+<section class="slide" data-sec="エージェントとタスク管理" data-title="Dashboard / Feed / 通知">
+  <div class="eyebrow">エージェントとタスク管理</div>
+  <h2>人間側のタスク管理：Dashboard・Agents feed・通知<small>「今、誰が何をしていて、誰が自分を待っているか」を 3 つの面で見る。</small></h2>
+  <div class="body">
+    <div class="grid3">
+      <div class="card"><h3>Agent Dashboard <span class="pill exp">実験的</span></h3>
+        <p>Settings → Experimental → Agent Dashboard。サイドバーにカンバンが増える。</p>
+        <ul><li>列：<b>Needs You</b> / <b>Working</b> / <b>Done</b> / <b>Idle</b>（約 30 分無報告。既定で非表示、ボードの歯車から表示）</li><li>Search（worktree・プロジェクト・エージェント名）、Filter（Project / Workspace status / PR・MR status）</li><li>カード：会話名、直近メッセージのプレビュー、ホストバッジ（SSH host · devbox）。クリックで端末へ</li><li>Codex / Claude のサブエージェントは親の下に展開</li><li>In-window か Pop-out。「Toggle Agent Dashboard」にショートカット割当可</li></ul></div>
+      <div class="card"><h3>Agents feed</h3>
+        <p>サイドバー「Agents」。全 worktree のイベントを 1 本の時系列に。</p>
+        <ul><li>ターン完了（待機 or 質問でブロック）、新 worktree 作成、長時間ブロック中、直近応答のプレビュー</li><li>稼働中スレッドは上部に固定</li><li>クリックで該当 worktree とペインへ。<kbd>⌘F</kbd> でフィルタ</li><li>離席後の「何が変わったか」の巡回に使う面。ベルや OS 通知の代替ではない</li></ul></div>
+      <div class="card"><h3>Notifications &amp; Inbox</h3>
+        <p>「一時停止」ではなく「完了」を検知して鳴らす。</p>
+        <ul><li>working → idle の遷移で OS 通知 + 音 + worktree チップ</li><li>ヘッダーのベルに全 worktree の未読。macOS は Dock バッジにも</li><li>右クリックで「未読に戻す」= 後で戻るための付箋</li><li>Settings → Notifications でカテゴリ別オフ、カスタム通知音（MP3 / WAV / OGG …）と音量</li><li>Keep computer awake：Agent 作業中だけスリープ抑止（ステータスバーの Caffeinate）</li></ul></div>
+    </div>
+    <div class="panel"><h3>組み合わせ</h3><p style="font-size:14.5px">3 エージェントを投げて離席 → OS 通知で最初の完了を知る → 戻ったら Agents feed で全体を巡回 → Dashboard の Needs You 列から順に答える → 見たが後回しにするものは「未読に戻す」。サイドバーは「Hide sleeping」で完了済みを畳んでおく。</p></div>
+  </div>
+</section>
+
+<!-- 17 -->
+<section class="slide" data-sec="エージェントとタスク管理" data-title="Issue トラッカー連携">
+  <div class="eyebrow">エージェントとタスク管理</div>
+  <h2>タスク管理：GitHub / GitLab / Linear / Jira 連携<small>Issue から worktree を作り、worktree カードに Issue を貼り、PR と Issue を往復せずに閉じる。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <table class="dense">
+        <thead><tr><th>連携先</th><th>できること</th><th>設定</th></tr></thead>
+        <tbody>
+          <tr><td>GitHub</td><td>Issue 閲覧・編集・Activity、PR チェック／レビュー／コメント、<b>Tasks</b>（GitHub Projects）からカードを worktree 化、Actions 失敗ログ</td><td>Settings → Integrations（<code>gh</code> CLI。残量は Settings → Git の GitHub API Budget）</td></tr>
+          <tr><td>GitLab</td><td>MR・Issue を同じレビュー面で。パイプライン（bridge / child 含む）のジョブトレース表示</td><td>Settings → Integrations</td></tr>
+          <tr><td>Bitbucket / Azure DevOps / Gitea</td><td>PR をサイドバーとチェックパネルに表示、Source Control から PR 作成</td><td>Settings → Integrations</td></tr>
+          <tr><td>Linear</td><td>Issue 一覧・作成・編集・worktree 紐づけ。Linear のブランチ名提案を採用。Issue 内の<b>画像をプロンプトに同梱</b>。「Has Workspace」で紐づけ済みだけ表示。<code>orca linear</code> CLI</td><td>Settings → Integrations → Linear（API token、チーム選択。状態同期はチーム単位でオプトイン）</td></tr>
+          <tr><td>Jira</td><td>Cloud / Server / Data Center。複数サイト接続と「All sites」統合表示。Issue から worktree 作成</td><td>Tasks → Jira → Connect。不要なら Settings → Tasks で非表示</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>Issue → worktree の流れ</h3><ol style="font-size:14px"><li>Tasks ドロワーで Issue を選び「Create worktree」</li><li>対話式コンポーザーが開く。名前・Issue リンクは事前入力、SSH / フォルダワークスペースも同じ経路</li><li>ブランチ名は Issue から導出（Linear は Linear の提案名）</li><li>カードに Issue チップ。「Edit Worktree Details」で付け替え可（1 workspace に 1 つ）</li></ol></div>
+      <div class="panel accent"><h3>PR 側との接続</h3><ul style="font-size:13.5px"><li>コミット・PR 生成 recipe の <code>{linkedIssue}</code>（GitHub Issue 番号）。未リンク時は空になるので文章で指示する</li><li>Auto-Rename Branch From Work（Settings → Git）：生き物名ブランチを作業内容から改名</li><li>Automations で「Triage new issues」を定期実行</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 18 -->
+<section class="slide" data-sec="エージェントとタスク管理" data-title="Workspace status とチェックポイント">
+  <div class="eyebrow">エージェントとタスク管理</div>
+  <h2>Workspace status とチェックポイント<small>worktree カード自体を「軽量なカンバンカード」として使う。エージェントが自分で更新できるのが要点。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <pre><span class="c"># 自由文コメント（カードに表示）。1 行目は「何をしたか・どこで・次は何か」</span>
+orca worktree set --worktree active \
+  --comment <span class="s">"reproduced auth failure; testing credential-chain fix"</span> --json
+
+<span class="c"># フェーズが変わったらカード状態も</span>
+orca worktree set --worktree active \
+  --comment <span class="s">"fix implemented; running integration tests"</span> \
+  --workspace-status in-progress --json
+
+<span class="c"># 書く前に読む（人が書いた goal / constraint を上書きしない）</span>
+orca worktree current --json</pre>
+      <div class="kv" style="font-size:14px">
+        <dt>状態の語彙</dt><dd><code>todo</code> / <code>in-progress</code> / <code>in-review</code> / <code>completed</code>（またはワークスペース独自の id）</dd>
+        <dt>良い記録タイミング</dt><dd>実装の区切り、仮説の確認／否定、レビュー完了、ブロッカー遭遇、調査 → 修正 → 検証の切替</dd>
+        <dt>どこに出るか</dt><dd>サイドバーのカード、Agent Dashboard の Filter → Workspace status、モバイルの一覧</dd>
+      </div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>なぜ CLI で書かせるか</h3><p style="font-size:14px">チャットを開かなくても進捗が分かる。人間は Dashboard を「Workspace status = in-review」で絞るだけでレビュー待ちの山を得る。エージェント側には <code>CLAUDE.md</code> / <code>AGENTS.md</code> に「区切りで <code>orca worktree set</code> を叩く」と書いておく。</p></div>
+      <div class="panel accent"><h3>エージェントに Orca を教える</h3><pre style="font-size:12px">npx skills add https://github.com/stablyai/orca \
+  --skill orca-cli --global
+<span class="c"># 以後エージェントは実行時に
+# orca skills get orca-cli で最新ガイドを取得</span></pre><p style="font-size:13.5px;margin-top:6px">スキルは薄いスタブで、コマンドフラグは実行中の CLI から取るのでアプリ更新と乖離しない。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 19 -->
+<section class="slide section" data-sec="オーケストレーション" data-title="章：オーケストレーション">
+  <div class="eyebrow">第 3 章 <span class="pill exp">実験的</span></div>
+  <h2>オーケストレーション<small style="font-size:20px">Run・Task・Dispatch・Message・Gate で、監督型の多エージェント協調を組む</small></h2>
+  <p class="lead">単発のプロンプト送信（<code>orca terminal send</code>）では足りない、「所有者」「完了追跡」「依存 DAG」が必要になった時のための構造化レイヤー。Settings → Experimental で有効化し、<code>orca status --json</code> が通ることを確認してから。</p>
+</section>
+
+<!-- 20 -->
+<section class="slide" data-sec="オーケストレーション" data-title="コアモデル">
+  <div class="eyebrow">オーケストレーション</div>
+  <h2>コアモデル：5 つの概念<small>「Run は場所を決めない」「完了権限は Dispatch にある」の 2 点を押さえると設計が崩れない。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <table class="dense">
+        <thead><tr><th>概念</th><th>役割</th><th>備考</th></tr></thead>
+        <tbody>
+          <tr><td>Run</td><td>永続的な名前空間 + コーディネーターの受信箱</td><td>ワーカーのスケジュールや配置は<b>しない</b></td></tr>
+          <tr><td>Task</td><td>spec・依存・状態を持つ作業項目</td><td><code>pending → ready → dispatched → completed | failed | blocked</code></td></tr>
+          <tr><td>Dispatch</td><td>Task を 1 つの端末で試行する 1 回分。<code>worker_done</code> と heartbeat の権限を持つ</td><td>再試行は新しい Dispatch。<code>--retry-of</code> は配置を継承しない</td></tr>
+          <tr><td>Message</td><td>受信箱の郵便：<code>status</code> / <code>dispatch</code> / <code>worker_done</code> / <code>escalation</code> / <code>question</code> / <code>heartbeat</code> …</td><td><code>check</code> は最古の未 ack から FIFO。<code>--ack</code> するまで再送</td></tr>
+          <tr><td>Decision gate</td><td>コーディネーターが持つ「決めるまで Task を止める」質問</td><td><code>gate-create</code> → <code>gate-resolve</code></td></tr>
+        </tbody>
+      </table>
+      <div class="tree"><span class="a">Run</span>  <span class="d">"checkout v2 across repos"</span>
+ <span class="d">├─</span> <span class="a">Task</span> schema  <span class="d">[completed]</span> ── <span class="m">Dispatch #1</span> → worker(claude, worktree schema/checkout-v2)
+ <span class="d">├─</span> <span class="a">Task</span> api     <span class="d">[dispatched]</span> ── <span class="m">Dispatch #2</span> → worker(codex, worktree api/checkout-v2)
+ <span class="d">│                            └─ ask → coordinator: "shared component か page-only か？"</span>
+ <span class="d">└─</span> <span class="a">Task</span> web     <span class="d">[blocked by gate]</span>  <span class="d">gate: "v2 client を先にマージする？" → yes/no</span></div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>グループアドレス</h3><p style="font-size:14px"><code>@all</code> <code>@idle</code> <code>@claude</code> <code>@codex</code> <code>@opencode</code> <code>@gemini</code> <code>@droid</code> <code>@grok</code> <code>@cursor</code> <code>@worktree:&lt;id&gt;</code>。自分の Run の生きている Dispatch に配送（<code>@worktree:</code> のみコーディネーターも含む）。<code>worker_done</code> と heartbeat には使えない。PowerShell では引用符で囲む。</p></div>
+      <div class="panel amber"><h3>退役コマンド</h3><p style="font-size:14px"><code>orchestration run</code> / <code>run-stop</code> / <code>coordinator-start</code> / <code>coordinator-stop</code> は<b>何もしない</b>。<code>run-create</code> + <code>worker-start</code> の流れを使う。</p></div>
+      <div class="panel"><h3>UI との接点</h3><p style="font-size:14px">端末に出る <code>task_…</code> はクリック可能リンクで、担当端末にフォーカス（リモートでも）。ワーカーが作った worktree は親の下にネスト。Hibernation は未決着の Dispatch がある端末を寝かせない。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 21 -->
+<section class="slide" data-sec="オーケストレーション" data-title="監督ループのコマンド">
+  <div class="eyebrow">オーケストレーション</div>
+  <h2>推奨の監督ループ<small>コーディネーター（人 or エージェント）が叩くコマンド列。フラグは進化するので、実運用前に <code>orca skills get orchestration --full</code>。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <pre><span class="c"># 1. Run と Task</span>
+orca orchestration run-create --objective <span class="s">"Split checkout QA and summarize blockers"</span> --json
+orca orchestration task-create --spec <span class="s">"Audit billing settings for mobile layout"</span> \
+  --task-title <span class="s">"Billing audit"</span> --json
+
+<span class="c"># 2. ワーカー配置：現在の worktree で／新しい子 worktree で／モデルと effort 指定</span>
+orca orchestration worker-start --task &lt;taskId&gt; --worktree current --agent codex --json
+orca orchestration worker-start --task &lt;taskId&gt; --worktree new-child --name billing-audit \
+  --agent codex --setup run --json
+orca orchestration worker-start --task &lt;taskId&gt; --worktree current --agent claude \
+  --model &lt;model-id&gt; --effort high --json      <span class="c"># Claude / Codex / Cursor のみ、--terminal とは併用不可</span>
+
+<span class="c"># 3. 完了待ち：Delivery 内の全メッセージを処理してから ack</span>
+orca orchestration check --wait --types worker_done,escalation,question --timeout-ms 900000 --json
+orca orchestration check --ack &lt;deliveryId&gt; --wait --types worker_done,escalation,question \
+  --timeout-ms 900000 --json
+
+<span class="c"># 4. 後片付け：出力を読むなら release 後に worker-read</span>
+orca orchestration worker-release --dispatch &lt;dispatchId&gt; --json
+orca orchestration worker-read    --dispatch &lt;dispatchId&gt; --limit 50 --json
+orca orchestration worker-retain  --dispatch &lt;dispatchId&gt; --json   <span class="c"># デバッグで残す時だけ</span></pre>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>配置先の選び方</h3><dl class="kv" style="font-size:13.5px"><dt><code>--worktree current</code></dt><dd>自分の worktree に同居。軽い調査向き</dd><dt><code>new-child</code></dt><dd>子 worktree を新設。並行実装の基本形</dd><dt><code>new-top-level --repo …</code></dt><dd>別リポに最上位 worktree。マルチリポ用</dd><dt><code>--on &lt;host&gt;</code></dt><dd>別ホストに federated 配置。以後は Dispatch ID で経路が決まるので <code>--on</code> は繰り返さない</dd></dl></div>
+      <div class="panel accent"><h3>Floating terminal との組み合わせ</h3><p style="font-size:14px"><kbd>⌘⌥A</kbd> のフローティング端末はオーケストレーションのセットアップに対応。worktree ペインを占有せずにコーディネーター席を置ける。</p></div>
+      <div class="panel"><h3>低レベル API</h3><p style="font-size:14px">独自トポロジーなら <code>orca worktree create --agent codex</code> → <code>orca terminal wait --for tui-idle</code> → <code>orca orchestration dispatch --task … --to &lt;handle&gt; --inject</code>。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 22 -->
+<section class="slide" data-sec="オーケストレーション" data-title="ワーカー契約・質問・ゲート・復旧">
+  <div class="eyebrow">オーケストレーション</div>
+  <h2>ワーカー契約・質問・ゲート・復旧<small>ワーカーには起動時にプリアンブルが注入され、コーディネーターへの報告義務を知る。</small></h2>
+  <div class="body cols">
+    <div class="stack">
+      <div class="panel"><h3>ワーカーの義務</h3><ul style="font-size:14px"><li><code>worker_done</code> を<b>必ず 1 回</b>、失敗時も送る（<code>--outcome succeeded|failed</code> 必須）</li><li><code>--body</code> に「何をした・何が分かった・何が残る」の要約</li><li><code>--task-id</code> と <code>--dispatch-id</code> の両方を付け、古い再試行が別 Dispatch を完了させないようにする</li><li>長い作業中は <code>heartbeat</code></li><li>ブロックする質問はローカル TUI ではなく <code>orca orchestration ask</code></li></ul></div>
+      <pre style="font-size:12.5px">orca orchestration send --type worker_done \
+  --subject <span class="s">"Completed mobile audit"</span> \
+  --body <span class="s">"Fixed footer overlap; no follow-ups."</span> \
+  --task-id &lt;taskId&gt; --dispatch-id &lt;dispatchId&gt; \
+  --outcome succeeded --files-modified <span class="s">"src/app/settings/Billing.tsx"</span> --json
+
+orca orchestration ask --to &lt;coordinatorHandle&gt; \
+  --question <span class="s">"Should I update the shared component or only this page?"</span> \
+  --options <span class="s">"shared,page-only"</span> --timeout-ms 600000 --json
+<span class="c"># → jq -r .result.answer で回答を読む</span></pre>
+    </div>
+    <div class="stack">
+      <div class="panel"><h3>Decision gate（コーディネーター側）</h3><pre style="font-size:12.5px">orca orchestration gate-create --task &lt;taskId&gt; \
+  --question <span class="s">"Merge the shared button change into the task branch?"</span> \
+  --options <span class="s">'["yes","no"]'</span> --json
+orca orchestration gate-resolve --id &lt;gateId&gt; --resolution <span class="s">"yes"</span> --json</pre><p style="font-size:13.5px;margin-top:6px"><code>ask</code> は「ワーカー → コーディネーター」の質問。Gate は「DAG 上の Task を決定まで止める」。</p></div>
+      <div class="panel"><h3>復旧</h3><pre style="font-size:12.5px">orca orchestration dispatch-show --task &lt;taskId&gt; --preamble --json
+orca orchestration task-list --json
+orca orchestration task-update --id &lt;taskId&gt; --status blocked \
+  --result <span class="s">'{"reason":"waiting on credentials"}'</span> --json</pre></div>
+      <div class="panel amber"><h3>reset は最後の手段</h3><p style="font-size:13.5px"><code>reset --tasks|--messages|--all</code> は<b>ランタイム全体</b>の状態を消す。別のコーディネーターが動いている間は叩かない。<code>release_pending</code> / <code>release_unknown</code> が返ったら広い <code>terminal close</code> で代用せず、レシートの recovery action に従う。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 23 -->
+<section class="slide" data-sec="オーケストレーション" data-title="どの手段を選ぶか">
+  <div class="eyebrow">オーケストレーション</div>
+  <h2>「エージェントに仕事を渡す」3 段階の使い分け<small>全部をオーケストレーションにすると重い。軽い順に。</small></h2>
+  <div class="body">
+    <div class="grid3">
+      <div class="card"><h3>1. <code>orca terminal send</code></h3><p>見ているエージェントに一言足す。<code>--text "continue" --enter</code>。追跡なし、所有権なし。</p><p><b>向く</b>：自分が画面を見ていて、フォローアップを 1 つ投げたい時。モバイルからの「続けて」もこれ。</p><pre style="font-size:12px;margin-top:8px">orca terminal send --text <span class="s">"continue"</span> --enter --json
+orca terminal wait --for tui-idle --timeout-ms 30000 --json</pre></div>
+      <div class="card"><h3>2. <code>worker-start</code> / <code>dispatch --inject</code></h3><p>ワーカーが <code>worker_done</code> を返し、質問はコーディネーター経由、Task ID で追跡される。</p><p><b>向く</b>：1 つの独立した作業を丸ごと任せ、終わったことを確実に知りたい時。Run を作らずに単発でも使える。</p><pre style="font-size:12px;margin-top:8px">orca orchestration worker-start --task &lt;id&gt; \
+  --worktree new-child --name audit --agent codex --json</pre></div>
+      <div class="card"><h3>3. <code>run-create</code> + Tasks + Workers</h3><p>永続的な Run 名前空間、複数 Task の依存 DAG、監督ループ、Gate。</p><p><b>向く</b>：順序依存がある複数タスク、複数リポ、複数ホスト。あるいは「エージェントがエージェントを管理する」構成。</p><pre style="font-size:12px;margin-top:8px">orca orchestration run-create --objective <span class="s">"…"</span> --json
+orca orchestration task-create … && worker-start …
+orca orchestration check --wait …</pre></div>
+    </div>
+    <div class="panel accent"><h3>「完全に手渡して監督しない」なら</h3><p style="font-size:14.5px">オーケストレーションを使わず、<code>orca-cli</code> スキルの worktree / terminal コマンドで <code>orca worktree create --agent codex --prompt "…"</code> と投げ、Notifications と Agents feed で完了を拾う。コーディネーターの受信箱が要らない場面ではこれが最も軽い。</p></div>
+  </div>
+</section>
+
+<!-- 24 -->
+<section class="slide section" data-sec="オートメーション" data-title="章：オートメーション">
+  <div class="eyebrow">第 4 章</div>
+  <h2>オートメーション<small style="font-size:20px">プロンプトをスケジュールで走らせる。トリアージ・レビュー・保守を人が worktree を開かずに始める</small></h2>
+  <p class="lead">「毎朝 9 時に新着 Issue を分類」「毎時レビュー依頼された PR を見る」「18 時に今日の変更を要約」。Automations ページと <code>orca automations</code> の両方から同じものを扱う。</p>
+</section>
+
+<!-- 25 -->
+<section class="slide" data-sec="オートメーション" data-title="作成と設定項目">
+  <div class="eyebrow">オートメーション</div>
+  <h2>オートメーションの作成と設定項目<small>公式の手順は「<code>--disabled</code> で作る → <code>show</code> で確認 → <code>run</code> で手動実行 → 納得したら <code>--enabled</code>」。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <pre><span class="c"># まず無効状態で作る</span>
+orca automations create \
+  --name <span class="s">"Weekday triage"</span> \
+  --trigger weekdays --time 09:00 --timezone Asia/Tokyo \
+  --prompt <span class="s">"Triage new issues and summarize blockers"</span> \
+  --provider codex \
+  --repo my-repo \
+  --disabled --json
+
+<span class="c"># 手動で 1 回走らせて確認 → 有効化</span>
+orca automations run  &lt;automationId&gt; --json
+orca automations runs --id &lt;automationId&gt; --json
+orca automations show &lt;automationId&gt; --json
+orca automations edit &lt;automationId&gt; --enabled --json
+
+<span class="c"># 既存 worktree の中で cron 式実行</span>
+orca automations create --name <span class="s">"Nightly status"</span> --trigger <span class="s">"0 18 * * 1-5"</span> \
+  --prompt <span class="s">"Summarize today's changes"</span> --provider claude \
+  --workspace active --disabled</pre>
+    </div>
+    <div class="w40">
+      <table class="dense">
+        <thead><tr><th>フラグ</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td><code>--trigger</code></td><td><code>hourly</code> / <code>daily</code> / <code>weekdays</code> / <code>weekly</code>、cron 式、RRULE</td></tr>
+          <tr><td><code>--time</code> / <code>--timezone</code></td><td>実行時刻と IANA タイムゾーン</td></tr>
+          <tr><td><code>--provider</code></td><td>使うエージェント（codex / claude …）</td></tr>
+          <tr><td><code>--repo &lt;sel&gt;</code></td><td>実行ごとにそのリポで作業（worktree を作成／選択）</td></tr>
+          <tr><td><code>--workspace &lt;sel&gt;</code></td><td>既存 worktree の中で実行。両方省略時は現在ディレクトリの worktree</td></tr>
+          <tr><td><code>--project</code> / <code>--host</code></td><td>特定ホスト上のプロジェクトセットアップを対象に（<code>--project-host-setup &lt;id&gt;</code> でも）</td></tr>
+          <tr><td><code>--precheck "cmd"</code></td><td>シェルコマンドが非 0 なら「skipped」として記録し実行しない</td></tr>
+          <tr><td><code>--reuse-session</code></td><td>前回のライブ端末で続ける（<code>--fresh-session</code> で戻す）</td></tr>
+          <tr><td><code>--missed-run-grace-minutes</code></td><td>スリープ等で逃した実行を何分まで遅延実行するか</td></tr>
+          <tr><td><code>--disabled</code> / <code>--enabled</code></td><td>有効・無効。<code>remove</code> は実行履歴も削除</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 26 -->
+<section class="slide" data-sec="オートメーション" data-title="運用のコツ">
+  <div class="eyebrow">オートメーション</div>
+  <h2>運用のコツと他機能との組み合わせ</h2>
+  <div class="body">
+    <div class="grid2">
+      <div class="card"><h3>precheck で「空振り」をゼロにする</h3><pre style="font-size:12.5px">orca automations create --name <span class="s">"PR review"</span> --trigger hourly \
+  --precheck <span class="s">"gh pr list --search 'review-requested:@me' --json number -q .[0].number"</span> \
+  --prompt <span class="s">"Review requested PRs"</span> --provider codex --repo my-repo --disabled --json</pre><p>レビュー依頼が無ければエージェントは起動しない。<code>gh</code> のレート制限にも優しい（Settings → Git の GitHub API Budget を見ながら間隔を決める）。</p></div>
+      <div class="card"><h3>対象の選び方：<code>--repo</code> か <code>--workspace</code> か</h3><ul><li><b><code>--repo</code></b>：実行ごとに worktree を作る／選ぶ。成果物が「変更 + PR」になる仕事（依存更新、lint 修正、Issue 対応）</li><li><b><code>--workspace</code> + <code>--reuse-session</code></b>：同じ端末で継続。「要約」「監視」「日報」のような状態を積む仕事</li><li>自動作成された worktree はサイドバーの「Hide automation-created」で普段は隠せる</li></ul></div>
+      <div class="card"><h3>ホスト横断で管理する</h3><ul><li>Automations ページは、このマシンと接続済み Orca ホスト（Remote Orca Server、SSH）のスケジュールを 1 表に。<b>Host</b> 列と Filters → Host</li><li>UI で作る時は「Create on」で先にホストを選び、そのホストのプロジェクトから選ぶ</li><li>常時稼働させたいなら Remote Orca Server 側に作る（ノート PC が閉じていても走る）</li><li>SSH ホスト切断中でも一覧に残り、削除できる</li></ul></div>
+      <div class="card"><h3>失敗時と一覧の使い方</h3><ul><li>workspace を開く前に失敗した run は Orca 内で「Rerun」</li><li>Filters：Host / Enabled・Paused / 直近結果（Failed・Succeeded・Never ran）/ Agents。検索は name・project・prompt</li><li>Notifications と Agents feed は自動実行の完了も拾う。夜間実行の結果は朝 Dashboard の Done 列に並ぶ</li><li>Workspace status の recipe と組み合わせ、自動実行が終わったら <code>in-review</code> にさせる</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 27 -->
+<section class="slide" data-sec="CLI とレビュー" data-title="Orca CLI とスキル">
+  <div class="eyebrow">CLI とレビュー</div>
+  <h2>Orca CLI とスキル<small>人間がスクリプトから、そしてエージェントが自分で、Orca を操作するための 1 本のコマンド。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <pre><span class="c"># 登録：Settings → General → Orca CLI（Linux は orca-ide という名前）</span>
+orca status --json
+<span class="c"># セレクタ：id:&lt;id&gt; / path:/abs/path / active / current</span>
+orca worktree ps --json
+orca worktree create --repo id:&lt;repoId&gt; --name my-task --issue 123 --json
+orca terminal create --worktree path:/projects/app --command <span class="s">"npm test"</span> --json
+orca terminal split --direction vertical --command <span class="s">"npm run dev"</span> --json
+orca file open src/App.tsx
+orca file diff src/App.tsx --staged
+orca file open-changed --mode both
+<span class="c"># 内蔵ブラウザ：snapshot → interact → re-snapshot</span>
+orca goto --url https://localhost:3000 --json
+orca snapshot --json          <span class="c"># @e1, @e3 のような ref が返る</span>
+orca click --element @e3 --json
+orca fill --element @e1 --value <span class="s">"user@example.com"</span> --json
+orca set device --name <span class="s">"iPhone 12"</span> --json && orca screenshot --json
+<span class="c"># アーティファクト共有（Settings → Artifacts でオプトイン）</span>
+orca artifacts share ./report.html</pre>
+    </div>
+    <div class="w40 stack">
+      <table class="dense">
+        <thead><tr><th>スキル</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>orca-cli</code></td><td>worktree・端末・ファイル・automations・ブラウザ</td></tr>
+          <tr><td><code>orchestration</code></td><td>Run / Task / Worker / Message / Gate</td></tr>
+          <tr><td><code>computer-use</code></td><td>デスクトップアプリをアクセシビリティツリーで操作</td></tr>
+          <tr><td><code>orca-linear</code></td><td>Linear の読み書き</td></tr>
+          <tr><td><code>orca-emulator</code> / <code>-android</code></td><td>iOS Simulator / Android</td></tr>
+          <tr><td><code>orca-per-workspace-env</code></td><td>Cloud VM レシピ（<code>orca.yaml</code>）の作成</td></tr>
+        </tbody>
+      </table>
+      <div class="panel"><h3>更新の仕組み</h3><p style="font-size:13.5px"><code>npx skills add https://github.com/stablyai/orca --skill &lt;name&gt; --global</code> で入れるのは薄いスタブ。本文は <code>orca skills get &lt;topic&gt;</code>（<code>--full</code> / <code>--reference &lt;name&gt;</code>）で実行中の CLI から取得。古くなると Settings → Agents に「Update available」、ダイアログからバックグラウンド更新。ヘッドレス環境は <code>orca skills install|update</code>。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 28 -->
+<section class="slide" data-sec="CLI とレビュー" data-title="レビュー：Diff・Annotate・Attribution">
+  <div class="eyebrow">CLI とレビュー</div>
+  <h2>レビュー：Diff viewer・Annotate AI Diff・Attribution<small>AI の差分を「真面目にレビューしてから出荷する」ための 3 点セット。</small></h2>
+  <div class="body">
+    <div class="grid3">
+      <div class="card"><h3>Diff viewer</h3><ul><li>start-from ref に対する差分。ファイルツリー、ワードラップ（Diff Word Wrap はエディタと別設定）、キーボード操作</li><li>スコープ切替（作業ツリー／staged／コミット）</li><li>エディタ側にも「Changes」表示モード</li></ul></div>
+      <div class="card"><h3>Annotate AI Diff</h3><ol><li>行にホバー → ガターの「+」（または <kbd>c</kbd>）</li><li>Markdown でコメント、<kbd>⌘↵</kbd> で保存</li><li>「Send to agent」→「Send notes to」で worktree 内のエージェントを選ぶ（新規起動も可）</li><li>コメントは行に追従。修正後に Resolve、未解決は次回のバッチに含まれる</li></ol><p><b>なぜバッチか</b>：1 件ずつ送るとエージェントが右往左往する。1 回の思考・1 回の修正で当たりが上がる。ショートカット「Send Review Notes to Agent」は既定で未割当。</p></div>
+      <div class="card"><h3>Attribution</h3><ul><li>エージェントがツール経由で書いた範囲を記録し、ガターに AI 由来マークを表示。人が上書きすると人間に戻る</li><li>「どこを重点的に読むか」「監査で AI 由来を分離」「自分で書いた所は読み直さない」</li><li>ローカルのみで git にコミットされない。残したければ Diff ツールバーからメタデータをエクスポート</li></ul></div>
+    </div>
+    <div class="panel accent"><h3>レシピ：3 エージェント競争のレビュー</h3><p style="font-size:14.5px">3 worktree の diff を順に開き、最も近いものに Annotate で行コメントを付けて返す。残りは削除。Attribution で「自分で直した行」が分かるので、エージェントの再修正が自分の手直しを壊していないかをすぐ確認できる。</p></div>
+  </div>
+</section>
+
+<!-- 29 -->
+<section class="slide" data-sec="CLI とレビュー" data-title="コミット・PR・チェック">
+  <div class="eyebrow">CLI とレビュー</div>
+  <h2>コミット・PR・チェック：Orca 内で出荷まで<small>Source Control パネルで commit / push / PR、PR ビューでチェック・自動マージ・スタック。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <table class="dense">
+        <thead><tr><th>機能</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td>Generate with AI</td><td>staged 差分からコミットメッセージ。PR タイトル・本文も「Generate pull request details with AI」</td></tr>
+          <tr><td>Action recipes</td><td>各 AI アクションの<b>エージェント・CLI 引数・プロンプト雛形</b>を Settings → Git &amp; Source Control → Action recipes でグローバル／リポ単位に設定。変数：<code>{basePrompt}</code> <code>{branch}</code> <code>{stagedFiles}</code> <code>{stagedPatch}</code> <code>{linkedIssue}</code>、PR 側は <code>{baseBranch}</code> <code>{commitSummary}</code> <code>{changedFiles}</code> <code>{patch}</code> など。リポ上書きがあると「Repository overrides」注記</td></tr>
+          <tr><td>Open hosted review</td><td>push 済み worktree から PR / MR 作成。base・タイトル・本文・Draft を確認。Bitbucket は Draft なし</td></tr>
+          <tr><td>Stacked PR（GitHub）</td><td>選んだ base に既に open PR があると「Stack this PR above #N」。サイドバーに Stack マップ、「Merge through #N · M PRs」で下位までアトミックにマージ</td></tr>
+          <tr><td>Auto-merge</td><td>「Enable auto-merge」でチェック・レビュー通過後に GitHub がマージ。Merge queue なら「Merge when ready」</td></tr>
+          <tr><td>Fix broken checks</td><td>失敗チェックの名前とリンクをエージェントに渡す。GitLab はジョブトレースをチェックパネルに展開</td></tr>
+          <tr><td>Fix with AI / Resolve with AI</td><td>コンフリクト解消やレビュー指摘の修正もアクション recipe 経由</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>recipe の例（コミットメッセージ）</h3><pre style="font-size:12px">{basePrompt}
+Branch: {branch}
+Files: {stagedFiles}
+If an issue number is provided, end the
+message with a line "Refs #&lt;number&gt;":
+{linkedIssue}
+
+{stagedPatch}</pre><p style="font-size:13.5px;margin-top:6px"><code>{linkedIssue}</code> は未リンク時に空になるので、「番号があれば」と文章で指示する形が推奨。</p></div>
+      <div class="panel accent"><h3>Git 設定で効くもの</h3><ul style="font-size:13.5px"><li>コミット署名、外部 git ツール用エディタ</li><li>Auto-Rename Branch From Work</li><li>GitHub API Budget（REST / Search / GraphQL 残量）。PR パネルが更新されなくなったらここを見る</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 30 -->
+<section class="slide" data-sec="作業環境" data-title="ターミナル・エディタ・ナビゲーション">
+  <div class="eyebrow">作業環境</div>
+  <h2>ターミナル・エディタ・ナビゲーション<small>worktree が 10 個を超えると「移動」がボトルネックになる。そこを潰す機能群。</small></h2>
+  <div class="body">
+    <div class="grid3">
+      <div class="card"><h3>Terminal</h3><ul><li>WebGL 描画、無限分割、再起動後も残る scrollback、OSC 52 クリップボード</li><li>Ghostty / Warp テーマの取込、Windows は WSL シェル対応</li><li><b>Floating terminal</b>：<kbd>⌘⌥A</kbd>。開始ディレクトリは設定（既定 <code>~</code>）。オーケストレーション起動にも</li><li><b>Quick Commands</b>：<code>pnpm test</code> やエージェント用プロンプトを Global / Project スコープで保存。タブバーの split-button か端末の右クリックから</li><li>「Copy terminal context」で端末内容をプロンプト用にコピー</li></ul></div>
+      <div class="card"><h3>Editor &amp; viewers</h3><ul><li>Monaco（VS Code のエディタ）、全所オートセーブ、マルチカーソル、go-to、Changes モード、ミニマップ、独自フォント</li><li>ファイルや画像をエージェントプロンプトへドラッグ＆ドロップ</li><li>Markdown はリッチ編集（スラッシュメニュー、内部リンク、front matter、TOC、レビュー注釈）</li><li>HTML / Mermaid / PDF / 画像 / CSV / Jupyter を worktree 内で表示</li><li>SSH 先のフォルダをダウンロード、VS Code Remote-SSH で開く</li></ul></div>
+      <div class="card"><h3>Navigation</h3><ul><li><kbd>⌘P</kbd> <b>Quick Open</b>：worktree 内ファイル。gitignore 済みも第 2 段で出る</li><li>タブの「+」<b>omnibox</b>：開いているタブ・ファイル・URL・エージェント・Web 検索（<code>?</code> 接頭で即検索）</li><li><kbd>⌘J</kbd> <b>Jump Palette</b>：Recent Chats &amp; Terminals（needs-you 優先、<kbd>⌘1</kbd>〜<kbd>⌘6</kbd>）、Recent Worktrees、PR 番号 <code>#123</code> / MR <code>!123</code> で検索、<kbd>Shift↵</kbd> で分割に開く、一致なしなら「Create worktree」</li><li><kbd>Tab</kbd> でホスト・リポのフィルタ（一時的）</li><li>Tabs / panes：worktree を切り替えるとペインツリー全体が入れ替わる。ドラッグで分割、pinned boundary</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 31 -->
+<section class="slide" data-sec="作業環境" data-title="ブラウザと Design Mode">
+  <div class="eyebrow">作業環境</div>
+  <h2>内蔵ブラウザと Design Mode<small>worktree ごとの Chromium。「見て・指して・直させる」ループを IDE 内で閉じる。</small></h2>
+  <div class="body cols">
+    <div class="stack">
+      <div class="card"><h3>Per-worktree browser</h3><ul><li>worktree に紐づくタブ。端末のリンクは同じ worktree のブラウザに開く（Link routing）</li><li>リモート workspace ではポートフォワード経由で表示</li><li>ビューポートのデバイスエミュレーション（<code>orca set device --name "iPhone 12"</code>）</li><li>ページを Artifact として共有、ダウンロード管理</li></ul></div>
+      <div class="card"><h3>Browser-use profiles</h3><ul><li>Cookie・localStorage・ログイン状態を分離。Google サインインの Cookie インポート</li><li><code>orca tab profile list|create|set|clone|use-default</code></li><li>「管理者でログインしたタブ」と「一般ユーザーのタブ」を同時に持って QA</li></ul></div>
+    </div>
+    <div class="stack">
+      <div class="card"><h3>Design Mode</h3><ol><li>ブラウザツールバーで Design Mode をオン</li><li>実際の UI 要素をクリック</li><li>その要素の HTML・CSS・切り抜きスクリーンショットがエージェントのプロンプトに入る</li><li>「この余白を 8px に」「このボタンをセカンダリに」と書いて送る</li></ol><p><b>公式レシピ「Fix a UI bug with Design Mode」</b>：再現 → 要素を指す → 修正 → 同じブラウザタブで確認、まで worktree 内で完結するから速い。</p></div>
+      <div class="card"><h3>エージェント側からの自動操作</h3><pre style="font-size:12px">orca goto --url http://localhost:5173 --json
+orca snapshot --json      <span class="c"># @e1 … の参照</span>
+orca click --element @e3 --json
+orca fill  --element @e1 --value <span class="s">"foo"</span> --json
+orca screenshot --json</pre><p style="font-size:13.5px;margin-top:6px">Playwright 風の snapshot → act → re-snapshot。デスクトップアプリは <code>computer-use</code>、モバイルは <code>orca emulator</code>（iOS Simulator の tap / type / gesture / rotate）。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 32 -->
+<section class="slide" data-sec="作業環境" data-title="実行環境の選び方">
+  <div class="eyebrow">作業環境</div>
+  <h2>実行環境の選び方：4 モード<small>全 worktree は「どこかで」動く。手元、SSH 先、常時稼働の Orca サーバー、使い捨て VM。1 つのインストールで混在できる。</small></h2>
+  <div class="body">
+    <table>
+      <thead><tr><th>モード</th><th>ファイルとエージェントの場所</th><th>設定</th><th>向く場面</th></tr></thead>
+      <tbody>
+        <tr><td>Local</td><td>手元のデスクトップ</td><td>不要</td><td>日常のコーディング、短命なエージェント</td></tr>
+        <tr><td>SSH target</td><td>SSH ホスト。<code>git worktree add</code> もエージェントもリモート。UI・diff は手元</td><td>Settings → SSH でホスト追加 → 接続テスト → Create の「Run on」で選択。既存 VPS・GPU 箱。切断してもエージェントは走り続け、再接続で端末が戻る</td><td>手元の Orca が 1 台で多数のホストを操る</td></tr>
+        <tr><td>Remote Orca Server</td><td>別マシン上の Orca ランタイム全体（プロジェクト・worktree・端末・エージェント）。手元・ブラウザ・スマホは UI</td><td>両方に Orca + Tailscale → サーバー側 Settings → Remote Orca Servers → Advertise → New Link → クライアントで Add Server。ヘッドレスは <code>orca serve --pairing-address …</code></td><td>ノート PC を閉じても続けたい、モバイルから同じセッションに戻りたい、オートメーションを常時走らせたい</td></tr>
+        <tr><td>Cloud VM <span class="pill exp">実験的</span></td><td>worktree ごとの使い捨て sandbox / VM / Docker（Vercel Sandbox、Fly、Modal、SSH ホスト、ローカル Docker）</td><td>Settings → Experimental → Cloud VM → <code>orca-per-workspace-env</code> スキルでエージェントに <code>orca.yaml</code> の <code>environmentRecipes</code> を書かせる → Doctor 検証 → Create の「Run on」にレシピが出る（<b>primary checkout</b> の orca.yaml にある時のみ）</td><td>タスクごとに CI 級のクリーンな隔離。worktree と一緒に消える</td></tr>
+      </tbody>
+    </table>
+    <div class="grid2">
+      <div class="panel"><h3>SSH と Remote Orca Server の違い</h3><p style="font-size:14px">SSH：手元の Orca がランタイムを<b>所有</b>し、選んだ worktree だけ別マシンで動かす。Remote Orca Server：別マシンがランタイムを<b>所有</b>し、デスクトップ・ブラウザ・モバイル・オートメーションのクライアントが共有セッションに接続する。</p></div>
+      <div class="panel amber"><h3>Orca はホスティングを売らない</h3><p style="font-size:14px">リモート実行は常に自分の管理下のマシンとクラウド口座。Cloud VM はプロバイダの create / suspend / resume / destroy スクリプトを Orca が呼び、返ってきたペアリング URL または SSH 情報に繋ぐだけ。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 33 -->
+<section class="slide" data-sec="作業環境" data-title="モバイル・省電力・復元・使用量">
+  <div class="eyebrow">作業環境</div>
+  <h2>モバイル・ハイバネーション・セッション復元・使用量</h2>
+  <div class="body">
+    <div class="grid4">
+      <div class="card"><h3>Mobile companion</h3><ul><li>iOS（App Store / TestFlight）・Android APK</li><li>デスクトップまたは Remote Orca Server とペアリング</li><li>完了通知、フォローアップ送信、Chat UI、Quick Commands、worktree 作成、Source Control、ブラウザ表示、アカウント切替</li><li>モバイルが操作中の端末はハイバネートされない</li></ul></div>
+      <div class="card"><h3>Agent hibernation <span class="pill exp">実験的</span></h3><ul><li>Settings → Experimental。既定オフ</li><li>条件：done 状態、前面でない、入力なし、再開可能なエージェント（Claude / Codex / Gemini / OpenCode / Pi …）、未決着の orchestration Dispatch なし、子エージェントなし</li><li>Hibernate after：既定 30 分、1 分〜24 時間</li><li>worktree 内の複数ペインは一括で寝る。手動は右クリック「Sleep」「Sleep with Descendants」</li></ul></div>
+      <div class="card"><h3>Session restore / history</h3><ul><li>終了 → 再起動で worktree、分割、scrollback、フォーカスタブを復元</li><li>右サイドバーの Session history から過去の Claude / Codex / Cursor / Gemini セッションを再開</li><li>エージェントフックのエンドポイントはディスク永続化。長寿命セッションが再起動後も UI に届く</li></ul></div>
+      <div class="card"><h3>Usage &amp; accounts</h3><ul><li>ステータスバーに Claude / Codex の使用量とレート制限のリセット時刻（% used / % remaining）</li><li>複数アカウントを登録し、再ログインなしでホットスワップ。Codex の Restart チップはアカウントを保持</li><li>Stats に推定コスト</li><li>Resource Manager：CPU・メモリ・セッション数、デーモン制御、workspace のディスク使用量</li></ul></div>
+    </div>
+    <div class="panel accent"><h3>組み合わせ</h3><p style="font-size:14.5px">Remote Orca Server（自宅の Mac mini + Tailscale）にプロジェクトを置き、日中はデスクトップから、移動中はモバイルから同じセッションに触る。ハイバネーションで夜間のメモリを抑え、朝オートメーションが Done 列に成果を並べておく。</p></div>
+  </div>
+</section>
+
+<!-- 34 -->
+<section class="slide section" data-sec="組み合わせレシピ" data-title="章：組み合わせレシピ">
+  <div class="eyebrow">第 5 章</div>
+  <h2>組み合わせレシピ<small style="font-size:20px">設定 × 機能を束ねた 5 つの運用パターン</small></h2>
+  <p class="lead">機能は単体で使うより、worktree 初期化・タスク紐づけ・状態追跡・レビュー・自動化を 1 本の流れにした時に効く。</p>
+</section>
+
+<!-- 35 -->
+<section class="slide" data-sec="組み合わせレシピ" data-title="レシピ① Issue 駆動の 1 タスク／② 3 エージェント競争">
+  <div class="eyebrow">組み合わせレシピ</div>
+  <h2>レシピ ①② ：Issue 駆動の 1 タスク／3 エージェント競争</h2>
+  <div class="body cols">
+    <div class="card"><h3>① Issue 駆動の 1 タスク（最も基本の型）</h3>
+      <table class="dense" style="margin-top:6px">
+        <tbody>
+          <tr><td>事前設定</td><td><code>orca.yaml</code> に <code>scripts.setup</code> と <code>sharedDirectories</code>、<code>.worktreeinclude</code> に <code>.env</code>。Settings → Integrations で GitHub 接続。Action recipes に <code>{linkedIssue}</code></td></tr>
+          <tr><td>1. 作成</td><td>Tasks → Issue → Create worktree。名前・Issue は自動、エージェントは既定（Claude Code）</td></tr>
+          <tr><td>2. 初動</td><td>setup hook が依存を入れる間にエージェントが Issue 本文で作業開始（Linear なら画像も同梱）</td></tr>
+          <tr><td>3. 追跡</td><td>エージェントは区切りで <code>orca worktree set --comment … --workspace-status …</code>。人は Dashboard の Needs You に答える</td></tr>
+          <tr><td>4. レビュー</td><td>Diff → Annotate AI Diff で束ねて返す → Attribution で自分の手直しを確認</td></tr>
+          <tr><td>5. 出荷</td><td>Generate with AI でコミット、PR 生成、Fix broken checks、Auto-merge。完了後 worktree 削除でブランチも消える</td></tr>
+        </tbody>
+      </table></div>
+    <div class="card"><h3>② 3 エージェント競争（公式「最初の 5 分」）</h3>
+      <table class="dense" style="margin-top:6px">
+        <tbody>
+          <tr><td>事前設定</td><td>Settings → Agents で使う CLI を有効化、アカウント登録。Quick Commands に「共通プロンプト」を Project スコープで保存</td></tr>
+          <tr><td>1. 作成</td><td>同じ start-from で worktree を 3 つ（<code>fix-login-race</code>, <code>-2</code>, <code>-3</code>）。CLI なら <code>orca worktree create --agent claude|codex|cursor --prompt "…"</code> を 3 回</td></tr>
+          <tr><td>2. 観戦</td><td>タブを端にドラッグして 3 分割。<kbd>⌘J</kbd> の Recent Chats で <kbd>⌘1</kbd>〜<kbd>⌘3</kbd> で飛ぶ</td></tr>
+          <tr><td>3. 離席</td><td>OS 通知で最初の完了。Agents feed で 3 本の状況を一望</td></tr>
+          <tr><td>4. 選抜</td><td>3 つの diff を比較、最良に Annotate で追加指示。<b>他 2 つはワンクリック削除</b>（ブランチも一緒に）</td></tr>
+          <tr><td>応用</td><td>同じエージェントで <code>--model</code> / <code>--effort</code> 違いを競わせる（orchestration の worker-start 経由）。Hibernation で負けた側の端末が勝手に寝る</td></tr>
+        </tbody>
+      </table></div>
+  </div>
+</section>
+
+<!-- 36 -->
+<section class="slide" data-sec="組み合わせレシピ" data-title="レシピ③ 夜間オートメーション／④ オーケストレーション運用">
+  <div class="eyebrow">組み合わせレシピ</div>
+  <h2>レシピ ③④ ：夜間オートメーション／オーケストレーション運用</h2>
+  <div class="body cols">
+    <div class="card"><h3>③ 夜間オートメーション（Remote Orca Server 上）</h3>
+      <table class="dense" style="margin-top:6px">
+        <tbody>
+          <tr><td>事前設定</td><td>常時稼働マシンに Orca + Tailscale、Remote Orca Servers でペアリング。リポの <code>orca.yaml</code> に setup。Settings → Notifications で夜間はサウンドオフ</td></tr>
+          <tr><td>1. 作成</td><td>Automations → Create on = サーバー → <code>--trigger "0 2 * * 1-5" --repo … --provider codex --precheck "…" --disabled</code></td></tr>
+          <tr><td>2. 試運転</td><td><code>orca automations run</code> → <code>runs</code> で結果 → プロンプト調整 → <code>--enabled</code></td></tr>
+          <tr><td>3. 朝</td><td>Dashboard の Done 列と Agents feed に成果。自動作成 worktree は「Hide automation-created」で普段は隠し、PR だけ見る</td></tr>
+          <tr><td>4. 失敗時</td><td>Filters → Failed で洗い出し、Rerun。<code>--missed-run-grace-minutes</code> でサーバー再起動の取りこぼしを吸収</td></tr>
+          <tr><td>例</td><td>依存更新 PR、flaky テストの調査、Issue トリアージ、日報要約（<code>--workspace</code> + <code>--reuse-session</code>）</td></tr>
+        </tbody>
+      </table></div>
+    <div class="card"><h3>④ オーケストレーション運用</h3>
+      <table class="dense" style="margin-top:6px">
+        <tbody>
+          <tr><td>事前設定</td><td>Settings → Experimental → Orchestration。エージェントに <code>orchestration</code> スキルを <code>npx skills add … --global</code>。<code>CLAUDE.md</code> に「Run を作ってから worker-start」「完了は worker_done」と明記</td></tr>
+          <tr><td>1. 席</td><td>親 worktree（またはフローティング端末）でコーディネーター役の Claude Code を起動</td></tr>
+          <tr><td>2. 分解</td><td><code>run-create</code> → <code>task-create</code> ×N（依存関係付き）。決めきれない点は <code>gate-create</code></td></tr>
+          <tr><td>3. 配置</td><td><code>worker-start --worktree new-child --setup run</code>。サイドバーで親の下に子が並ぶ。Dashboard に子エージェントが展開表示</td></tr>
+          <tr><td>4. 監督</td><td><code>check --wait --types worker_done,escalation,question</code>。質問には <code>ask</code> の回答、方針は <code>gate-resolve</code></td></tr>
+          <tr><td>5. 片付け</td><td><code>worker-release</code> → <code>worker-read</code> で記録 → 親を「Delete with Descendants…」。Hibernation は未決着 Dispatch を寝かせないので安全</td></tr>
+        </tbody>
+      </table></div>
+  </div>
+</section>
+
+<!-- 37 -->
+<section class="slide" data-sec="組み合わせレシピ" data-title="レシピ⑤ マルチリポ運用の全体像">
+  <div class="eyebrow">組み合わせレシピ</div>
+  <h2>レシピ ⑤ ：マルチリポ運用の全体像<small>①〜④ を「複数リポ × 1 タスク」に重ねる。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <div class="tree"><span class="a">Sidebar</span>
+<span class="d">└─</span> <span class="m">checkout-platform</span>                       <span class="d">← プロジェクトグループ（親フォルダ）</span>
+   <span class="d">├─</span> <span class="a">checkout-v2</span>  <span class="d">[folder workspace]  Issue: schema#42  status: in-progress</span>
+   <span class="d">│     └─ 端末: コーディネーター Claude Code（Run "checkout v2"）</span>
+   <span class="d">├─</span> schema/                              <span class="d">← プロジェクト</span>
+   <span class="d">│  └─</span> <span class="a">checkout-v2</span>  <span class="d">worker: claude   PR #101 merged   status: completed</span>
+   <span class="d">├─</span> api/
+   <span class="d">│  └─</span> <span class="a">checkout-v2</span>  <span class="d">worker: codex    PR #77 checks ✓  status: in-review</span>
+   <span class="d">└─</span> web/
+      <span class="d">└─</span> <span class="a">checkout-v2</span>  <span class="d">blocked by gate  "v2 client を先にマージ？"</span></div>
+      <table class="dense" style="margin-top:12px">
+        <tbody>
+          <tr><td>入口</td><td>グループ行「+」→ Create Folder Workspace。ソース = schema、Issue を紐づけ</td></tr>
+          <tr><td>作業ブランチ</td><td>リポごとに <code>worker-start --worktree new-top-level --repo id:…</code>（または手動 <code>worktree create --parent-worktree active</code>）。全リポで同じ名前</td></tr>
+          <tr><td>初期化</td><td>各リポの <code>orca.yaml</code> setup と <code>.worktreeinclude</code>。API の <code>.env</code> はコピー、<code>node_modules</code> は共有</td></tr>
+          <tr><td>順序</td><td>Task の依存で schema → api → web。web は Gate で止めて人が判断</td></tr>
+          <tr><td>出荷</td><td>PR はリポごと。Dashboard は Filter → Project = 3 リポで絞り、api の PR 本文に「Depends on schema#101」を併記</td></tr>
+          <tr><td>片付け</td><td>グループ配下を一括削除。不要になったグループは「contained projects も削除」</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="w40 stack">
+      <div class="panel amber"><h3>注意点</h3><ul style="font-size:13.5px"><li>フォルダワークスペースは<b>配下リポの checkout をそのまま</b>使う。並行して別のマルチリポタスクを走らせるなら、実作業はリポ worktree 側に寄せる</li><li>親子リンクは同じプロジェクト・リポ・ホスト内でのみ「子孫操作」の対象。リポ跨ぎの子は表示上のネストのみ</li><li>Issue は 1 workspace に 1 つ。主リポに付け、他リポの PR は本文で参照</li><li>Orchestration は実験的。運用前に <code>orca skills get orchestration --full</code> でフラグを確認</li></ul></div>
+      <div class="panel accent"><h3>モノレポの場合</h3><p style="font-size:14px">モノレポなら普通の 1 リポ worktree で足りる。パッケージごとの並行作業は「同じリポの worktree を複数」+ <code>sharedDirectories</code> に <code>node_modules</code> を入れてディスクを節約する。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 38 -->
+<section class="slide" data-sec="まとめ" data-title="設定チートシート">
+  <div class="eyebrow">まとめ</div>
+  <h2>設定チートシート<small>どこに何があるか。「リポにコミットするもの」と「自分の Orca に持つもの」を分けて覚える。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <table class="dense">
+        <thead><tr><th>場所</th><th>設定</th></tr></thead>
+        <tbody>
+          <tr><td><code>orca.yaml</code>（リポ）</td><td><code>scripts.setup</code>、<code>worktree.sharedDirectories</code>、<code>environmentRecipes</code>（Cloud VM）</td></tr>
+          <tr><td><code>.worktreeinclude</code>（リポ）</td><td>gitignore 済みファイルを worktree ごとにコピー。リテラルパスのみ</td></tr>
+          <tr><td><code>CLAUDE.md</code> / <code>AGENTS.md</code></td><td>エージェント側の設定。「区切りで <code>orca worktree set</code>」等はここに書く</td></tr>
+          <tr><td>General</td><td>Orca CLI 登録、Open in、既定 worktree 名、外部 worktree ソース</td></tr>
+          <tr><td>Git &amp; Source Control</td><td>base ref 解決、署名、Auto-Rename Branch、Action recipes、GitHub API Budget</td></tr>
+          <tr><td>Agents</td><td>有効な CLI、Yolo / Manual、launch arguments、アカウント、status hooks、Keep awake、スキル更新</td></tr>
+          <tr><td>Repository</td><td>base ref、Hooks、Worktree Shared Paths、アイコン、AI overrides</td></tr>
+          <tr><td>Integrations / Tasks</td><td>GitHub / GitLab / Bitbucket / Linear。Jira は Tasks → Jira から</td></tr>
+          <tr><td>Terminal / Quick Commands / Notifications</td><td>テーマ、フローティング端末、保存コマンド（Global / Project）、通知カテゴリと音</td></tr>
+          <tr><td>SSH / Remote Orca Servers / Floating Workspace</td><td>リモートホスト、ペアリングリンク、<code>orca serve</code>、全体作業面</td></tr>
+          <tr><td>Experimental</td><td>Agent Dashboard、Hibernation、Chat UI、Orchestration、Cloud VM</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>よく使うショートカット</h3><dl class="kv" style="font-size:13.5px"><dt><kbd>⌘P</kbd></dt><dd>Quick Open（ファイル）</dd><dt><kbd>⌘J</kbd></dt><dd>Jump Palette（worktree・タブ・セッション）</dd><dt><kbd>⌘1</kbd>〜<kbd>⌘6</kbd></dt><dd>最近のセッションへ</dd><dt><kbd>⌘⌥A</kbd></dt><dd>Floating terminal</dd><dt><kbd>⌘⇧⌫</kbd></dt><dd>選択 worktree の削除</dd><dt><kbd>c</kbd> / <kbd>⌘↵</kbd></dt><dd>Diff 行コメント／保存</dd></dl><p style="font-size:12.5px;color:var(--muted);margin-top:6px">Windows / Linux は ⌘ → Ctrl、⌥ → Alt。未割当は Settings → Shortcuts で。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 39 -->
+<section class="slide" data-sec="まとめ" data-title="まとめと参考リンク">
+  <div class="eyebrow">まとめ</div>
+  <h2>まとめ</h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <ul style="font-size:17px;line-height:1.7">
+        <li><b>単位を揃える</b>：プロジェクト = リポ（PR の単位）、ワークスペース = タスク（worktree／フォルダワークスペース）。マルチリポはプロジェクトグループ + リポごとの worktree で束ねる</li>
+        <li><b>新規 worktree を即戦力にする</b>：<code>orca.yaml</code>（setup、sharedDirectories）と <code>.worktreeinclude</code> をリポにコミットしておく</li>
+        <li><b>状態を機械に書かせる</b>：Agent status hooks + <code>orca worktree set</code>。人は Dashboard の Needs You と in-review だけ見る</li>
+        <li><b>仕事の渡し方は 3 段階</b>：<code>terminal send</code> → <code>worker-start</code> → <code>run-create</code> + Tasks + Gates。重い方から始めない</li>
+        <li><b>定期作業は Automations</b>：<code>--disabled</code> → <code>run</code> → <code>--enabled</code>。<code>--precheck</code> で空振りを消し、常時稼働ホストに置く</li>
+        <li><b>レビューは束ねて返す</b>：Annotate AI Diff で 1 バッチ、Attribution で自分の手直しを守る</li>
+        <li><b>実行環境は混ぜてよい</b>：手元・SSH・Remote Orca Server・Cloud VM を worktree ごとに選ぶ</li>
+      </ul>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>参考リンク</h3><ul style="font-size:14px"><li>公式サイト・ドキュメント：<a href="https://www.onorca.dev/docs">onorca.dev/docs</a></li><li>GitHub：<a href="https://github.com/stablyai/orca">github.com/stablyai/orca</a>（MIT）</li><li>最初の 5 分：<a href="https://www.onorca.dev/docs/first-session">/docs/first-session</a></li><li>Worktrees：<a href="https://www.onorca.dev/docs/model/worktrees">/docs/model/worktrees</a></li><li>Orchestration：<a href="https://www.onorca.dev/docs/cli/orchestration">/docs/cli/orchestration</a></li><li>Automations：<a href="https://www.onorca.dev/docs/cli/automations">/docs/cli/automations</a></li><li>Ways to run：<a href="https://www.onorca.dev/docs/ways-to-run">/docs/ways-to-run</a></li><li>Changelog（実質の機能一覧）：<a href="https://github.com/stablyai/orca/releases">releases</a></li></ul></div>
+      <div class="panel"><h3>インストール</h3><pre style="font-size:12px"><span class="c"># macOS</span>
+brew install --cask stablyai/orca/orca
+<span class="c"># Arch Linux</span>
+yay -S stably-orca-bin
+<span class="c"># その他：onorca.dev/download（dmg / exe / AppImage）</span></pre></div>
+      <p class="note">本資料は stablyai/orca の README と docs/site（2026-09-12 時点のクローン）、およびインストール済みの Orca 1.4.200 を元に作成。実験的機能（Orchestration、Cloud VM、Hibernation、Agent Dashboard）は仕様が変わる可能性がある。</p>
+    </div>
+  </div>
+</section>
+
+</div><!-- /stage -->
+</div><!-- /viewport -->
+
+<div class="chrome">
+  <div class="left">
+    <button id="tocBtn" type="button" aria-controls="toc" aria-expanded="false">目次</button>
+    <span class="hint">← → / Space で移動 · T で目次 · Home / End</span>
+  </div>
+  <div class="right">
+    <button id="prevBtn" type="button" aria-label="前のスライド">‹</button>
+    <span class="counter" id="counter">1 / 1</span>
+    <button id="nextBtn" type="button" aria-label="次のスライド">›</button>
+  </div>
+</div>
+
+<nav class="toc" id="toc" aria-label="目次">
+  <header><span>目次</span><button id="tocClose" type="button">閉じる</button></header>
+  <ol id="tocList"></ol>
+</nav>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var stage = document.getElementById('stage');
+  var progress = document.getElementById('progress');
+  var counter = document.getElementById('counter');
+  var toc = document.getElementById('toc');
+  var tocList = document.getElementById('tocList');
+  var tocBtn = document.getElementById('tocBtn');
+  var total = slides.length;
+  var idx = 0;
+
+  // slide numbers
+  slides.forEach(function(s, i){
+    var n = document.createElement('div');
+    n.className = 'slide-num';
+    n.textContent = (i + 1) + ' / ' + total;
+    s.appendChild(n);
+  });
+
+  // TOC
+  var lastSec = null;
+  slides.forEach(function(s, i){
+    var sec = s.getAttribute('data-sec') || '';
+    if (sec !== lastSec){
+      var h = document.createElement('li');
+      h.className = 'sec';
+      h.textContent = sec;
+      tocList.appendChild(h);
+      lastSec = sec;
+    }
+    var li = document.createElement('li');
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = '<span class="n">' + (i + 1) + '</span><span></span>';
+    b.lastChild.textContent = s.getAttribute('data-title') || ('スライド ' + (i + 1));
+    b.addEventListener('click', function(){ go(i); closeToc(); });
+    li.appendChild(b);
+    tocList.appendChild(li);
+  });
+
+  function fit(){
+    var vw = window.innerWidth - 32, vh = window.innerHeight - 18 - 56;
+    var s = Math.min(vw / 1280, vh / 720);
+    stage.style.transform = 'scale(' + s + ')';
+  }
+
+  // Shrink a slide body that still exceeds the 720px stage (dense tables), never below 78%.
+  function fitBody(slide){
+    var b = slide.querySelector('.body');
+    if (!b) return;
+    b.style.zoom = '';
+    if (b.scrollHeight <= b.clientHeight + 2) return;
+    // binary search the largest zoom that fits (text re-wraps as the box widens, so it isn't linear)
+    var lo = 0.7, hi = 1, best = lo;
+    for (var k = 0; k < 7; k++){
+      var mid = (lo + hi) / 2;
+      b.style.zoom = mid;
+      if (b.scrollHeight <= b.clientHeight + 2){ best = mid; lo = mid; } else { hi = mid; }
+    }
+    b.style.zoom = best;
+  }
+
+  function go(i){
+    idx = Math.max(0, Math.min(total - 1, i));
+    slides.forEach(function(s, k){ s.classList.toggle('active', k === idx); });
+    fitBody(slides[idx]);
+    progress.style.width = ((idx + 1) / total * 100) + '%';
+    counter.textContent = (idx + 1) + ' / ' + total;
+    var btns = tocList.querySelectorAll('li:not(.sec) button');
+    btns.forEach(function(b, k){ b.classList.toggle('now', k === idx); });
+    if (location.hash !== '#' + (idx + 1)) history.replaceState(null, '', '#' + (idx + 1));
+  }
+  function openToc(){ toc.classList.add('open'); tocBtn.setAttribute('aria-expanded', 'true'); }
+  function closeToc(){ toc.classList.remove('open'); tocBtn.setAttribute('aria-expanded', 'false'); }
+
+  document.getElementById('prevBtn').addEventListener('click', function(){ go(idx - 1); });
+  document.getElementById('nextBtn').addEventListener('click', function(){ go(idx + 1); });
+  tocBtn.addEventListener('click', function(){ toc.classList.contains('open') ? closeToc() : openToc(); });
+  document.getElementById('tocClose').addEventListener('click', closeToc);
+
+  document.addEventListener('keydown', function(e){
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key){
+      case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown': e.preventDefault(); go(idx + 1); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'PageUp': e.preventDefault(); go(idx - 1); break;
+      case 'Home': e.preventDefault(); go(0); break;
+      case 'End': e.preventDefault(); go(total - 1); break;
+      case 't': case 'T': toc.classList.contains('open') ? closeToc() : openToc(); break;
+      case 'Escape': closeToc(); break;
+    }
+  });
+
+  // click on stage: right 60% forward, left 40% back (ignore links/buttons)
+  stage.addEventListener('click', function(e){
+    if (e.target.closest('a, button, pre')) return;
+    var r = stage.getBoundingClientRect();
+    ((e.clientX - r.left) / r.width > 0.4) ? go(idx + 1) : go(idx - 1);
+  });
+
+  // touch swipe
+  var tx = null;
+  stage.addEventListener('touchstart', function(e){ tx = e.touches[0].clientX; }, {passive:true});
+  stage.addEventListener('touchend', function(e){
+    if (tx === null) return;
+    var dx = e.changedTouches[0].clientX - tx; tx = null;
+    if (Math.abs(dx) > 40) go(idx + (dx < 0 ? 1 : -1));
+  });
+
+  window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', function(){ var n = parseInt(location.hash.slice(1), 10); if (n) go(n - 1); });
+
+  fit();
+  var start = parseInt(location.hash.slice(1), 10);
+  go(start ? start - 1 : 0);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ fitBody(slides[idx]); });
+  window.addEventListener('beforeprint', function(){ slides.forEach(function(s){ s.classList.add('active'); fitBody(s); }); });
+  window.addEventListener('afterprint', function(){ go(idx); });
+})();
+</script>
+</body>
+</html>
