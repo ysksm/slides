@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>slides — 調査報告・解説スライド集</title>
-<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
+<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -267,6 +267,44 @@
 
   <main>
     <ul class="decks">
+
+      <li class="deck">
+        <a href="claude-code-token-usage/index.html">
+          <h2>Claude Code のトークン使用量と削減策</h2>
+          <p>
+            公式ドキュメントに基づき、トークンがどう消費されるか、コンテキストウィンドウに何が乗るか、
+            プロンプトキャッシュの仕組み・無効化条件・TTL、/usage や /context による計測、削減策を
+            各スライドに出典 URL 付きで整理。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">18 枚</span>
+            <span class="tag tag-kind">HTML</span>
+            <span class="tag tag-issue">Issue #15</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/claude-code-token-usage/README.md">README</a>
+        </p>
+      </li>
+
+      <li class="deck">
+        <a href="ai-usage-cache/index.html">
+          <h2>すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）</h2>
+          <p>
+            YouTube 動画「AIの使用枠がすぐになくなる？ChatGPTとClaudeの利用枠を節約するキャッシュの仕組みを解説してみた」の要約。
+            会話履歴の再送、プロンプトキャッシュ、キャッシュを切らさない 3 原則、ツール呼び出し回数の抑制を図解で整理。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">15 枚</span>
+            <span class="tag tag-kind">HTML</span>
+            <span class="tag tag-issue">Issue #15</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/ai-usage-cache/README.md">README</a>
+          <a href="https://www.youtube.com/watch?v=t22FELAl-BM">元動画</a>
+        </p>
+      </li>
 
       <li class="deck">
         <a href="orca/index.html">
