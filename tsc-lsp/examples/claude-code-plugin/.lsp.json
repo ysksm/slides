@@ -1,0 +1,22 @@
+{
+  "typescript": {
+    "command": "tsc",
+    "args": ["--lsp", "--stdio"],
+    "extensionToLanguage": {
+      ".ts": "typescript",
+      ".tsx": "typescriptreact",
+      ".mts": "typescript",
+      ".cts": "typescript",
+      ".js": "javascript",
+      ".jsx": "javascriptreact",
+      ".mjs": "javascript",
+      ".cjs": "javascript"
+    },
+    "initializationOptions": {
+      "disablePushDiagnostics": true
+    },
+    "restartOnCrash": true,
+    "maxRestarts": 3,
+    "diagnostics": true
+  }
+}

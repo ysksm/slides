@@ -1,0 +1,7 @@
+{
+  "name": "typescript-native-lsp",
+  "version": "1.0.0",
+  "description": "TypeScript 7 native LSP (tsc --lsp --stdio) integration for Claude Code",
+  "author": "ysksm",
+  "license": "Apache-2.0"
+}

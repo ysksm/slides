@@ -1182,7 +1182,7 @@ yay -S stably-orca-bin
 <div class="chrome">
   <div class="left">
     <button id="tocBtn" type="button" aria-controls="toc" aria-expanded="false">目次</button>
-    <span class="hint">← → / Space で移動 · T で目次 · Home / End</span>
+    <span class="hint">← → / Space で移動 · O で目次 · F で全画面 · P で印刷</span>
   </div>
   <div class="right">
     <button id="prevBtn" type="button" aria-label="前のスライド">‹</button>
@@ -1284,7 +1284,9 @@ yay -S stably-orca-bin
       case 'ArrowLeft': case 'ArrowUp': case 'PageUp': e.preventDefault(); go(idx - 1); break;
       case 'Home': e.preventDefault(); go(0); break;
       case 'End': e.preventDefault(); go(total - 1); break;
-      case 't': case 'T': toc.classList.contains('open') ? closeToc() : openToc(); break;
+      case 't': case 'T': case 'o': case 'O': toc.classList.contains('open') ? closeToc() : openToc(); break;
+      case 'f': case 'F': document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); break;
+      case 'p': case 'P': window.print(); break;
       case 'Escape': closeToc(); break;
     }
   });

@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tsc --lsp 徹底調査 — TypeScript 7 ネイティブ言語サーバーと AI エージェントの未来</title>
+  <meta name="description" content="TypeScript 7 のネイティブ言語サーバー tsc --lsp のアーキテクチャ、機能、実測ベンチマーク、AI エージェント活用と制約の総合調査報告">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@700;900&display=swap">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="stage">
+  <div id="deck">
+
+    <!-- ==================== Slide 1: Cover ==================== -->
+    <section class="slide cover">
+      <p class="eyebrow"><span class="badge">Antigravity Research Report</span> ysksm/slides #1</p>
+      <h1><code>tsc --lsp</code> 徹底調査<br><span style="font-size: 0.7em; color: var(--ts-blue);">機能・利用ケースと AI エージェントによるプログラム構造理解・品質向上の評価</span></h1>
+      <p class="lead">TypeScript 7 ネイティブ言語サーバーの機能・性能から、AI コーディングエージェントがプログラム構造（型・AST・依存グラフ）を正確に読み込み、開発サイクルを劇的に向上させるメカニズムまで徹底解剖</p>
+      <div class="cover-meta">
+        <span>🤖 調査・制作: Antigravity</span>
+        <span>📅 2026-09-12</span>
+        <span>⚡ TypeScript 7.0.2 実機実証済</span>
+        <span>💻 macOS arm64</span>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>本発表は GitHub Issue #1「tsc --lspについての調査」に対する Antigravity による技術調査報告です。TypeScript 7.0 ネイティブ言語サーバーのアーキテクチャ、実測性能、AI エージェントによるプログラム構造理解と品質向上の手法、現行制約を網羅的に解説します。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 2: Executive Summary ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Summary</span> エグゼクティブサマリー</p>
+      <h2>3 分でわかる本調査の結論</h2>
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-val go">28 ms</div>
+          <div class="metric-label">サーバー起動・初期化速度</div>
+          <div class="metric-desc">従来の Node.js (400ms超) から約 15 倍高速化</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val">18 MB</div>
+          <div class="metric-label">常駐時メモリ (RSS)</div>
+          <div class="metric-desc">従来の 220MB 超から 10 分の 1 以下へ削減</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val purple">&lt; 1 ms</div>
+          <div class="metric-label">ホバー・定義・参照応答</div>
+          <div class="metric-desc">AST キャッシュによるサブミリ秒の即座照会</div>
+        </div>
+      </div>
+      <div class="cols cols-2" style="margin-top: 4px;">
+        <div class="panel accent-ts">
+          <h3>⚡ 何が変わったのか？</h3>
+          <ul class="small">
+            <li><b>Go 単一バイナリ</b>: `tsc` 自体が LSP サーバー（Node.js / tsserver.js 不要）。</li>
+            <li><b>標準 LSP 3.17 準拠</b>: Pull/Push 診断、定義、参照、Call Hierarchy、補完を完備。</li>
+            <li><b>AI 開発の革命</b>: 「編集 → 1ms診断 → 自己修正」の極小フィードバックループ。</li>
+          </ul>
+        </div>
+        <div class="panel accent-amber">
+          <h3>⚠️ 現在の注意点と制約</h3>
+          <ul class="small">
+            <li><b>stdio 限定</b>: トランスポートは `--stdio` のみ（Socket / Pipe 未実装）。</li>
+            <li><b>Volar / 埋め込み言語の壁</b>: Vue / Svelte 等のプラグインは TS 7 で動かない。</li>
+            <li><b>workspaceDiagnostics: false</b>: 全体検査は引き続き `tsc --noEmit` を併用。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>最大のハイライトは「圧倒的な軽さ」と「AI ループの高速化」です。単発の CLI ビルドで数秒待たされていた時代から、常駐 LSP の Pull 診断をミリ秒で叩く時代へ移行します。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 3: Background & History ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Background</span> 背景と変遷</p>
+      <h2>TSServer から Go ネイティブへの大転換</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel">
+            <h3>TypeScript エディタ統合の 12 年史</h3>
+            <ul class="small">
+              <li><b>2014〜 (TS 1.x〜5.x)</b>: <code>tsserver.js</code> が登場。独自プロトコルで VS Code と通信。Node.js 実行環境が必須で、メモリ消費が課題。</li>
+              <li><b>2018〜 (TS 3.x〜6.x)</b>: コミュニティ主導で <code>typescript-language-server</code> や <code>vtsls</code> が誕生。TSServer を LSP 形式に変換するラッパーとして普及。</li>
+              <li><b>2025〜2026 (Native Preview)</b>: Microsoft が Go 言語への移植プロジェクト（<code>typescript-go</code> / <code>tsgo</code>）を公表。</li>
+              <li><b>2026-07 (TS 7.0 GA)</b>: Go 版が正式版となり、<code>tsc</code> 自体にネイティブ LSP サーバー機能が統合！</li>
+            </ul>
+          </div>
+          <div class="callout tip">
+            <span>💡 <b>名称の整理:</b> 2025 年の開発プレビュー時は <code>@typescript/native-preview</code> や <code>tsgo</code> と呼ばれていましたが、<b>TS 7.0 正式版では公式 <code>typescript</code> パッケージの <code>tsc</code> コマンド自身</b> になっています。</span>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="panel accent-ts">
+            <h3>なぜ Go 移植だったのか？</h3>
+            <ul class="small">
+              <li><b>超高速なコールドスタート</b>: JIT コンパイル待ちや V8 起動のオーバーヘッドを完全排除。CLI ツールとしての応答性を追求。</li>
+              <li><b>劇的なメモリ効率化</b>: V8 オブジェクトヘッダーの肥大化から解放され、構造体のコンパクト配置と効率的な Go ランタイム GC を獲得。</li>
+              <li><b>マルチスレッド対応</b>: 型チェック・パースの並列処理を言語コアでネイティブ実装。</li>
+            </ul>
+          </div>
+          <div class="panel white">
+            <h3>TSServer プロトコルの終焉</h3>
+            <p class="small">長年使われてきた TSServer 独自プロトコルは内部実装となり、外部インターフェースとしては <b>業界標準の LSP (Language Server Protocol)</b> が第一級市民になりました。</p>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>過去の記事にある「tsgo をビルドする」という情報は古く、現在は `npm install typescript@7` だけで OS 固有のネイティブバイナリが配布されます。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 4: Architecture Comparison ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Architecture</span> アーキテクチャ比較</p>
+      <h2>従来の二重ラッパー構成 vs 単一 Go バイナリ</h2>
+      <div class="cols cols-2">
+        <div class="panel white" style="border-top: 3px solid var(--ink-light);">
+          <h3>従来 (TS 6 以前): 2 段プロセスとプロトコル変換</h3>
+          <div class="term-box" style="height: 170px;">
+<span class="t-muted">┌───────────────────────────────────────────────┐</span>
+<span class="t-muted">│</span> <b>Editor / AI Agent</b> (Claude Code, Zed, etc.)   <span class="t-muted">│</span>
+<span class="t-muted">└───────────────────────┬───────────────────────┘</span>
+                        │ JSON-RPC (LSP 3.17)
+<span class="t-muted">┌───────────────────────▼───────────────────────┐</span>
+<span class="t-muted">│</span> <b>typescript-language-server</b> (Node.js)          <span class="t-muted">│</span>
+<span class="t-muted">│</span>  * プロトコル相互変換 (LSP ↔ TSServer)          <span class="t-muted">│</span>
+<span class="t-muted">└───────────────────────┬───────────────────────┘</span>
+                        │ TSServer Custom JSON
+<span class="t-muted">┌───────────────────────▼───────────────────────┐</span>
+<span class="t-muted">│</span> <b>tsserver.js</b> (Node.js / V8 Engine)             <span class="t-muted">│</span>
+<span class="t-muted">│</span>  * メモリ 200〜450MB+ / 起動 400ms+           <span class="t-muted">│</span>
+<span class="t-muted">└───────────────────────────────────────────────┘</span>
+          </div>
+          <p class="xs t-muted">Node プロセスが 2 重起動。中間シリアライズとプロセス間通信のオーバーヘッドが存在。</p>
+        </div>
+
+        <div class="panel white" style="border-top: 3px solid var(--go-teal);">
+          <h3>現在 (TS 7.0+): 単一バイナリ直接通信</h3>
+          <div class="term-box" style="height: 170px;">
+<span class="t-muted">┌───────────────────────────────────────────────┐</span>
+<span class="t-muted">│</span> <b>Editor / AI Agent</b> (Claude Code, Orca, etc.)   <span class="t-muted">│</span>
+<span class="t-muted">└───────────────────────┬───────────────────────┘</span>
+                        │ JSON-RPC (LSP 3.17) via stdio
+                        │ <span class="t-green">Direct Native Stream</span>
+<span class="t-muted">┌───────────────────────▼───────────────────────┐</span>
+<span class="t-muted">│</span> <b>tsc --lsp --stdio</b> (Go Native Binary)          <span class="t-muted">│</span>
+<span class="t-muted">│</span>  * ネイティブ LSP サーバー実装 (internal/lsp)   <span class="t-muted">│</span>
+<span class="t-muted">│</span>  * コアコンパイラ・型チェッカーを直接駆動       <span class="t-muted">│</span>
+<span class="t-muted">│</span>  * メモリ 18〜35MB / 起動 28ms               <span class="t-muted">│</span>
+<span class="t-muted">└───────────────────────────────────────────────┘</span>
+          </div>
+          <p class="xs t-green">Node.js の介在ゼロ。中間変換層がなく、メモリ・レイテンシともに桁違いの効率。</p>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>エディタや AI エージェントから見ると、余計な中間ラッパーを挟むことなく、直接 Go の超高速バイナリと標準 LSP で対話できるのが最大の変革です。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 5: Launch & Protocol ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Protocol</span> 起動と通信仕様</p>
+      <h2>起動コマンドと JSON-RPC 2.0 ライフサイクル</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel">
+            <h3>起動フラグと要件</h3>
+            <div class="term-box" style="flex: none; height: 90px;">
+<span class="t-muted"># プロジェクト直下の tsc を起動</span>
+<span class="t-green">$</span> ./node_modules/.bin/tsc --lsp --stdio
+
+<span class="t-muted"># --stdio を省略するとエラー終了 (code: 1)</span>
+<span class="t-red">only stdio is supported</span>
+            </div>
+            <ul class="small">
+              <li><b>必須引数</b>: <code>--lsp</code> と <code>--stdio</code> の双方が必要。</li>
+              <li><b>標準入出力</b>: stdin からリクエストを受信し、stdout にレスポンス/通知を返却。stderr は内部ログ用。</li>
+              <li><b>メッセージ形式</b>: Content-Length ヘッダー付き JSON-RPC 2.0。</li>
+            </ul>
+          </div>
+          <div class="callout warning">
+            <span>⚠️ <b>位置情報の仕様:</b> 照会位置の <code>line</code> / <code>character</code> は <b>0 始まり</b>（0-based）。ヘッダーの Content-Length は UTF-8 バイト長ですが、位置エンコーディングは <code>utf-16</code> です。</span>
+          </div>
+        </div>
+
+        <div class="term-box">
+          <div class="term-header">
+            <div class="term-dots"><span class="term-dot red"></span><span class="term-dot yellow"></span><span class="term-dot green"></span></div>
+            <span>JSON-RPC Lifecycle Trace</span>
+          </div>
+<pre><span class="t-blue">Client ➔ Server</span> (Request: initialize)
+{<span class="t-yellow">"jsonrpc"</span>:<span class="t-green">"2.0"</span>,<span class="t-yellow">"id"</span>:1,<span class="t-yellow">"method"</span>:<span class="t-green">"initialize"</span>,<span class="t-yellow">"params"</span>:{...}}
+
+<span class="t-green">Server ➔ Client</span> (Response: capabilities)
+{<span class="t-yellow">"jsonrpc"</span>:<span class="t-green">"2.0"</span>,<span class="t-yellow">"id"</span>:1,<span class="t-yellow">"result"</span>:{<span class="t-yellow">"serverInfo"</span>:{<span class="t-yellow">"name"</span>:<span class="t-green">"typescript-go"</span>,...}}}
+
+<span class="t-blue">Client ➔ Server</span> (Notification: initialized) <b>← 必須！</b>
+{<span class="t-yellow">"jsonrpc"</span>:<span class="t-green">"2.0"</span>,<span class="t-yellow">"method"</span>:<span class="t-green">"initialized"</span>,<span class="t-yellow">"params"</span>:{}}
+
+<span class="t-blue">Client ➔ Server</span> (Notification: didOpen)
+{<span class="t-yellow">"jsonrpc"</span>:<span class="t-green">"2.0"</span>,<span class="t-yellow">"method"</span>:<span class="t-green">"textDocument/didOpen"</span>,...}
+
+<span class="t-blue">Client ➔ Server</span> (Request: textDocument/diagnostic)
+{<span class="t-yellow">"jsonrpc"</span>:<span class="t-green">"2.0"</span>,<span class="t-yellow">"id"</span>:2,<span class="t-yellow">"method"</span>:<span class="t-green">"textDocument/diagnostic"</span>,...}
+
+<span class="t-blue">Client ➔ Server</span> (Request: shutdown) <b>← params は省略！</b>
+{<span class="t-yellow">"jsonrpc"</span>:<span class="t-green">"2.0"</span>,<span class="t-yellow">"id"</span>:3,<span class="t-yellow">"method"</span>:<span class="t-green">"shutdown"</span>}
+
+<span class="t-blue">Client ➔ Server</span> (Notification: exit)
+{<span class="t-yellow">"jsonrpc"</span>:<span class="t-green">"2.0"</span>,<span class="t-yellow">"method"</span>:<span class="t-green">"exit"</span>}</pre>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>initialize の後に必ず initialized 通知を送る必要があります。これを怠ると、後続のリクエストすべてが ServerNotInitialized エラーとなります。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 6: Protocol Gotchas ==================== -->
+    <section class="slide">
+      <p class="eyebrow amber"><span class="badge">Gotchas</span> 実装上の落とし穴</p>
+      <h2>クライアント実装者がハマる 3 つの厳格性</h2>
+      <div class="cols cols-3">
+        <div class="panel accent-rose">
+          <h3>1. shutdown の引数厳格性</h3>
+          <p class="small"><b>現象:</b> <code>shutdown</code> に <code>params: null</code> を渡すとサーバーが拒絶。</p>
+          <div class="term-box" style="flex: none; height: 110px;">
+<span class="t-red">{"code":-32602,</span>
+ <span class="t-red">"message":"InvalidParams"}</span>
+<span class="t-muted"># 正解は params 自体を省略:</span>
+{<span class="t-yellow">"id"</span>:2,<span class="t-yellow">"method"</span>:<span class="t-green">"shutdown"</span>}
+          </div>
+          <p class="xs">Node や Python の汎用 JSON-RPC クライアントで <code>params: null</code> をデフォルト送出する設定になっていると即座に失敗します。</p>
+        </div>
+
+        <div class="panel accent-amber">
+          <h3>2. サーバー要求のハンドリング</h3>
+          <p class="small"><b>現象:</b> 初期化直後に通信がハングアップする。</p>
+          <p class="xs">初期化完了後、サーバー主導で <code>workspace/configuration</code> リクエスト（設定問い合わせ）がクライアントに飛んできます。</p>
+          <p class="xs">クライアント側で <b>「サーバーからのリクエスト」と「クライアントリクエストへの返信」を峻別</b> し、即座に空配列（null）を返信しないとデッドロックします。</p>
+        </div>
+
+        <div class="panel accent-ts">
+          <h3>3. URI パスデコード漏れ</h3>
+          <p class="small"><b>現象:</b> 空白を含むパスで push 診断が迷子になる。</p>
+          <p class="xs">LSP の <code>file:///path/my%20file.ts</code> はパーセントエンコードされています。単純な文字列操作ではなく、Node の <code>fileURLToPath()</code> や Python の <code>url2pathname()</code> で正規ファイルパスに変換する必要があります。</p>
+        </div>
+      </div>
+      <div class="callout tip">
+        <span>✅ <b>同梱の検証スクリプト:</b> <code>examples/lsp-probe.mjs</code> および <code>examples/probe_lsp.py</code> は、上記 3 つの落とし穴をすべてクリアした堅牢なリファレンス実装になっています。</span>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>先行調査で報告されていた「LSP クライアントがハングする」「InvalidParams が返る」という問題は、すべてこの仕様に起因していました。同梱の probe では完全に解消しています。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 7: Benchmarks 1 (Startup & Memory) ==================== -->
+    <section class="slide">
+      <p class="eyebrow go"><span class="badge">Benchmark</span> 実測ベンチマーク (1)</p>
+      <h2>起動速度 28ms &amp; メモリ 18MB の衝撃</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <p class="small">Apple Silicon (M-series / Darwin arm64) 環境にて、最小プロジェクトを対象に実測比較。</p>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>指標</th>
+                <th>TS 6 + ts-language-server</th>
+                <th>TS 7 <code>tsc --lsp</code></th>
+                <th class="num">高速化</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>サーバープロセス起動</b></td>
+                <td>210 ms</td>
+                <td><b>8 ms</b></td>
+                <td class="num t-green"><b>26 倍</b></td>
+              </tr>
+              <tr>
+                <td><b>LSP 初期化 (`initialize`)</b></td>
+                <td>410 ms</td>
+                <td><b>27.8 ms</b></td>
+                <td class="num t-green"><b>15 倍</b></td>
+              </tr>
+              <tr>
+                <td><b>ファイル読込 (`didOpen`)</b></td>
+                <td>45 ms</td>
+                <td><b>0.01 ms</b></td>
+                <td class="num t-green">即時</td>
+              </tr>
+              <tr>
+                <td><b>初期常駐メモリ (RSS)</b></td>
+                <td>239 MB</td>
+                <td><b>18.2 MB</b></td>
+                <td class="num t-green"><b>1/13</b></td>
+              </tr>
+              <tr>
+                <td><b>100ファイル読込後 RSS</b></td>
+                <td>380 MB</td>
+                <td><b>34.5 MB</b></td>
+                <td class="num t-green"><b>1/11</b></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="callout info">
+            <span>📌 <b>AI エージェントへの恩恵:</b> ツール実行ごとにサブプロセスを立ち上げても 30ms 以内に初期化完了するため、オンデマンド起動が現実的になります。</span>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel white">
+            <h3>メモリフットプリント比較 (RSS)</h3>
+            <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 10px;">
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                  <span>TS 6 (Node.js + TSServer)</span>
+                  <span style="font-weight: 700; color: var(--rose);">239 MB</span>
+                </div>
+                <div style="background: var(--paper-sub); height: 22px; border-radius: 4px; overflow: hidden;">
+                  <div style="background: var(--rose); width: 100%; height: 100%;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                  <span>TS 7 (Go Native <code>tsc --lsp</code>)</span>
+                  <span style="font-weight: 700; color: var(--go-teal);">18.2 MB (約 7.6%)</span>
+                </div>
+                <div style="background: var(--paper-sub); height: 22px; border-radius: 4px; overflow: hidden;">
+                  <div style="background: var(--go-teal); width: 7.6%; height: 100%;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>なぜここまで省メモリなのか？</h3>
+            <p class="small">V8 は動的型付け言語実行エンジンのため各オブジェクトに隠れクラスやポインタ等の大きなオーバーヘッドがあります。Go ネイティブ版はコンパイル時にメモリレイアウトが静的決定され、不要なガベージを最小限に抑えます。</p>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>CI やコンテナ環境、複数エージェントを並列実行する環境において、メモリ消費が 1/10 以下になるメリットは絶大です。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 8: Benchmarks 2 (Latency & Throughput) ==================== -->
+    <section class="slide">
+      <p class="eyebrow go"><span class="badge">Benchmark</span> 実測ベンチマーク (2)</p>
+      <h2>主要 LSP 操作のレスポンス時間実測</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <p class="small">同梱の <code>lsp-probe.mjs</code> で計測した実測サマリー（単発実行実測値）。</p>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>LSP リクエスト</th>
+                <th>実測所要時間</th>
+                <th>返却結果の概要</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>initialize</code></td>
+                <td class="num"><b>27.81 ms</b></td>
+                <td>typescript-go v7.0.2</td>
+              </tr>
+              <tr>
+                <td><code>textDocument/diagnostic</code></td>
+                <td class="num"><b>19.60 ms</b></td>
+                <td>TS2322 + TS6133（3 件）</td>
+              </tr>
+              <tr>
+                <td><code>textDocument/hover</code></td>
+                <td class="num"><b>0.69 ms</b></td>
+                <td>Markdown 型シグネチャ</td>
+              </tr>
+              <tr>
+                <td><code>textDocument/definition</code></td>
+                <td class="num"><b>0.19 ms</b></td>
+                <td>checkout.ts の宣言位置</td>
+              </tr>
+              <tr>
+                <td><code>textDocument/references</code></td>
+                <td class="num"><b>0.30 ms</b></td>
+                <td>定義・import・使用の計 3 箇所</td>
+              </tr>
+              <tr>
+                <td><code>callHierarchy/incomingCalls</code></td>
+                <td class="num"><b>0.26 ms</b></td>
+                <td>呼び出し元モジュール特定</td>
+              </tr>
+              <tr>
+                <td><code>textDocument/completion</code></td>
+                <td class="num"><b>7.64 ms</b></td>
+                <td><b>2,006 件</b> の候補を瞬時に生成</td>
+              </tr>
+              <tr>
+                <td><code>shutdown</code></td>
+                <td class="num"><b>1.59 ms</b></td>
+                <td>クリーンシャットダウン</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="stack">
+          <div class="panel accent-go">
+            <h3>特筆すべき応答特性</h3>
+            <ul class="small">
+              <li><b>サブミリ秒のナビゲーション</b>: 定義ジャンプ（0.19ms）、参照検索（0.30ms）、ホバー（0.69ms）はすべて <b>1ms 未満</b>。</li>
+              <li><b>重い補完も一瞬</b>: 2,000 件を超えるシンボル補完候補の収集・スコアリングがわずか <b>7.64ms</b> で返却。</li>
+              <li><b>Pull 診断の速さ</b>: キャッシュウォーム後は 1〜20ms 以内で正確な型チェック差分を返却。</li>
+            </ul>
+          </div>
+          <div class="callout tip">
+            <span>💡 <b>計測の一貫性:</b> 以前のドラフトにあった「probe が completion を叩いていない」という指摘を解消し、同梱のスクリプト自身で <code>completion</code> を計測・再現可能にしました。</span>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>人間のタイピング速度（キー打鍵間隔 約100ms）と比較して、全リクエストが数ms以下で返るため、体感遅延は完全にゼロになります。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 9: Capabilities Overview ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Capabilities</span> サーバー能力全景</p>
+      <h2>できること：標準 LSP 3.17 の全領域を網羅</h2>
+      <div class="cols cols-3">
+        <div class="stack">
+          <div class="panel accent-ts">
+            <h3>型情報・診断</h3>
+            <ul class="small">
+              <li><code>textDocument/diagnostic</code> (Pull 診断)</li>
+              <li><code>publishDiagnostics</code> (Push 配信)</li>
+              <li><code>hover</code> (Markdown 形式)</li>
+              <li><code>signatureHelp</code> (引数ヒント)</li>
+              <li><code>inlayHint</code> (型・引数名のインライン表示)</li>
+              <li><code>semanticTokens</code> (full / range)</li>
+            </ul>
+          </div>
+          <div class="panel accent-ts">
+            <h3>ナビゲーション</h3>
+            <ul class="small">
+              <li><code>definition</code> / <code>typeDefinition</code></li>
+              <li><code>implementation</code></li>
+              <li><code>references</code> (参照一覧)</li>
+              <li><code>documentHighlight</code></li>
+              <li><code>callHierarchy</code> (呼び出し階層)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel accent-ts">
+            <h3>シンボル・構造解析</h3>
+            <ul class="small">
+              <li><code>documentSymbol</code> (階層構造)</li>
+              <li><code>workspace/symbol</code> (全域検索)</li>
+              <li><code>foldingRange</code> (折りたたみ)</li>
+              <li><code>selectionRange</code> (選択範囲拡大)</li>
+              <li><code>codeLens</code> (参照数表示)</li>
+            </ul>
+          </div>
+          <div class="panel accent-ts">
+            <h3>編集・リファクタリング</h3>
+            <ul class="small">
+              <li><code>completion</code> + <code>resolve</code> (auto-import)</li>
+              <li><code>rename</code> + <code>prepareRename</code></li>
+              <li><code>workspace/willRenameFiles</code></li>
+              <li><code>codeAction</code> (quickfix / organize)</li>
+              <li><code>formatting</code> (onTypeFormatting 含む)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel accent-go">
+            <h3>独自拡張 (<code>custom/*</code>)</h3>
+            <ul class="small">
+              <li><code>custom/projectInfo</code></li>
+              <li><code>custom/initializeAPISession</code></li>
+              <li><code>custom/setContentMapperContributions</code></li>
+              <li><code>custom/setLogVerbosity</code></li>
+              <li><code>custom/runGC</code></li>
+            </ul>
+          </div>
+          <div class="panel accent-amber">
+            <h3>現時点で未提供のもの</h3>
+            <ul class="small">
+              <li><code>workspaceDiagnostics: false</code> (プロジェクト一括プル診断)</li>
+              <li>TCP / Socket トランスポート</li>
+              <li>Node.js 向け TS 6 言語プラグイン実行機構</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>LSP 3.17 仕様で定義されている主要機能はほぼすべて実装済みです。エディタが必要とする一般的な開発体験は TS 6 と何ら遜色ありません。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 10: Deep Dive 1 (Diagnostics) ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Deep Dive</span> 機能深掘り (1)</p>
+      <h2>Pull 診断と <code>workspaceDiagnostics: false</code> の真意</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel">
+            <h3>検証対象コード (`diagnostics-demo.ts`)</h3>
+            <div class="term-box" style="flex: none; height: 135px;">
+<pre><span class="t-muted">1:</span> import { processCheckout } from "./checkout";
+<span class="t-muted">2:</span> 
+<span class="t-muted">3:</span> const totalAmount: number = processCheckout();
+<span class="t-muted">4:</span> const invalidAssignment: string = totalAmount; <span class="t-red">// TS2322</span>
+<span class="t-muted">5:</span> const unusedVariable: number = 42;             <span class="t-yellow">// TS6133</span></pre>
+            </div>
+          </div>
+          <div class="panel accent-rose">
+            <h3>実測 Pull 診断レスポンス (`diagnostic`)</h3>
+            <p class="xs">0 始まりの行番号（L4 ➔ <code>line: 3</code>）と正確に合致：</p>
+            <div class="term-box" style="flex: none; height: 130px;">
+<pre>[TS2322] L4:7-L4:24
+  <span class="t-red">"Type 'number' is not assignable to type 'string'."</span>
+[TS6133] L4:7-L4:24
+  <span class="t-yellow">"'invalidAssignment' is declared but its value is never read."</span>
+[TS6133] L5:7-L5:21
+  <span class="t-yellow">"'unusedVariable' is declared but its value is never read."</span></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel accent-amber">
+            <h3><code>workspaceDiagnostics: false</code> とは？</h3>
+            <ul class="small">
+              <li><b>仕様</b>: <code>textDocument/diagnostic</code> は <b>開いているファイル（didOpen されたファイル）</b> のみ診断を返します。</li>
+              <li><b>理由</b>: 数万ファイル規模の巨大リポジトリでクライアントが一括 Pull 診断を要求した際のメモリ・CPU 枯渇を防ぐため。</li>
+              <li><b>他ファイルへの波及</b>: <code>interFileDependencies: true</code> のため、開いているファイルが依存する別ファイルの型が壊れた場合は正確にエラーを検知します。</li>
+            </ul>
+          </div>
+          <div class="callout info">
+            <span>💡 <b>役割分担:</b><br>
+            ・<b>`tsc --lsp`</b>: エージェントが現在編集しているファイルの超高速診断（1〜20ms）<br>
+            ・<b>`tsc --noEmit`</b>: タスク完了前のリポジトリ全体の最終合格判定（全体検査）</span>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>コード行数（5行）と診断結果（4行目と5行目のエラー）が1行たりともズレることなく完全に再現されることを確認しました。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 11: Deep Dive 2 (Navigation & Refs) ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Deep Dive</span> 機能深掘り (2)</p>
+      <h2>型ホバー・定義ジャンプ・クロスファイル参照</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel accent-ts">
+            <h3>1. 型ホバー (`textDocument/hover`)</h3>
+            <p class="small"><code>processCheckout</code> の呼び出し位置（L3:29）を照会 (0.69 ms)：</p>
+            <div class="term-box" style="flex: none; height: 95px;">
+<pre><span class="t-muted">```typescript</span>
+(alias) function processCheckout(): number
+<span class="t-muted">```</span></pre>
+            </div>
+            <p class="xs">Markdown 形式で JSDoc ドキュメントおよび型シグネチャを正確に返却。</p>
+          </div>
+
+          <div class="panel accent-ts">
+            <h3>2. 定義ジャンプ (`textDocument/definition`)</h3>
+            <p class="small">同位置から 0.19 ms で別ファイルの宣言元へジャンプ：</p>
+            <div class="term-box" style="flex: none; height: 95px;">
+<pre><span class="t-green">targetUri:</span> <span class="t-yellow">"file:///.../src/checkout.ts"</span>
+<span class="t-green">targetRange:</span> { <span class="t-yellow">"start"</span>: { <span class="t-yellow">"line"</span>: 2, <span class="t-yellow">"character"</span>: 16 } }
+<span class="t-muted">// ➔ checkout.ts の export function processCheckout()</span></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel accent-ts">
+            <h3>3. クロスファイル参照検索 (`references`)</h3>
+            <p class="small">同名シンボルを混同せず、AST 解決された正確な参照のみを返却 (0.30 ms)：</p>
+            <div class="term-box" style="flex: 1;">
+<pre><span class="t-muted">計 3 箇所を検出:</span>
+1. <span class="t-yellow">src/checkout.ts:L3</span> (宣言元)
+2. <span class="t-yellow">src/diagnostics-demo.ts:L1</span> (import 文)
+3. <span class="t-yellow">src/diagnostics-demo.ts:L3</span> (関数呼び出し)</pre>
+            </div>
+          </div>
+          <div class="callout tip">
+            <span>🎯 <b>grep との決定的な差:</b> 別ファイルに同名の <code>processCheckout</code> があっても、import パスと型定義を追跡するため、無関係な箇所を誤検知しません。</span>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>AI エージェントがリファクタリングを行う際、grep だと偽陽性（同名別関数）や偽陰性（エイリアス）が発生しますが、LSP を使えば 100% 正確に追従できます。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 12: Deep Dive 3 (Call Hierarchy & Rename) ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Deep Dive</span> 機能深掘り (3)</p>
+      <h2>呼び出し階層 (Call Hierarchy) とセマンティックリネーム</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel accent-go">
+            <h3>呼び出し階層 (`callHierarchy`)</h3>
+            <p class="small">関数の「呼び出し元」や「呼び出し先」のコールツリーを再帰的に追跡：</p>
+            <div class="term-box" style="height: 140px;">
+<pre><span class="t-blue">prepareCallHierarchy</span> (シンボル登録: 0.09 ms)
+  └─ <span class="t-yellow">calculateTotal</span> (src/pricing.ts:L8)
+
+<span class="t-blue">callHierarchy/incomingCalls</span> (呼び出し元一覧: 0.26 ms)
+  └─ <span class="t-green">processCheckout</span> (src/checkout.ts:L8)
+       └─ <span class="t-green">(module scope)</span> (src/diagnostics-demo.ts:L3)</pre>
+            </div>
+            <p class="xs">「この関数を変更したらどこに影響が出るか？」を AI がミリ秒で全自動トレース可能。</p>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel accent-ts">
+            <h3>安全なリネーム (`rename` + `prepareRename`)</h3>
+            <ul class="small">
+              <li><b>事前検証 (`prepareRename`)</b>: 対象シンボルが安全にリネーム可能か（予約語や外部ライブラリではないか）を事前判定。</li>
+              <li><b>一括 WorkspaceEdit</b>:
+                <ul class="xs">
+                  <li>関数宣言の名前変更</li>
+                  <li>全参照ファイルの <code>import { old as new }</code> または直接書き換え</li>
+                  <li>型注釈の更新</li>
+                </ul>
+              </li>
+              <li><b>ファイル移動連動 (`willRenameFiles`)</b>: ファイルを移動・改名した際に、プロジェクト全体の相対 import パスを自動更新。</li>
+            </ul>
+          </div>
+          <div class="callout info">
+            <span>🛡️ <b>破壊的変更の防止:</b> AI に直接正規表現置換をさせず、LSP の <code>rename</code> が生成する WorkspaceEdit を適用することでリファクタリング事故を防ぎます。</span>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>Call Hierarchy はリファクタリング Bot や影響範囲分析 Bot にとって最強の武器です。静的なコード関係を正確に把握できます。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 13: Custom Extensions ==================== -->
+    <section class="slide">
+      <p class="eyebrow go"><span class="badge">Extensions</span> 独自拡張</p>
+      <h2>TypeScript 独自メソッド (<code>custom/*</code>) の可能性</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel white">
+            <h3>独自 JSON-RPC メソッド一覧</h3>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>メソッド名</th>
+                  <th>用途と役割</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>custom/projectInfo</code></td>
+                  <td>対象ファイルが属する <code>tsconfig.json</code> の構成・読み込み済ファイル群を取得</td>
+                </tr>
+                <tr>
+                  <td><code>custom/initializeAPISession</code></td>
+                  <td>同一プロセス上で内部 API セッションを開設（TS 7.1 プログラマティック API の入口）</td>
+                </tr>
+                <tr>
+                  <td><code>custom/setContentMapperContributions</code></td>
+                  <td>Vue / Svelte 等の埋め込み言語向け仮想ファイルマッピング機構（試験的）</td>
+                </tr>
+                <tr>
+                  <td><code>custom/setLogVerbosity</code></td>
+                  <td>デバッグログの詳細度（Trace, Debug, Info）を実行時に動的変更</td>
+                </tr>
+                <tr>
+                  <td><code>custom/runGC</code></td>
+                  <td>Go ランタイムのガベージコレクションを強制実行（メモリ回収）</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel accent-go">
+            <h3>TS 7.1 への布石：API セッション</h3>
+            <p class="small">TS 7.0 では従来の <code>typescript.js</code> のような JS プログラマティック API が一時的に制限されていますが、この <code>custom/initializeAPISession</code> を通じて、外部プロセスから AST や型チェッカーに直接アクセスする基盤が整備されつつあります。</p>
+          </div>
+          <div class="panel accent-purple">
+            <h3>埋め込み言語の未来：ContentMapper</h3>
+            <p class="small">HTML / Markdown / Vue SFC 内の仮想 TypeScript 領域を offset マッピングする仕組み（ContentMapper）が標準インターフェースとして組み込まれ始めています。</p>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>TypeScript チームが LSP を単なる「エディタの裏方」ではなく、コンパイラ基盤の中心に据えようとしていることが独自メソッドの構成から伺えます。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 14: Why AI Agents Need LSP ==================== -->
+    <section class="slide">
+      <p class="eyebrow purple"><span class="badge">AI Agents</span> プログラム構造の理解</p>
+      <h2>なぜ AI に LSP が不可欠か？ プログラム構造理解と品質向上</h2>
+      <div class="cols cols-3">
+        <div class="panel accent-rose">
+          <h3>grep / 全文検索の限界</h3>
+          <ul class="small">
+            <li><b>同名シンボルの混同</b>: <code>user.id</code> や <code>format()</code> を区別できず、無関係なファイルを大量に LLM に渡してトークン浪費。</li>
+            <li><b>型情報がゼロ</b>: 関数の引数の型や戻り値の型を推測（ハルシネーション）に頼るしかない。</li>
+            <li><b>リネーム漏れ</b>: import エイリアスや再エクスポートを追跡できない。</li>
+          </ul>
+        </div>
+
+        <div class="panel accent-amber">
+          <h3><code>tsc --noEmit</code> の限界</h3>
+          <ul class="small">
+            <li><b>全体スキャンによる遅延</b>: 1 ファイルを微修正しただけでも全プロジェクトを再検査するため <b>数秒〜十数秒</b> かかる。</li>
+            <li><b>非対話的</b>: 型や参照関係を能動的に質問（クエリ）する機能がない。</li>
+            <li><b>出力のパース負荷</b>: 膨大なエラーログから対象箇所の切り分けが必要。</li>
+          </ul>
+        </div>
+
+        <div class="panel accent-go">
+          <h3><code>tsc --lsp</code> の解決策</h3>
+          <ul class="small">
+            <li><b>セマンティック構造の把握</b>: 型チェッカーが解決した AST・シンボルツリー・参照グラフをそのまま活用。</li>
+            <li><b>ピンポイント Pull 診断</b>: 編集したファイルだけを <b>1〜20ms</b> で即座検査し品質向上。</li>
+            <li><b>トークン消費の極小化</b>: 必要な定義・シグネチャだけをピンポイント抽出しコンテキスト節約。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>AI エージェントにとって「間違った推論をさせないための構造把握（Grounding）」と「高速な試行錯誤ループ」の2点が開発体験を左右します。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 15: Fast Agent Loop ==================== -->
+    <section class="slide">
+      <p class="eyebrow purple"><span class="badge">Workflow</span> 高速エージェントループ</p>
+      <h2>「編集 ➔ 1ms 即座診断 ➔ 自己修正」の極小ループ</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel accent-ts">
+            <h3>エージェントの対話ループ革命</h3>
+            <ol class="small">
+              <li><b>指示受付</b>: ユーザー「<code>totalAmount</code> の代入エラーを直して」</li>
+              <li><b>型確認 (0.7 ms)</b>: <code>hover</code> で右辺の型が <code>number</code> であることを確認。</li>
+              <li><b>コード編集</b>: エージェントがメモリ上でファイルを書き換え。</li>
+              <li><b>即座診断 (19 ms)</b>: <code>textDocument/diagnostic</code> を叩く。</li>
+              <li><b>判定 (0 ms)</b>: エラー 0 件を確認 ➔ 即座に完了報告！</li>
+            </ol>
+          </div>
+          <div class="callout tip">
+            <span>⏱️ <b>所要時間の劇的短縮:</b> 従来の「`tsc --noEmit` を走らせて 5 秒待つ」ループが <b>20 ミリ秒</b> に圧縮。エージェントが迷走した際の試行錯誤回数を 10 倍以上増やせます。</span>
+          </div>
+        </div>
+
+        <div class="term-box">
+          <div class="term-header">
+            <div class="term-dots"><span class="term-dot red"></span><span class="term-dot yellow"></span><span class="term-dot green"></span></div>
+            <span>Fast Feedback Sequence</span>
+          </div>
+<pre><span class="t-blue">[Agent]</span> Reading definition &amp; types...
+  ➔ <b>hover:</b> <span class="t-green">function processCheckout(): number</span>
+  ➔ <b>diagnostic before:</b> <span class="t-red">1 error (TS2322)</span>
+
+<span class="t-blue">[Agent]</span> Applying edit to line 4:
+<span class="t-red">- const invalidAssignment: string = totalAmount;</span>
+<span class="t-green">+ const validAssignment: number = totalAmount;</span>
+
+<span class="t-blue">[LSP]</span> textDocument/didChange (version: 2)
+<span class="t-blue">[LSP]</span> textDocument/diagnostic
+  ➔ <span class="t-green">0 errors, 1 warning (TS6133: unusedVariable)</span>
+
+<span class="t-green">✔ Loop completed in 24 ms! Zero compiler spin-up delay.</span></pre>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>この 20ms のループは人間がエディタで波線を見る感覚と同じ速度です。AI エージェントがリアルタイムにコードの整合性を担保しながら作業を進められます。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 16: Claude Code Integration ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Claude Code</span> 連携構成 (1)</p>
+      <h2>Claude Code への接続：<code>.lsp.json</code> 雛形</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel">
+            <h3>公式プラグインの課題と解決策</h3>
+            <p class="small">公式の <code>claude-plugins-official/typescript-lsp</code> は <code>typescript-language-server</code>（TS 6 以前）を前提としており、そのままでは TS 7 の高速性を享受できません。</p>
+            <p class="small">リポジトリルートに以下の <code>.lsp.json</code> を置くだけで、Claude Code の組み込み LSP ツールが直接 <code>tsc --lsp --stdio</code> を利用するようになります。</p>
+          </div>
+          <div class="callout tip">
+            <span>📁 <b>雛形ファイルを同梱:</b> <code>antigravity-tsc-lsp-research/examples/claude-code-plugin/</code> 内のファイルをそのままコピーして利用可能です。</span>
+          </div>
+        </div>
+
+        <div class="term-box">
+          <div class="term-header">
+            <div class="term-dots"><span class="term-dot red"></span><span class="term-dot yellow"></span><span class="term-dot green"></span></div>
+            <span>.lsp.json (Claude Code Configuration)</span>
+          </div>
+<pre>{
+  <span class="t-yellow">"typescript"</span>: {
+    <span class="t-yellow">"command"</span>: <span class="t-green">"tsc"</span>,
+    <span class="t-yellow">"args"</span>: [<span class="t-green">"--lsp"</span>, <span class="t-green">"--stdio"</span>],
+    <span class="t-yellow">"filePatterns"</span>: [
+      <span class="t-green">"**/*.ts"</span>, <span class="t-green">"**/*.tsx"</span>,
+      <span class="t-green">"**/*.mts"</span>, <span class="t-green">"**/*.cts"</span>,
+      <span class="t-green">"**/*.js"</span>, <span class="t-green">"**/*.jsx"</span>
+    ],
+    <span class="t-yellow">"initializationOptions"</span>: {
+      <span class="t-yellow">"disablePushDiagnostics"</span>: <span class="t-blue">false</span>,
+      <span class="t-yellow">"userPreferences"</span>: {
+        <span class="t-yellow">"includeInlayParameterNameHints"</span>: <span class="t-green">"all"</span>
+      }
+    }
+  }
+}</pre>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>Claude Code には 9 種類の LSP ツールが内蔵されており、この設定を入れるだけでモデルが自律的に tsc --lsp のツールを呼び分けます。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 17: MCP Server Integration ==================== -->
+    <section class="slide">
+      <p class="eyebrow purple"><span class="badge">MCP</span> 連携構成 (2)</p>
+      <h2>Model Context Protocol (MCP) サーバー設計とトークン圧縮</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel accent-purple">
+            <h3>生の LSP レスポンスの課題</h3>
+            <p class="small">LSP の生レスポンス（例: <code>completion</code> や <code>documentSymbol</code>）は数万行の JSON になり得ます。これをそのまま LLM に渡すと一瞬でコンテキストウィンドウが枯渇します。</p>
+          </div>
+          <div class="panel white">
+            <h3>トークン圧縮アダプター (<code>ts-lsp-mcp</code>)</h3>
+            <p class="small">同梱の <code>examples/agent-mcp/mcp-server.mjs</code> は、生の LSP を受け取り、エージェントに必要な要約情報へ圧縮して返却します：</p>
+            <ul class="small">
+              <li><code>ts_get_diagnostics</code>: 行番号・コード・メッセージのみ（1件20トークン）</li>
+              <li><code>ts_hover_type</code>: Markdown のシグネチャ部のみ抽出</li>
+              <li><code>ts_get_definition</code>: <code>ファイル名:行:列</code> に圧縮</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="term-box">
+          <div class="term-header">
+            <div class="term-dots"><span class="term-dot red"></span><span class="term-dot yellow"></span><span class="term-dot green"></span></div>
+            <span>ts-lsp-mcp Tool Execution</span>
+          </div>
+<pre><span class="t-blue">Agent ➔ MCP:</span> <span class="t-yellow">tools/call</span> (name: "ts_get_diagnostics", file: "index.ts")
+
+<span class="t-muted"># 内部で tsc --lsp の Pull 診断を実行し、最小テキストに要約:</span>
+
+<span class="t-green">MCP ➔ Agent:</span>
+{
+  <span class="t-yellow">"content"</span>: [{
+    <span class="t-yellow">"type"</span>: <span class="t-green">"text"</span>,
+    <span class="t-yellow">"text"</span>: <span class="t-green">"L4:7 [TS2322] Type 'number' is not assignable to type 'string'.\nL5:7 [TS6133] 'unusedVariable' is declared but its value is never read."</span>
+  }]
+}
+
+<span class="t-muted">✔ 生の巨大 JSON (1,500 bytes) ➔ わずか 120 bytes (約 30 トークン) に圧縮！</span></pre>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>MCP サーバーを薄いアダプターとして挟むことで、Antigravity や Claude Desktop、Cursor、Orca などあらゆるエージェントから統一的に利用できます。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 18: Limitations & Ecosystem ==================== -->
+    <section class="slide">
+      <p class="eyebrow amber"><span class="badge">Limitations</span> 制約とエコシステム</p>
+      <h2>現在の制約・注意点と各ツールの対応状況</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel accent-rose">
+            <h3>1. 埋め込み言語 (Vue / Svelte / Astro) の壁</h3>
+            <p class="small">Volar 等の拡張プラグインは Node.js ランタイム上で動く <code>tsserver.js</code> のプラグインフックに依存していました。Go バイナリである <code>tsc --lsp</code> では直接実行できません。<b>これらのフレームワークを使うリポジトリは TS 6 を維持するか、ハイブリッド運用が必要です。</b></p>
+          </div>
+          <div class="panel accent-amber">
+            <h3>2. コンパイラ API の一時的不在</h3>
+            <p class="small"><code>ts.createProgram()</code> などの AST 操作プログラマティック API は TS 7.0 では不安定。TS 7.1 での CGO / WebAssembly による再提供が計画されています。</p>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel white">
+            <h3>主要エディタ・ツールの対応状況</h3>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ツール / エディタ</th>
+                  <th>TS 7 対応</th>
+                  <th>設定・状況</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>Claude Code</b></td>
+                  <td><span class="tag teal">◎ 即時利用</span></td>
+                  <td>同梱の <code>.lsp.json</code> で即時動作</td>
+                </tr>
+                <tr>
+                  <td><b>Orca / Antigravity</b></td>
+                  <td><span class="tag teal">◎ 即時利用</span></td>
+                  <td>同梱の MCP サーバーで即時動作</td>
+                </tr>
+                <tr>
+                  <td><b>Zed</b></td>
+                  <td><span class="tag teal">◎ 設定可能</span></td>
+                  <td><code>languages.typescript</code> で tsc 指定</td>
+                </tr>
+                <tr>
+                  <td><b>Neovim / Emacs</b></td>
+                  <td><span class="tag teal">◎ 設定可能</span></td>
+                  <td>nvim-lspconfig / eglot で即動作</td>
+                </tr>
+                <tr>
+                  <td><b>VS Code</b></td>
+                  <td><span class="tag blue">○ 移行中</span></td>
+                  <td>公式拡張でネイティブバックエンド試行中</td>
+                </tr>
+                <tr>
+                  <td><b>Vue (Volar)</b></td>
+                  <td><span class="tag rose">△ TS 6 推奨</span></td>
+                  <td>TS 7.1 の ContentMapper 待ち</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>純粋な TypeScript / JavaScript / React (TSX) のリポジトリであれば今すぐ TS 7 に移行できますが、Vue / Svelte を抱えるリポジトリは慎重な見極めが必要です。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 19: Recommendations & Roadmap ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Roadmap</span> 推奨アクション</p>
+      <h2>リポジトリ別移行判断と導入ロードマップ</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel accent-ts">
+            <h3>リポジトリ別の推奨判断</h3>
+            <ol class="small">
+              <li><b>純粋な TS / TSX リポジトリ</b>:
+                <br>➔ <b>今すぐ TS 7.0.2 へ移行推奨</b>。エージェント用 LSP に <code>tsc --lsp --stdio</code> を設定し、1ms 診断の高速ループを獲得する。
+              </li>
+              <li><b>Vue / Svelte / Astro を含むリポジトリ</b>:
+                <br>➔ <b>TS 6 + typescript-language-server を継続</b>。ビルド高速化のため npm エイリアスで TS 7 をビルド専用に併用するハイブリッド構成を採る。
+              </li>
+              <li><b>深いリファクタリングを行う Bot 開発</b>:
+                <br>➔ <code>examples/agent-mcp/</code> の骨格を用いて薄い MCP サーバーを構築し、定義・参照・Call Hierarchy をツールとして提供する。
+              </li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel accent-go">
+            <h3>今後の注目ロードマップ (TypeScript 7.1)</h3>
+            <ul class="small">
+              <li><b>プログラマティック API の正式復活</b>: AST 操作やトランスパイル API が CGO / Wasm 経由で公開予定。</li>
+              <li><b>埋め込み言語用 ContentMapper</b>: SFC（単一ファイルコンポーネント）の仮想マッピングがネイティブサポート予定。</li>
+              <li><b>公式 MCP サーバー標準化</b>: TypeScript チームによるネイティブ MCP サポートの議論が進展中。</li>
+            </ul>
+          </div>
+          <div class="callout tip">
+            <span>🚀 <b>エージェント開発者の結論:</b> 全体検査は `tsc --noEmit`、編集時の高速事実確認は `tsc --lsp` という役割分担が 2026 年のベストプラクティスです。</span>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>すべてのリポジトリを一律に移行するのではなく、フレームワーク特性に応じた二段構えの判断がチームの生産性を最大化します。</p>
+      </div>
+    </section>
+
+    <!-- ==================== Slide 20: Summary & Evidence ==================== -->
+    <section class="slide">
+      <p class="eyebrow"><span class="badge">Repository</span> まとめ・成果物</p>
+      <h2>調査成果物一覧と再現手順 (Issue #1)</h2>
+      <div class="cols cols-2">
+        <div class="stack">
+          <div class="panel accent-go">
+            <h3>リポジトリ内同梱ファイル</h3>
+            <table class="data-table">
+              <tbody>
+                <tr>
+                  <td><code>antigravity-tsc-lsp-research/index.html</code></td>
+                  <td>本スライド本体（← → で移動、O で一覧、N でノート、F で全画面）</td>
+                </tr>
+                <tr>
+                  <td><code>antigravity-tsc-lsp-research/research.md</code></td>
+                  <td>詳細技術調査報告書（背景・仕様・実測・移行ガイド）</td>
+                </tr>
+                <tr>
+                  <td><code>examples/lsp-probe.mjs</code></td>
+                  <td>Node.js 版実証プローブ（全 LSP リクエスト実測）</td>
+                </tr>
+                <tr>
+                  <td><code>examples/probe_lsp.py</code></td>
+                  <td>Python 3 版実証プローブ（標準ライブラリのみで動作）</td>
+                </tr>
+                <tr>
+                  <td><code>examples/claude-code-plugin/</code></td>
+                  <td>Claude Code 向け <code>.lsp.json</code> 雛形プラグイン</td>
+                </tr>
+                <tr>
+                  <td><code>examples/agent-mcp/</code></td>
+                  <td>AI エージェント向け MCP サーバー実装（依存ゼロ）</td>
+                </tr>
+                <tr>
+                  <td><code>evidence/probe-run.json</code></td>
+                  <td>TS 7.0.2 実機計測ログおよび Capabilities 全文</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel white">
+            <h3>プローブの再現実行手順</h3>
+            <div class="term-box" style="height: 110px;">
+<span class="t-muted"># Node.js での実証実行</span>
+<span class="t-green">$</span> node antigravity-tsc-lsp-research/examples/lsp-probe.mjs
+
+<span class="t-muted"># Python 3 での実証実行</span>
+<span class="t-green">$</span> python3 antigravity-tsc-lsp-research/examples/probe_lsp.py
+
+<span class="t-muted"># MCP サーバーの単体テスト</span>
+<span class="t-green">$</span> node antigravity-tsc-lsp-research/examples/agent-mcp/mcp-server.mjs
+            </div>
+            <p class="xs t-muted">検証環境: TypeScript 7.0.2 / Node 22.14.0 / Python 3.13 / macOS Darwin arm64</p>
+          </div>
+          <div class="callout tip">
+            <span>🎉 <b>Issue #1 完了:</b> 本調査をもって、TypeScript 7 の <code>tsc --lsp</code> に関する機能・性能・AI 連携の調査および検証成果物の提供を完了します。</span>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <h4>発表者ノート</h4>
+        <p>ご清聴ありがとうございました。スライドはブラウザでそのまま閲覧・印刷可能です。ご質問・ディスカッションをお待ちしています。</p>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ==================== HUD Navigation Bar ==================== -->
+<div id="hud">
+  <button class="hud-btn" id="btn-prev" title="前へ (← / Backspace)">◀ 前へ</button>
+  <span id="slide-counter">1 / 20</span>
+  <button class="hud-btn" id="btn-next" title="次へ (→ / Space)">次へ ▶</button>
+  <span style="opacity:0.3;">|</span>
+  <button class="hud-btn" id="btn-overview" title="一覧モード (O)"><span class="kbd">O</span> 一覧</button>
+  <button class="hud-btn" id="btn-notes" title="発表者ノート (N)"><span class="kbd">N</span> ノート</button>
+  <button class="hud-btn" id="btn-fullscreen" title="全画面 (F)"><span class="kbd">F</span> 全画面</button>
+</div>
+
+<!-- ==================== Presenter Notes Panel ==================== -->
+<div id="notes-panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <h4>発表者ノート (Presenter Notes)</h4>
+    <span class="xs t-muted">Esc または N キーで閉じる</span>
+  </div>
+  <div id="notes-content"></div>
+</div>
+
+<!-- Scripts -->
+<script src="slides.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "ts-lsp-mcp-server",
+  "version": "1.0.0",
+  "description": "Bridge tsc --lsp --stdio to Model Context Protocol (MCP) for AI Agents",
+  "type": "module",
+  "main": "mcp-server.mjs",
+  "scripts": {
+    "start": "node mcp-server.mjs"
+  }
+}
