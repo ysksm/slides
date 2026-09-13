@@ -7,6 +7,8 @@
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
 | [npm ライブラリの不具合・脆弱性の時系列集計](npm-vulnerability-trends/index.html) | 14 | 手書き HTML + 設計資料 | [#18](https://github.com/ysksm/slides/issues/18) |
+| [自動実装 × AI — Rails generate を DDD フロントエンドで再現する](ai-scaffold/index.html) | 32 | 手書き HTML | [#16](https://github.com/ysksm/slides/issues/16) |
+| [自動実装と AI の組み合わせ](ai-scaffolding/index.html) | 28 | 手書き HTML + 設計・タスク | [#16](https://github.com/ysksm/slides/issues/16) |
 | [Claude Code のトークン使用量と削減策](claude-code-token-usage/index.html) | 18 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
 | [すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）](ai-usage-cache/index.html) | 15 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
 | [Orca 解説 — AI エージェント時代のオーケストレーター IDE](orca/index.html) | 42 | 手書き HTML | [#3](https://github.com/ysksm/slides/issues/3) |
@@ -21,6 +23,23 @@
 
 - [詳細設計資料](npm-vulnerability-trends/research.md) / [README](npm-vulnerability-trends/README.md)
 - ← → / Space で移動、O で一覧、F で全画面、P で印刷/PDF。ボタン・スワイプにも対応。
+
+### [自動実装 × AI — Rails generate を DDD フロントエンドで再現する](ai-scaffold/index.html)
+
+Rails の `generate` のようにモデル情報から UI・モデル・ユースケース・リポジトリを生成する仕組みを、DDD レイヤードアーキテクチャ（React・Hooks・Redux / DIP / Repository パターン / TypeSpec）の Web フロントエンド向けに検討した設計提案スライド（全 32 枚）。「スクリプトが決定論的に生成し、AI がその引数（生成仕様ファイル）を考える」を軸に、検討メモ、4 案（自作ジェネレーター / TypeSpec 単一ソース / 規約 + ガードレール / 既存テンプレート CLI）の比較、推奨案の設計、6 フェーズの実施計画とタスクをまとめている。同じ Issue #16 を別の切り口で検討した [ai-scaffolding](ai-scaffolding/index.html) と併せて参照。
+
+- `ai-scaffold/index.html` を開き、← → / Space で移動、O または T で目次、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#12` など）でスライド番号を直接指定可能
+- 同梱物: [notes.md](ai-scaffold/notes.md)（検討メモ全文）、[plan.md](ai-scaffold/plan.md)（実施計画とタスク）、`examples/order.spec.yaml`（生成仕様の例）、`examples/spec.schema.json`（JSON Schema の叩き台）
+- 詳細: [ai-scaffold/README.md](ai-scaffold/README.md)
+
+### [自動実装と AI の組み合わせ](ai-scaffolding/index.html)
+
+モデル情報から UI・Domain・UseCase・Repository を生成する仕組みを検討したスライド（全 28 枚）。テンプレート CLI、TypeSpec 拡張、共通生成定義の 3 案を比較し、推奨案の入力設計・部分生成・再生成・ID / VO・DI・テスト用 backend 接続・実施計画をまとめている。
+
+- `ai-scaffolding/index.html` を開き、← → / Space で移動、O で目次、F で全画面、P で印刷/PDF
+- [検討記録・詳細設計](ai-scaffolding/design.md) / [実施タスクと受け入れ条件](ai-scaffolding/tasks.md)
+- 詳細: [ai-scaffolding/README.md](ai-scaffolding/README.md)
 
 ### [Claude Code のトークン使用量と削減策](claude-code-token-usage/index.html)
 
@@ -95,6 +114,11 @@ TypeScript 7 の Go ネイティブ言語サーバー `tsc --lsp` のアーキ�
 ```
 slides/
 ├── npm-vulnerability-trends/       # npm 不具合・脆弱性の時系列集計（設計提案）
+├── ai-scaffold/                   # 自動実装 × AI（DDD フロントエンドの generate 設計）スライド
+│   ├── notes.md                   #   検討メモ全文
+│   ├── plan.md                    #   実施計画とタスク
+│   └── examples/                  #   生成仕様の例と JSON Schema
+├── ai-scaffolding/                # AI + 決定論的コード生成の検討（Issue #16）
 ├── claude-code-token-usage/       # Claude Code のトークン使用量と削減策（公式ドキュメント整理）
 ├── ai-usage-cache/                # AI の利用枠とキャッシュの仕組み（YouTube 動画要約）
 ├── orca/                          # Orca（AI エージェント IDE）解説スライド
@@ -124,13 +148,13 @@ slides/
 | 一覧表示 | `O` | Marp 製以外 |
 | 発表者ノート | `N` | `antigravity-tsc-lsp-research` |
 | 全画面 | `F` | すべて |
-| 印刷 / PDF | `P` | `playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`npm-vulnerability-trends` |
+| 印刷 / PDF | `P` | `playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
 
 ※ Marp 製の `claude-code-commands` では `P` はプレゼンターモードです。`tsc-lsp`（初版）は `P` に未対応のため、ブラウザの印刷機能を使ってください。
 
 ## ビルド
 
-手書き HTML のスライド（`npm-vulnerability-trends` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
+手書き HTML のスライド（`npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
 
 Marp 製の `claude-code-commands` のみ、ソース（`src/*.md`）を編集したら再生成が必要です。
 

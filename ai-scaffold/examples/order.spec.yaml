@@ -1,0 +1,58 @@
+# 生成仕様（spec）の例 — ordering コンテキストの Order 集約
+# AI が書き、人がレビューし、生成器（gen）が読む唯一の入力。コードは一切含めない。
+# スキーマ: ./spec.schema.json
+version: 1
+context: ordering
+
+aggregate:
+  name: Order
+  id: { name: OrderId, base: string, format: uuid }
+  fields:
+    - { name: customerId, type: CustomerId, ref: customer/Customer } # 他集約は ID 参照のみ
+    - { name: lines, type: OrderLine, list: true, entity: true }
+    - { name: total, type: Money }
+    - { name: status, enum: [draft, placed, cancelled], default: draft }
+    - { name: placedAt, type: datetime, optional: true }
+  invariants:
+    - "draft 以外からは place() できない"
+    - "place() には lines が 1 件以上必要"
+    - "total は lines の unitPrice × quantity の合計と一致する"
+  entities:
+    - name: OrderLine
+      id: { name: OrderLineId, base: string }
+      fields:
+        - { name: productId, type: ProductId, ref: catalog/Product }
+        - { name: quantity, type: Quantity }
+        - { name: unitPrice, type: Money }
+  valueObjects:
+    - name: Money
+      fields: { amount: number, currency: string }
+      invariants: ["amount >= 0", "currency は ISO 4217 の 3 文字"]
+    - name: Quantity
+      base: number
+      invariants: ["integer", "> 0"]
+
+useCases:
+  - { name: PlaceOrder, kind: command, input: { orderId: OrderId }, uses: [OrderRepository] }
+  - { name: CancelOrder, kind: command, input: { orderId: OrderId, reason: string }, uses: [OrderRepository] }
+  - { name: ListOrders, kind: query, output: { type: OrderSummary, list: true } }
+  - { name: GetOrder, kind: query, input: { orderId: OrderId }, output: { type: Order } }
+
+api:
+  source: typespec
+  file: api/ordering.tsp
+  operations:
+    list: Orders.list
+    get: Orders.get
+    create: Orders.create
+    place: Orders.place
+    cancel: Orders.cancel
+
+presentation:
+  screens: [list, detail, form]
+  route: /orders
+
+generate:
+  layers: [domain, application, infrastructure, presentation]
+  tests: true
+  testBackend: handlers # テスト用バックエンドのハンドラとフィクスチャも出す

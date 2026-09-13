@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>slides — 調査報告・解説スライド集</title>
-<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。npm 不具合・脆弱性の時系列集計、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
+<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。npm 不具合・脆弱性の時系列集計、自動実装 × AI（DDD フロントエンドの generate 設計）、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -282,6 +282,47 @@
         <p class="sub">
           <a href="https://github.com/ysksm/slides/blob/main/npm-vulnerability-trends/README.md">README</a>
           <a href="https://github.com/ysksm/slides/blob/main/npm-vulnerability-trends/research.md">詳細設計資料</a>
+        </p>
+      </li>
+
+      <li class="deck">
+        <a href="ai-scaffold/index.html">
+          <h2>自動実装 × AI — Rails generate を DDD フロントエンドで再現する</h2>
+          <p>
+            モデル情報から UI・モデル・ユースケース・リポジトリを生成する仕組みを、「スクリプトが決定論的に生成し、
+            AI がその引数を考える」形で設計。検討メモ、4 案の比較、推奨案（生成仕様駆動ジェネレーター）の設計、
+            実施計画とタスクを収録。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">32 枚</span>
+            <span class="tag tag-kind">HTML</span>
+            <span class="tag tag-issue">Issue #16</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/ai-scaffold/notes.md">検討メモ</a>
+          <a href="https://github.com/ysksm/slides/blob/main/ai-scaffold/plan.md">実施計画・タスク</a>
+          <a href="https://github.com/ysksm/slides/blob/main/ai-scaffold/README.md">README</a>
+        </p>
+      </li>
+
+      <li class="deck">
+        <a href="ai-scaffolding/index.html">
+          <h2>自動実装と AI の組み合わせ</h2>
+          <p>
+            React・DDD・TypeSpec を前提に、AI が生成条件を提案し、スクリプトが実装を再現する構成を検討。
+            3 案の比較、部分生成と再生成、ID・Value Object、DI、テスト用 backend、実施計画を収録。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">28 枚</span>
+            <span class="tag tag-kind">HTML + 設計・タスク</span>
+            <span class="tag tag-issue">Issue #16</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="ai-scaffolding/design.md">検討記録・詳細設計</a>
+          <a href="ai-scaffolding/tasks.md">実施タスク</a>
+          <a href="https://github.com/ysksm/slides/issues/16">Issue #16</a>
         </p>
       </li>
 

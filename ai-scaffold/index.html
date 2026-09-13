@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自動実装 × AI — DDD フロントエンドの generate 設計</title>
+<meta name="description" content="Rails generate のようにモデル情報から UI・モデル・ユースケース・リポジトリを生成する仕組みを、DDD レイヤードアーキテクチャの Web フロントエンド向けに検討。検討メモ・4 案の比較・推奨案の設計・実施計画とタスク。">
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#F3F2F8; --surface:#FFFFFF; --surface-2:#EBE9F4;
+  --ink:#1B1830; --ink-2:#464260; --muted:#6F6B88;
+  --line:#D5D2E4; --line-2:#BDB9D2;
+  --accent:#5B45B8; --accent-ink:#FFFFFF; --accent-soft:#E6E0F8;
+  --amber:#C8731C; --amber-soft:#FBE8D3;
+  --green:#2A8A5C; --green-soft:#DAF1E4;
+  --red:#C2463A; --red-soft:#F8DCD8;
+  --blue:#1F6FB5; --blue-soft:#DCEAF8;
+  --code-bg:#171430; --code-ink:#E9E6F5; --code-accent:#B9A7FF;
+  --shadow:0 18px 50px rgba(27,24,48,.16);
+  --serif:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  --sans:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E0C1A; --surface:#171430; --surface-2:#211D40;
+    --ink:#ECEAF6; --ink-2:#C6C2DA; --muted:#938FAD;
+    --line:#2F2A5299; --line-2:#3E3868;
+    --accent:#A796F0; --accent-ink:#130F2A; --accent-soft:#2A2354;
+    --amber:#F0A55B; --amber-soft:#3F2B15;
+    --green:#5FC489; --green-soft:#15352A;
+    --red:#EF8B7E; --red-soft:#3F1F1B;
+    --blue:#6FB0F0; --blue-soft:#15304A;
+    --code-bg:#0B0A18; --code-ink:#DEDBEE; --code-accent:#B9A7FF;
+    --shadow:0 18px 50px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E0C1A; --surface:#171430; --surface-2:#211D40;
+  --ink:#ECEAF6; --ink-2:#C6C2DA; --muted:#938FAD;
+  --line:#2F2A5299; --line-2:#3E3868;
+  --accent:#A796F0; --accent-ink:#130F2A; --accent-soft:#2A2354;
+  --amber:#F0A55B; --amber-soft:#3F2B15;
+  --green:#5FC489; --green-soft:#15352A;
+  --red:#EF8B7E; --red-soft:#3F1F1B;
+  --blue:#6FB0F0; --blue-soft:#15304A;
+  --code-bg:#0B0A18; --code-ink:#DEDBEE; --code-accent:#B9A7FF;
+  --shadow:0 18px 50px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd{font-family:var(--mono);font-size:.88em}
+kbd{background:var(--surface-2);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:0 6px}
+p{margin:0}
+ul,ol{margin:0;padding-left:1.3em}
+li{margin:.2em 0}
+li::marker{color:var(--accent)}
+strong,b{color:var(--ink);font-weight:700}
+h1,h2,h3{margin:0;text-wrap:balance}
+
+/* ---------- viewport / stage ---------- */
+.viewport{position:fixed;inset:0;padding:16px;padding-block:18px 56px}
+/* stage はレイアウト上 1280x720 のまま transform で縮小する。コンテナ側の中央寄せは
+   コンテナより大きい要素だと start 寄せに落ちるため、ビューポート中央に絶対配置し、
+   fit() が縮小後サイズの半分だけ戻す（スマートフォン対応）。 */
+.stage{width:1280px;height:720px;position:absolute;left:50%;top:calc(50% - 19px);transform-origin:0 0;background:var(--surface);box-shadow:var(--shadow);border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+.slide{position:absolute;inset:0;padding:56px 72px 64px;display:none;flex-direction:column;gap:22px}
+.slide.active{display:flex}
+.slide .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:12px}
+.slide .eyebrow::after{content:"";height:1px;flex:1;background:var(--line)}
+.slide h2{font-family:var(--serif);font-weight:700;font-size:38px;line-height:1.2;letter-spacing:.01em}
+.slide h2 small{display:block;font-family:var(--sans);font-weight:400;font-size:17px;color:var(--muted);letter-spacing:0;margin-top:8px}
+.slide h3{font-size:17px;font-weight:700;color:var(--ink)}
+.slide .body{flex:1;min-height:0;display:flex;flex-direction:column;gap:18px;font-size:16.5px}
+.slide .body.cols{flex-direction:row;gap:36px}
+.slide .body.cols > *{flex:1;min-width:0}
+.slide .body.cols > .w60{flex:1.5}
+.slide .body.cols > .w40{flex:1}
+.slide .lead{font-size:20px;color:var(--ink-2);max-width:62ch}
+.slide .note{font-size:14px;color:var(--muted);margin-top:auto}
+.stack{display:flex;flex-direction:column;gap:12px}
+.slide-num{position:absolute;right:28px;bottom:22px;font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* tables */
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;border-bottom:1.5px solid var(--line-2)}
+td:first-child{font-weight:700;white-space:nowrap}
+table.dense td,table.dense th{padding:5px 8px;font-size:13.5px}
+table.dense td:first-child{width:180px}
+table.wrap td:first-child{white-space:normal;width:auto}
+td code{font-size:.85em;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+table.compare td{text-align:center;font-size:15px}
+table.compare td:first-child{text-align:left;width:230px}
+table.compare th:not(:first-child){text-align:center}
+table.compare td:first-child small{display:block;font-weight:400;font-size:12px;color:var(--muted);white-space:normal}
+.mk{display:inline-block;width:1.7em;font-weight:700}
+.mk.a{color:var(--green)} .mk.b{color:var(--blue)} .mk.c{color:var(--amber)} .mk.d{color:var(--red)}
+
+/* chips / pills */
+.pill{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.04em;padding:2px 9px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
+.pill.accent{background:var(--accent-soft);color:var(--accent)}
+.pill.amber{background:var(--amber-soft);color:var(--amber)}
+.pill.green{background:var(--green-soft);color:var(--green)}
+.pill.red{background:var(--red-soft);color:var(--red)}
+.pill.blue{background:var(--blue-soft);color:var(--blue)}
+
+/* code */
+pre{margin:0;background:var(--code-bg);color:var(--code-ink);font-family:var(--mono);font-size:13px;line-height:1.5;padding:14px 18px;border-radius:10px;overflow-x:auto;white-space:pre}
+pre .c{color:#8C88A8}
+pre .k{color:var(--code-accent)}
+pre .s{color:#F5C77A}
+pre .g{color:#7FD9A2}
+pre .r{color:#F59A8C}
+
+/* panels */
+.panel{background:var(--surface-2);border-radius:10px;padding:14px 18px}
+.panel h3{margin-bottom:6px}
+.panel.accent{background:var(--accent-soft)}
+.panel.amber{background:var(--amber-soft)}
+.panel.green{background:var(--green-soft)}
+.panel.blue{background:var(--blue-soft)}
+.panel.red{background:var(--red-soft)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.grid2>*,.grid3>*,.grid4>*,.body.cols>*{min-width:0}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--surface)}
+.card h3{font-size:16px;margin-bottom:6px}
+.card p,.card li{font-size:14px;color:var(--ink-2)}
+.card.top-accent{border-top:4px solid var(--accent)}
+.card.top-green{border-top:4px solid var(--green)}
+.card.top-amber{border-top:4px solid var(--amber)}
+.card.top-blue{border-top:4px solid var(--blue)}
+.card.top-red{border-top:4px solid var(--red)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14.5px}
+.kv dt{font-weight:700;white-space:nowrap;color:var(--ink)}
+.kv dd{margin:0;color:var(--ink-2)}
+.kv dd code{background:var(--surface-2);padding:1px 5px;border-radius:4px}
+.pros{list-style:none;padding:0;font-size:14px}
+.pros li{padding-left:1.4em;position:relative;color:var(--ink-2)}
+.pros li::before{content:"+";position:absolute;left:0;color:var(--green);font-weight:700;font-family:var(--mono)}
+.pros.cons li::before{content:"−";color:var(--red)}
+
+/* flow */
+.flow{display:flex;align-items:stretch;gap:0;counter-reset:step}
+.flow .step{flex:1;position:relative;padding:14px 16px 14px 18px;background:var(--surface-2);border-radius:10px;margin-right:14px}
+.flow .step:last-child{margin-right:0}
+.flow .step::before{counter-increment:step;content:counter(step);font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.1em;display:block;margin-bottom:4px}
+.flow .step:not(:last-child)::after{content:"";position:absolute;right:-14px;top:50%;width:14px;height:1.5px;background:var(--line-2)}
+.flow .step b{display:block;font-size:15px;margin-bottom:3px}
+.flow .step span{font-size:13px;color:var(--ink-2)}
+.flow .step.ai{background:var(--accent-soft)}
+.flow .step.script{background:var(--green-soft)}
+.flow .step.human{background:var(--amber-soft)}
+
+/* tree diagram */
+.tree{font-family:var(--mono);font-size:12.5px;line-height:1.6;background:var(--surface-2);border-radius:10px;padding:14px 18px;white-space:pre;overflow-x:auto}
+.tree .d{color:var(--muted)}
+.tree .a{color:var(--accent);font-weight:600}
+.tree .m{color:var(--amber)}
+.tree .g{color:var(--green)}
+
+/* layer diagram */
+.layers{display:grid;grid-template-columns:1fr;gap:8px}
+.layer{display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 16px;background:var(--surface)}
+.layer .name{font-weight:700;font-size:16px}
+.layer .name small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.layer .items{font-size:13.5px;color:var(--ink-2)}
+.layer.pres{border-left:6px solid var(--blue)}
+.layer.app{border-left:6px solid var(--accent)}
+.layer.dom{border-left:6px solid var(--green)}
+.layer.inf{border-left:6px solid var(--amber)}
+
+/* big number */
+.bignum{font-family:var(--serif);font-size:44px;font-weight:700;color:var(--accent);line-height:1}
+
+/* title slide */
+.slide.title{justify-content:flex-end;background:
+  radial-gradient(1200px 500px at 85% -10%, var(--accent-soft) 0%, transparent 60%),
+  var(--surface)}
+.slide.title h1{font-family:var(--serif);font-weight:700;font-size:64px;line-height:1.1;letter-spacing:.01em}
+.slide.title h1 span{display:block;font-size:26px;font-weight:600;color:var(--accent);margin-bottom:14px;letter-spacing:.04em}
+.slide.title .sub{font-size:18px;color:var(--ink-2);max-width:62ch;margin-top:10px}
+.slide.title .meta{display:flex;gap:24px;flex-wrap:wrap;font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:28px;letter-spacing:.02em}
+.title-mark{position:absolute;right:72px;top:64px;width:260px;height:220px;opacity:.95}
+
+/* section divider */
+.slide.section{justify-content:center;background:linear-gradient(135deg,var(--surface) 0%,var(--surface-2) 100%)}
+.slide.section .eyebrow::after{display:none}
+.slide.section h2{font-size:54px}
+.slide.section .lead{font-size:20px}
+
+/* chrome */
+.progress{position:fixed;left:0;top:0;height:3px;background:var(--accent);width:0;transition:width .25s ease;z-index:5}
+.chrome{position:fixed;left:0;right:0;bottom:0;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-family:var(--mono);font-size:12.5px;color:var(--muted);z-index:5}
+.chrome .left,.chrome .right{display:flex;align-items:center;gap:10px}
+.chrome button{background:var(--surface);border:1px solid var(--line-2);border-radius:7px;padding:4px 10px;cursor:pointer;color:var(--ink-2)}
+.chrome button:hover{border-color:var(--accent);color:var(--accent)}
+.chrome button:focus-visible,.toc button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chrome .counter{font-variant-numeric:tabular-nums;min-width:64px;text-align:center}
+.chrome .hint{opacity:.8}
+@media (max-width:700px){.chrome .hint{display:none}}
+
+.toc{position:fixed;top:0;right:0;bottom:0;width:min(420px,92vw);background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--shadow);z-index:6;transform:translateX(102%);transition:transform .25s ease;display:flex;flex-direction:column}
+.toc.open{transform:none}
+.toc header{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line);font-family:var(--serif);font-weight:700;font-size:18px}
+.toc header button{background:none;border:1px solid var(--line-2);border-radius:7px;padding:3px 9px;cursor:pointer;font-family:var(--sans);font-size:13px}
+.toc ol{list-style:none;margin:0;padding:10px 8px;overflow:auto;flex:1}
+.toc li{margin:0}
+.toc li.sec{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);padding:14px 12px 4px}
+.toc li button{width:100%;text-align:left;background:none;border:0;padding:6px 12px;border-radius:7px;cursor:pointer;display:flex;gap:12px;font-size:14px;color:var(--ink-2)}
+.toc li button:hover{background:var(--surface-2)}
+.toc li button.now{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.toc li button .n{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:2ch;text-align:right;font-variant-numeric:tabular-nums}
+
+@media (prefers-reduced-motion: reduce){.progress,.toc{transition:none}}
+
+/* print: every slide on its own page */
+@media print{
+  body{overflow:visible;background:#fff}
+  .viewport{position:static;display:block;padding:0}
+  .stage{position:relative;left:auto;top:auto;transform:none!important;width:1280px;height:720px;box-shadow:none;border:0;border-radius:0;page-break-after:always;margin:0 auto}
+  .slide{display:flex!important;position:absolute}
+  .chrome,.progress,.toc{display:none}
+}
+</style>
+
+<div class="progress" id="progress"></div>
+
+<div class="viewport">
+<div class="stage" id="stage">
+
+<!-- 1 -->
+<section class="slide title" data-sec="はじめに" data-title="表紙">
+  <svg class="title-mark" viewBox="0 0 260 220" aria-hidden="true">
+    <rect x="20" y="24" width="90" height="34" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+    <text x="65" y="46" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="var(--accent)">spec.yaml</text>
+    <rect x="20" y="92" width="90" height="34" rx="6" fill="var(--green-soft)" stroke="var(--green)" stroke-width="1.5"/>
+    <text x="65" y="114" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="var(--green)">gen apply</text>
+    <path d="M65 58 V92" stroke="var(--line-2)" stroke-width="1.5" marker-end="url(#ah)"/>
+    <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--line-2)"/></marker></defs>
+    <g font-family="JetBrains Mono, monospace" font-size="11" fill="var(--ink-2)">
+      <rect x="150" y="20" width="96" height="30" rx="5" fill="var(--blue-soft)" stroke="var(--blue)" stroke-width="1"/><text x="198" y="39" text-anchor="middle">presentation</text>
+      <rect x="150" y="66" width="96" height="30" rx="5" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"/><text x="198" y="85" text-anchor="middle">application</text>
+      <rect x="150" y="112" width="96" height="30" rx="5" fill="var(--green-soft)" stroke="var(--green)" stroke-width="1"/><text x="198" y="131" text-anchor="middle">domain</text>
+      <rect x="150" y="158" width="96" height="30" rx="5" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="1"/><text x="198" y="177" text-anchor="middle">infrastructure</text>
+    </g>
+    <path d="M110 109 C 130 109, 130 35, 150 35" fill="none" stroke="var(--line-2)" stroke-width="1.5" marker-end="url(#ah)"/>
+    <path d="M110 109 C 130 109, 130 81, 150 81" fill="none" stroke="var(--line-2)" stroke-width="1.5" marker-end="url(#ah)"/>
+    <path d="M110 109 C 130 109, 130 127, 150 127" fill="none" stroke="var(--line-2)" stroke-width="1.5" marker-end="url(#ah)"/>
+    <path d="M110 109 C 130 109, 130 173, 150 173" fill="none" stroke="var(--line-2)" stroke-width="1.5" marker-end="url(#ah)"/>
+  </svg>
+  <div>
+    <h1><span>Rails generate を DDD フロントエンドで再現する</span>自動実装 × AI</h1>
+    <p class="sub">モデル情報を入力すれば UI・モデル・ユースケース・リポジトリが揃う仕組みを、「スクリプトが決定論的に生成し、AI がその引数を考える」形で設計する。検討途中のメモ、4 つの案の比較、推奨案の設計、実施計画とタスクをまとめました。</p>
+    <div class="meta">
+      <span>ysksm/slides Issue #16</span>
+      <span>2026-09-13</span>
+      <span>React + Hooks + Redux / DDD / DIP / TypeSpec</span>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="slide" data-sec="はじめに" data-title="やりたいこと（Issue #16 の整理）">
+  <div class="eyebrow">はじめに</div>
+  <h2>やりたいこと：Issue #16 を設計要件に翻訳する<small>4 つの要望はそれぞれ別の設計判断を要求している。先に切り分ける。</small></h2>
+  <div class="body">
+    <table>
+      <thead><tr><th style="width:36%">Issue の要望</th><th>設計要件への翻訳</th><th style="width:22%">効いてくる論点</th></tr></thead>
+      <tbody>
+        <tr><td>Rails generate のように、モデル情報から UI・モデル・コントローラー・リポジトリを自動化したい</td><td>1 つの入力から <b>4 レイヤーぶんの成果物を一括生成</b>する。Rails の「規約があるから生成できる」を先に作る</td><td>命名・配置規約、テンプレート</td></tr>
+        <tr><td>最初に決まるのは IDL（TypeSpec）が多いが、そうでない場合もある</td><td>入力形式に依存しない<b>中間表現（生成仕様）</b>を置き、IDL・ドメインモデル・画面のどこからでも入れる</td><td>インポータ／エクスポータ</td></tr>
+        <tr><td>自動生成をどこまで行うかは、その都度異なる</td><td><b>レイヤー・成果物単位の部分生成</b>と、<b>手で直したものを壊さない再生成</b></td><td>create-only / 再生成ファイルの分類</td></tr>
+        <tr><td>決定論的に進めたい。スクリプトを作り、渡す引数を AI が考える</td><td>生成器は「仕様 → ファイル」の<b>純関数</b>。AI は仕様（引数）を書き、生成後の TODO を埋める</td><td>スキーマ検証、dry-run、CI での drift 検出</td></tr>
+      </tbody>
+    </table>
+    <div class="grid2">
+      <div class="panel"><h3>前提コンテキスト</h3><p style="font-size:14px">Web フロントエンド開発 / ドメイン駆動設計 / レイヤードアーキテクチャ + DIP / プレゼン（React・Hooks・Redux）・アプリ・ドメイン（VO と ID を厳重に、Entity 中心）・インフラ（Repository パターン）/ Repository は DI / テスト用バックエンドあり / IDL は TypeSpec。</p></div>
+      <div class="panel accent"><h3>本資料のアウトプット</h3><p style="font-size:14px">① 検討途中のメモ（3〜10 枚、<code>notes.md</code>）② 4 案の提案と比較（11〜16 枚）③ 推奨案の設計（17〜25 枚）④ 実施計画とタスク（26〜30 枚、<code>plan.md</code>）。マニフェスト例と JSON Schema の雛形を <code>examples/</code> に同梱。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="slide" data-sec="はじめに" data-title="前提アーキテクチャと Rails との対応">
+  <div class="eyebrow">はじめに</div>
+  <h2>前提アーキテクチャ：4 レイヤーと、生成すべきもの<small>Rails の model / controller / view / migration は、このレイヤー構成では次のように対応する。</small></h2>
+  <div class="body cols">
+    <div class="w60 layers">
+      <div class="layer pres"><div class="name">Presentation<small>React / Hooks / Redux　≒ Rails の view + controller の入口</small></div><div class="items">Redux slice（状態と thunk）、ユースケースを呼ぶ Hook、一覧・詳細・フォームのページ／コンポーネント、ルート登録</div></div>
+      <div class="layer app"><div class="name">Application<small>プレゼンとドメインの橋渡し　≒ controller の中身</small></div><div class="items">ユースケース（Command / Query）、入出力 DTO、Repository ポートの利用、DI トークン</div></div>
+      <div class="layer dom"><div class="name">Domain<small>Entity 中心、VO と ID を厳重に　≒ model</small></div><div class="items">ID 型（branded）、Value Object、Entity / Aggregate、Repository <b>インターフェース</b>（ポート）、不変条件のテスト雛形</div></div>
+      <div class="layer inf"><div class="name">Infrastructure<small>DIP でドメインに従属　≒ ActiveRecord の実装側</small></div><div class="items">API Repository 実装（生成クライアント経由）、テスト用バックエンド／インメモリ Repository、DTO ⇄ Entity Mapper、DI 登録</div></div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>依存の向き</h3><p style="font-size:14px">Presentation → Application → <b>Domain</b> ← Infrastructure。Infrastructure は Domain のポートを実装する（DIP）。生成器は<b>この向きを破るコードを出せない</b>ようテンプレートを固定し、arch lint でも守る。</p></div>
+      <div class="panel amber"><h3>Rails と決定的に違う点</h3><ul style="font-size:14px"><li>DTO（API の型）と Entity は<b>別物</b>。必ず Mapper を挟む</li><li>「1 テーブル = 1 モデル」ではなく「1 集約 = 複数 Entity + VO」</li><li>配線先が 3 つある（DI コンテナ・Redux store・ルーター）</li></ul></div>
+      <p class="note">用語：本資料では Rails の「モデル情報」に相当する入力を<b>生成仕様（spec / マニフェスト）</b>と呼ぶ。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="slide section" data-sec="検討" data-title="章：検討メモ">
+  <div class="eyebrow">Part 1</div>
+  <h2>検討メモ</h2>
+  <p class="lead">Rails generate が成立する理由から逆算し、「何を決定論で書き、何を AI に判断させ、何を生成後に書くか」を切り分ける。ここでの結論が、提案 4 案の評価軸になる。</p>
+</section>
+
+<!-- 5 -->
+<section class="slide" data-sec="検討" data-title="Rails generate はなぜ成立するか">
+  <div class="eyebrow">検討 1</div>
+  <h2>Rails generate はなぜ成立するか<small>生成器が賢いのではなく、規約が強い。フロントエンド DDD に足りないのは規約の方。</small></h2>
+  <div class="body cols">
+    <div>
+      <h3>Rails が持っているもの</h3>
+      <table class="dense">
+        <tbody>
+          <tr><td>命名規約</td><td><code>Order</code> → <code>orders</code> テーブル、<code>OrdersController</code>、<code>app/views/orders/</code>。名前 1 つから全パスが決まる</td></tr>
+          <tr><td>配置規約</td><td>レイヤーごとの固定ディレクトリ。生成器は「どこに置くか」を考えない</td></tr>
+          <tr><td>モデル定義の唯一の入力</td><td><code>name:string price:integer</code> という 1 行の DSL。曖昧さがない</td></tr>
+          <tr><td>generate once</td><td>生成されたファイルはその後ユーザーのもの。再生成で上書きしない（<code>--skip</code> / <code>--force</code> は明示）</td></tr>
+          <tr><td>差分は migration</td><td>スキーマ変更はファイルの再生成ではなく、追加の migration で表現</td></tr>
+          <tr><td>配線の規約</td><td><code>routes.rb</code> に 1 行足すだけ。DI もコンテナも無い</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <h3>このプロジェクトに足りないもの（＝先に作るもの）</h3>
+      <div class="card top-red"><h3>① 命名・配置規約の明文化</h3><p>「集約 <code>Order</code> のユースケースはどこに、何という名前で置くか」が文書化・機械可読になっていないと生成器は書けない。<b>手書きのリファレンス実装 1 集約</b>をまず用意し、それを規約にする。</p></div>
+      <div class="card top-amber"><h3>② モデル定義の唯一の入力形式</h3><p>TypeSpec は API の形は表せるが、「どれが VO か」「集約境界はどこか」「不変条件は何か」は表せない。<b>ドメイン意味を載せた生成仕様</b>が別に要る。</p></div>
+      <div class="card top-blue"><h3>③ 配線の規約</h3><p>DI コンテナ登録・Redux reducer 登録・ルート登録の 3 か所。「どこに何を足すか」が規約化されていないと、生成器は既存ファイルを壊す。</p></div>
+      <p class="note">結論：<b>ジェネレーターの前に規約</b>。Phase 0 はコードを生成せず、リファレンス実装と規約文書を作る工程に充てる。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="slide" data-sec="検討" data-title="3 つのゾーン：決定論・判断・創作">
+  <div class="eyebrow">検討 2</div>
+  <h2>3 つのゾーン：決定論で書ける／AI が判断する／生成後に書く<small>「どこまで自動化するか」の議論は、この境界線を先に引くと収束する。</small></h2>
+  <div class="body">
+    <div class="grid3">
+      <div class="card top-green">
+        <h3><span class="pill green">Zone 1</span>　決定論 — スクリプトが書く</h3>
+        <ul>
+          <li>ファイルパス・ファイル名・命名（PascalCase / camelCase / kebab）</li>
+          <li>import 文、barrel export、ヘッダコメント</li>
+          <li>ID 型（branded type）と ID を持つ VO の骨格</li>
+          <li>Repository インターフェース、インメモリ／テストバックエンド実装</li>
+          <li>DTO ⇄ Entity Mapper の骨格（フィールド対応表）</li>
+          <li>Redux slice / Hook / CRUD ページの骨格</li>
+          <li>DI・store・ルートの配線、テストファイルの雛形</li>
+        </ul>
+        <p><b>原則：ここは決して AI に書かせない。</b>同じ仕様から毎回同じバイト列が出る。</p>
+      </div>
+      <div class="card top-accent">
+        <h3><span class="pill accent">Zone 2</span>　判断 — AI が「引数」を決める</h3>
+        <ul>
+          <li>集約の境界（何を 1 集約にするか）</li>
+          <li>どのフィールドを VO にし、どれをプリミティブのままにするか</li>
+          <li>他集約への参照（<code>CustomerId</code> のような ID 参照）の同定</li>
+          <li>ユースケースの列挙と Command / Query の分類</li>
+          <li>画面の種類（一覧・詳細・フォーム・カスタム）</li>
+          <li>今回の生成範囲（レイヤー・成果物）</li>
+          <li>入力が曖昧なときの命名</li>
+        </ul>
+        <p><b>原則：判断の結果は必ず生成仕様（ファイル）に落とし、人がレビューできる形にする。</b></p>
+      </div>
+      <div class="card top-amber">
+        <h3><span class="pill amber">Zone 3</span>　創作 — 生成後に AI／人が書く</h3>
+        <ul>
+          <li>Entity の不変条件・業務ルール（<code>place()</code> の中身）</li>
+          <li>VO のバリデーション（金額は 0 以上、など）</li>
+          <li>CRUD で表せない画面・複雑な UI 状態</li>
+          <li>エラーハンドリング方針、認可</li>
+          <li>非 CRUD ユースケースの本体</li>
+        </ul>
+        <p><b>原則：生成器は <code>// TODO(gen):</code> マーカーだけ置き、中身を書かない。</b>ここを生成器で頑張るとテンプレートが肥大し、決定論が崩れる。</p>
+      </div>
+    </div>
+    <p class="note">「自動生成をどこまで行うかはその都度異なる」は、Zone 1 の中で<b>どの成果物を出すか</b>を選ぶ問題（部分生成）と、Zone 3 を<b>AI に任せるか人が書くか</b>の 2 つに分解できる。前者は生成器の機能、後者はワークフロー（スキル）の問題。</p>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="slide" data-sec="検討" data-title="入力の起点は 3 通り">
+  <div class="eyebrow">検討 3</div>
+  <h2>入力の起点は 3 通り。共通のハブは「生成仕様」<small>IDL が先とは限らない。どこから始めても同じ中間表現に合流させれば、生成器は 1 つで済む。</small></h2>
+  <div class="body">
+    <div class="grid3">
+      <div class="card top-blue">
+        <h3>A. IDL-first（TypeSpec が先にある）</h3>
+        <dl class="kv" style="font-size:13.5px">
+          <dt>決まっているもの</dt><dd>モデルの形（フィールド・型）、操作（list / get / create …）</dd>
+          <dt>AI が補うもの</dt><dd>VO 化する項目、集約境界、ID 参照、ユースケース名</dd>
+          <dt>流れ</dt><dd><code>tsp</code> → インポータで仕様の草案 → AI が意味を付加 → 生成</dd>
+          <dt>典型</dt><dd>バックエンド主導・契約先行の開発</dd>
+        </dl>
+      </div>
+      <div class="card top-green">
+        <h3>B. Domain-first（モデルから決める）</h3>
+        <dl class="kv" style="font-size:13.5px">
+          <dt>決まっているもの</dt><dd>集約・Entity・VO・不変条件（会話や設計メモ）</dd>
+          <dt>AI が補うもの</dt><dd>仕様ファイルへの構造化、API 操作の提案</dd>
+          <dt>流れ</dt><dd>AI が仕様を作成 → Domain + Application を生成 → <b>仕様から TypeSpec 草案をエクスポート</b> → API 確定後に Infra 生成</dd>
+          <dt>典型</dt><dd>新規機能の設計段階、フロント主導</dd>
+        </dl>
+      </div>
+      <div class="card top-amber">
+        <h3>C. UI-first（画面やストーリーが先）</h3>
+        <dl class="kv" style="font-size:13.5px">
+          <dt>決まっているもの</dt><dd>画面・ユーザーストーリー・表示項目</dd>
+          <dt>AI が補うもの</dt><dd>ビューモデル → ユースケース → 必要な集約の逆算</dd>
+          <dt>流れ</dt><dd>AI が仕様を作成 → Presentation + Application を生成、Domain / Infra はスタブ → 後で埋める</dd>
+          <dt>典型</dt><dd>プロトタイピング、モック先行</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="flow">
+      <div class="step"><b>入力</b><span>TypeSpec / 設計メモ / 画面モック / 会話</span></div>
+      <div class="step ai"><b>生成仕様（spec）</b><span>AI が草案 → スキーマ検証 → 人がレビュー。<b>唯一のハブ</b></span></div>
+      <div class="step script"><b>生成器</b><span>spec → ファイル群。純関数・冪等</span></div>
+      <div class="step ai"><b>TODO を埋める</b><span>Zone 3 を AI か人が実装</span></div>
+      <div class="step script"><b>検証</b><span>tsc / lint / test / arch check</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="slide" data-sec="検討" data-title="生成仕様 = AI が考える「引数」">
+  <div class="eyebrow">検討 4</div>
+  <h2>生成仕様（spec）= AI が考える「引数」<small>CLI 引数ではなく、スキーマ付きのファイルにする。これが「決定論的に進めつつ AI に引数を考えさせる」の実装形。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <table>
+        <thead><tr><th style="width:26%">性質</th><th>CLI 引数（<code>gen model Order name:string</code>）</th><th>仕様ファイル（<code>spec/order.yaml</code>）</th></tr></thead>
+        <tbody>
+          <tr><td>表現力</td><td>フラット。集約・VO・ユースケースの入れ子を書けない</td><td>入れ子・配列・参照を素直に書ける</td></tr>
+          <tr><td>レビュー</td><td>シェル履歴に残るだけ</td><td>PR の diff で「AI が何を判断したか」が見える</td></tr>
+          <tr><td>再実行</td><td>同じコマンドを打ち直す</td><td><code>gen apply</code> で何度でも同じ結果。CI でも実行できる</td></tr>
+          <tr><td>検証</td><td>引数パーサ頼み</td><td><b>JSON Schema</b> で検証。AI の出力を構造化出力として制約できる</td></tr>
+          <tr><td>部分生成</td><td>フラグを増やし続ける</td><td><code>generate:</code> セクションで範囲を宣言。フラグは上書き用</td></tr>
+          <tr><td>履歴</td><td>無い</td><td>git 管理。仕様の変更 = 生成物の変更、が追える</td></tr>
+        </tbody>
+      </table>
+      <p class="note">CLI 引数は完全に捨てない。<code>gen apply spec/order.yaml --layers domain</code> のように「今回だけの範囲指定」は引数の方が自然。<b>仕様は what、引数は今回の how。</b></p>
+    </div>
+    <div class="w40 stack">
+      <div class="panel accent"><h3>AI にとっての意味</h3><ul style="font-size:14px"><li>出力先が<b>スキーマ付き JSON/YAML</b>なので、幻覚の余地が狭い。不正なら検証エラーがそのまま再試行の材料になる</li><li>MCP ツールやスキルの引数として<b>スキーマをそのまま渡せる</b></li><li>「仕様を書く」と「コードを書く」が分離され、AI の役割が明確になる</li></ul></div>
+      <div class="panel"><h3>仕様に載せるもの／載せないもの</h3><ul style="font-size:14px"><li><b>載せる</b>：名前、フィールド、型、VO/Entity/ID の区別、参照、ユースケース一覧、API 操作との対応、画面の種類、生成範囲</li><li><b>載せない</b>：業務ルールの実装、UI のレイアウト、コード片。仕様がコードになった瞬間に決定論が崩れる</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="slide" data-sec="検討" data-title="部分生成と再生成">
+  <div class="eyebrow">検討 5</div>
+  <h2>部分生成と再生成：手で直したものを壊さない<small>「どこまで生成するか」を仕様と引数で選べること、「もう一度流しても安全」なことの両方が必要。</small></h2>
+  <div class="body cols">
+    <div class="stack">
+      <h3>ファイルを 3 種類に分類する</h3>
+      <table class="dense">
+        <thead><tr><th>種類</th><th>命名</th><th>再生成時の挙動</th><th>例</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill green">常時再生成</span></td><td><code>*.gen.ts</code></td><td>毎回上書き。<b>手編集禁止</b>（ヘッダで明示、lint で警告）</td><td>Mapper、DTO 型、DI／store／ルートのレジストリ</td></tr>
+          <tr><td><span class="pill amber">create-only</span></td><td>通常のファイル名</td><td>存在すれば<b>スキップ</b>。<code>--force</code> で明示上書き</td><td>Entity、VO、ユースケース、ページ、テスト</td></tr>
+          <tr><td><span class="pill blue">レジストリ</span></td><td><code>registry.gen.ts</code></td><td>全 spec を読んで<b>丸ごと再生成</b>。既存ファイルへの追記はしない</td><td>DI 登録、reducer 一覧、ルート一覧</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:14px;color:var(--ink-2)">Rails と同じ「generate once」を create-only で再現し、Rails に無い「常に最新に保ちたいもの」を <code>.gen.ts</code> に逃がす。OpenAPI 生成クライアントや Prisma と同じ流儀なので、チームの学習コストが低い。</p>
+    </div>
+    <div class="stack">
+      <h3>生成範囲の指定</h3>
+      <pre><span class="c"># 仕様側：この集約で普段生成するもの</span>
+generate:
+  layers: [domain, application, infrastructure, presentation]
+  presentation: { screens: [list, detail, form] }
+  tests: true
+
+<span class="c"># 引数側：今回だけの範囲・モード</span>
+gen apply spec/order.yaml --layers domain,application
+gen apply spec/order.yaml --only repository
+gen apply spec/order.yaml --dry-run      <span class="c"># 差分だけ表示</span>
+gen apply spec/order.yaml --force Order.ts <span class="c"># 名指しで上書き</span>
+gen check                                <span class="c"># CI：.gen.ts が仕様と一致するか</span></pre>
+      <div class="panel amber"><h3>やらないと決めること</h3><ul style="font-size:14px"><li><b>マーカー区間の部分マージ</b>（<code>// BEGIN generated</code>）はしない。区間のずれで壊れやすく、決定論を検証しづらい</li><li><b>既存ファイルへの AST 追記</b>はレジストリ方式で不要にする。ts-morph は最後の手段</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="slide" data-sec="検討" data-title="決定論性の担保と役割分担">
+  <div class="eyebrow">検討 6</div>
+  <h2>決定論性の担保と、AI・スクリプト・人の役割分担<small>「決定論的」を検証可能な条件に落とす。役割は工程ごとに 1 つに固定する。</small></h2>
+  <div class="body cols">
+    <div class="stack">
+      <h3>決定論チェックリスト（生成器の受け入れ条件）</h3>
+      <ul style="font-size:14.5px">
+        <li><b>純関数</b>：出力は spec と テンプレートのバージョンだけで決まる。日時・乱数・環境変数・ファイルシステムの列挙順に依存しない</li>
+        <li><b>安定した順序</b>：フィールド・import・レジストリ項目は spec の順、または名前順に固定</li>
+        <li><b>整形の固定</b>：生成後に Prettier を<b>固定バージョン・固定設定</b>で通す</li>
+        <li><b>来歴ヘッダ</b>：<code>// @generated by gen v1.2.0 from spec/order.yaml (sha256:…)</code></li>
+        <li><b>ゴールデンテスト</b>：手書きリファレンス集約 == 同じ spec からの生成物。ここが通らなければ規約かテンプレートが間違い</li>
+        <li><b>スナップショット</b>：代表 spec 数本の生成物を固定。テンプレート変更の diff が見える</li>
+        <li><b>CI で <code>gen check</code></b>：<code>.gen.ts</code> の drift をブロック</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <h3>工程ごとの担当</h3>
+      <table class="dense">
+        <thead><tr><th>工程</th><th>担当</th><th>成果物</th><th>検証</th></tr></thead>
+        <tbody>
+          <tr><td>入力の読解</td><td><span class="pill accent">AI</span></td><td>spec 草案</td><td>JSON Schema</td></tr>
+          <tr><td>仕様の確定</td><td><span class="pill amber">人</span></td><td>レビュー済み spec</td><td>PR レビュー</td></tr>
+          <tr><td>差分プレビュー</td><td><span class="pill green">スクリプト</span></td><td>dry-run の一覧</td><td>人が承認</td></tr>
+          <tr><td>生成</td><td><span class="pill green">スクリプト</span></td><td>ファイル群</td><td>tsc / lint / arch</td></tr>
+          <tr><td>TODO の実装</td><td><span class="pill accent">AI</span> or <span class="pill amber">人</span></td><td>業務ルール・UI</td><td>テスト・レビュー</td></tr>
+          <tr><td>回帰確認</td><td><span class="pill green">スクリプト</span></td><td>CI 結果</td><td><code>gen check</code>・test</td></tr>
+        </tbody>
+      </table>
+      <p class="note">AI は「読む」「判断する」「埋める」だけをやり、「配置する」「配線する」「整形する」には一切関与しない。この線引きが守られていれば、AI のモデルが変わっても生成物は変わらない。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="slide section" data-sec="提案" data-title="章：提案（4 案）">
+  <div class="eyebrow">Part 2</div>
+  <h2>提案：4 つの案</h2>
+  <p class="lead">A. 生成仕様駆動の自作ジェネレーター／B. TypeSpec を単一ソースにするカスタムエミッタ／C. ジェネレーター無し、規約とガードレールで AI 生成／D. 既存テンプレート CLI（Hygen・Plop・Nx）を AI から呼ぶ。検討メモの論点で比較する。</p>
+</section>
+
+<!-- 12 -->
+<section class="slide" data-sec="提案" data-title="案 A：生成仕様駆動ジェネレーター">
+  <div class="eyebrow">案 A</div>
+  <h2>案 A：生成仕様駆動の自作ジェネレーター<small>YAML/JSON の spec（JSON Schema 付き）→ TypeScript 製の生成器 → 4 レイヤー。入力側は「インポータ」で吸収する。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <div class="tree"><span class="d">入力</span>        <span class="d">ハブ</span>              <span class="d">生成器</span>                    <span class="d">出力</span>
+TypeSpec ─┐                                                 domain/
+設計メモ ─┼→ <span class="a">spec/order.yaml</span> → <span class="g">gen apply</span> ──┬─ templates/ ──→ application/
+画面モック─┘   (JSON Schema)      │           ├─ writers/         infrastructure/
+   ↑ AI が草案        ↑ 人がレビュー │           └─ registry/  ──→ presentation/
+                                 └─ <span class="g">gen check</span> (CI)      *.gen.ts / registry.gen.ts</div>
+      <div class="grid2">
+        <div class="card"><h3>構成要素</h3><ul><li><b>spec スキーマ</b>：集約・VO・ID・ユースケース・API 対応・画面・生成範囲</li><li><b>インポータ</b>：TypeSpec → spec 草案（Phase 3）。逆向きの spec → TypeSpec 草案も</li><li><b>テンプレート</b>：レイヤー × 成果物ごとの文字列テンプレート（EJS/Eta 程度）</li><li><b>レジストリ生成</b>：全 spec を集めて DI／store／ルートを丸ごと出す</li><li><b>CLI</b>：<code>apply / check / import / export</code>、<code>--dry-run --layers --only --force</code></li></ul></div>
+        <div class="card"><h3>AI との接点</h3><ul><li>Claude Code スキル <code>/gen</code>：入力を読み spec を書く → dry-run を見せる → 承認後に apply → TODO を埋める</li><li>スキーマを構造化出力として渡す</li><li>Hook で <code>tsc</code>・lint・<code>gen check</code> を自動実行</li></ul></div>
+      </div>
+    </div>
+    <div class="w40 stack">
+      <ul class="pros">
+        <li>入力形式に依存しない。IDL-first でも Domain-first でも UI-first でも同じ生成器</li>
+        <li>決定論を最も検証しやすい（純関数 + ゴールデン + スナップショット）</li>
+        <li>部分生成・再生成をファイル分類で素直に扱える</li>
+        <li>「AI が引数を考える」を spec ファイルとしてそのまま実現</li>
+        <li>テンプレートはプロジェクト固有の規約を 100% 反映できる</li>
+      </ul>
+      <ul class="pros cons">
+        <li>自作。テンプレート・スキーマ・CLI の保守が発生する</li>
+        <li>TypeSpec と spec の二重管理になる（インポータで緩和するが、真実の源は 2 つ）</li>
+        <li>初期コスト：規約の固定を含め 4〜6 週間程度</li>
+      </ul>
+      <div class="panel accent"><h3>向いている状況</h3><p style="font-size:14px">規約を自分たちで決められ、集約が今後も増え続け、IDL 以外から始まる案件が現実にある。今回の前提はほぼこれ。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 -->
+<section class="slide" data-sec="提案" data-title="案 B：TypeSpec を単一ソースに">
+  <div class="eyebrow">案 B</div>
+  <h2>案 B：TypeSpec を単一ソースにする<small>ドメイン意味をカスタムデコレータで TypeSpec に載せ、カスタムエミッタが 4 レイヤーを直接吐く。IDL が常に先なら最も筋がいい。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <pre><span class="c">// ddd.tsp — カスタムデコレータで意味を付ける</span>
+<span class="k">import</span> <span class="s">"@myorg/typespec-ddd"</span>;
+<span class="k">using</span> DDD;
+
+<span class="k">@aggregate</span>
+<span class="k">model</span> Order {
+  <span class="k">@id</span> id: OrderId;
+  <span class="k">@ref</span>(Customer) customerId: CustomerId;
+  <span class="k">@entity</span> lines: OrderLine[];
+  <span class="k">@valueObject</span> total: Money;
+  status: <span class="s">"draft"</span> | <span class="s">"placed"</span> | <span class="s">"cancelled"</span>;
+}
+
+<span class="k">@useCase</span>(<span class="s">"command"</span>) <span class="k">op</span> placeOrder(id: OrderId): Order;
+<span class="k">@useCase</span>(<span class="s">"query"</span>)   <span class="k">op</span> listOrders(): Order[];
+
+<span class="c">// tspconfig.yaml</span>
+emit:
+  - <span class="s">"@typespec/openapi3"</span>
+  - <span class="s">"@myorg/typespec-ddd-emitter"</span>   <span class="c"># → 4 レイヤーを生成</span></pre>
+      <p style="font-size:14px;color:var(--ink-2)">TypeSpec はライブラリ（デコレータ）とエミッタ（<code>$onEmit</code> で <code>Program</code> を走査）を自作できる。API 契約とドメイン意味が 1 ファイルに同居し、バックエンド側の OpenAPI と<b>必ず</b>同期する。</p>
+    </div>
+    <div class="w40 stack">
+      <ul class="pros">
+        <li>真実の源が 1 つ。API と生成物がずれない</li>
+        <li>TypeSpec のコンパイラが型解決・検証をやってくれる</li>
+        <li>IDL-first の案件では AI の仕事が「デコレータを付ける」だけになり、最小</li>
+      </ul>
+      <ul class="pros cons">
+        <li><b>IDL が先でない案件に弱い</b>。Domain-first / UI-first では「先に TypeSpec を書く」を強いる</li>
+        <li>API 契約に<b>ドメイン意味（VO・不変条件）が混ざる</b>。DTO と Entity の分離思想と衝突しやすい</li>
+        <li>エミッタ開発の学習コストが高い。TypeSpec のバージョン追従も要る</li>
+        <li>画面の種類・生成範囲など「API と無関係な指示」を IDL に書く違和感</li>
+        <li>バックエンド側が TypeSpec を編集する場合、フロント固有のデコレータが混入する</li>
+      </ul>
+      <div class="panel amber"><h3>採るべき部分</h3><p style="font-size:14px">「TypeSpec から情報を取る」機構は案 A の<b>インポータ</b>として採用する。デコレータは Phase 3 の任意拡張（付いていればインポータが読む、無ければ AI が補う）に格下げする。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 -->
+<section class="slide" data-sec="提案" data-title="案 C：規約 + ガードレールで AI 生成">
+  <div class="eyebrow">案 C</div>
+  <h2>案 C：ジェネレーターを作らず、規約とガードレールで AI に書かせる<small>リファレンス実装と規約文書を渡して AI が毎回 4 レイヤーを書く。決定論は lint・arch テスト・レビューで「事後に」担保する。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <div class="grid2">
+        <div class="card"><h3>用意するもの</h3><ul><li><b>ゴールデン集約</b>：手書きのリファレンス実装（Order）</li><li><b>CONVENTIONS.md</b>：命名・配置・依存の向き・ID/VO の作法</li><li><b>スキル／プロンプト</b>：「この集約を Order と同じ構造で作れ」</li><li><b>arch lint</b>：eslint-plugin-boundaries / dependency-cruiser でレイヤー違反を検出</li><li><b>構造テスト</b>：「集約ごとに Repository interface と Test 実装がある」等をテストで強制</li></ul></div>
+        <div class="card"><h3>ワークフロー</h3><ol style="font-size:14px"><li>AI が入力を読み、ゴールデン集約を参照して全ファイルを書く</li><li>lint・arch テスト・tsc で違反を検出し、AI に修正させる</li><li>人がレビュー</li></ol><p>ツールを 1 行も書かずに<b>今日から始められる</b>。</p></div>
+      </div>
+      <div class="panel"><h3>決定論の実態</h3><p style="font-size:14px">「同じ入力なら同じ出力」は<b>保証されない</b>。モデルやプロンプトの変化で骨格が揺れる。ガードレールが止められるのは「規約違反」までで、「微妙に違う書き方」は止められない。集約が 10 を超えると、集約ごとに癖のある骨格が積み上がる。</p></div>
+    </div>
+    <div class="w40 stack">
+      <ul class="pros">
+        <li>初期コストがほぼゼロ。規約文書とリファレンスは<b>どの案でも必要</b>なので無駄にならない</li>
+        <li>非 CRUD の複雑な集約にも柔軟</li>
+        <li>生成器の保守が無い</li>
+      </ul>
+      <ul class="pros cons">
+        <li>Issue の「決定論的に進めたい」を満たさない</li>
+        <li>配線（DI／store／ルート）を AI が既存ファイルを編集して行う。壊れやすい</li>
+        <li>再生成という概念が無い。仕様変更時は差分を AI に説明し直す</li>
+        <li>トークン消費が毎回大きい（骨格を毎回書き直す）</li>
+      </ul>
+      <div class="panel amber"><h3>採るべき部分</h3><p style="font-size:14px"><b>ゴールデン集約・規約文書・arch lint は案 A の Phase 0 そのもの。</b>案 C は「案 A の Phase 0 だけを実施して止まった状態」と見なせるので、段階的移行の出発点として採用する。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 15 -->
+<section class="slide" data-sec="提案" data-title="案 D：既存テンプレート CLI を AI から呼ぶ">
+  <div class="eyebrow">案 D</div>
+  <h2>案 D：既存のテンプレート CLI（Hygen / Plop / Nx generators）を AI から呼ぶ<small>自作は最小限にし、枯れたスキャフォールディングツールに乗る。AI はプロンプトへの回答や CLI 引数を考える。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <table class="dense">
+        <thead><tr><th>ツール</th><th>特徴</th><th>このケースでの評価</th></tr></thead>
+        <tbody>
+          <tr><td>Hygen</td><td><code>_templates/</code> に EJS + frontmatter。<code>inject</code> で既存ファイルへの行挿入も可。軽い</td><td>フラットな引数向き。集約の入れ子構造を渡すには <code>--</code> 引数が苦しい。inject は行マーカー依存</td></tr>
+          <tr><td>Plop</td><td>Node の対話式ジェネレーター。Handlebars。<code>plopfile.js</code> で actions を組む</td><td>対話式が AI と相性悪い（非対話モードはあるが引数はフラット）。actions は自作コードになる</td></tr>
+          <tr><td>Nx generators</td><td><code>generateFiles</code>・AST ユーティリティ・<code>--dry-run</code>・冪等性の思想が揃う</td><td>強力だが Nx ワークスペース前提。Nx を使っていないなら導入コストが本体より大きい</td></tr>
+        </tbody>
+      </table>
+      <div class="panel"><h3>共通する構造的な問題</h3><ul style="font-size:14px"><li>どれも「テンプレート → ファイル」の部分は担うが、<b>spec のスキーマ検証・レジストリの丸ごと再生成・TypeSpec インポート・<code>gen check</code></b> は結局自作になる</li><li>つまり案 D は「案 A のテンプレートエンジン部分を外部化した案」に過ぎない。外部化で減るのは全体の 2 割程度</li><li>一方で引数の表現力が落ち、AI が渡す情報がフラットに制約される</li></ul></div>
+    </div>
+    <div class="w40 stack">
+      <ul class="pros">
+        <li>テンプレート処理・dry-run・prompt などの周辺機能が最初から揃う</li>
+        <li>ドキュメントと事例が多く、AI も使い方を知っている</li>
+        <li>数日で最初の 1 レイヤーが動く</li>
+      </ul>
+      <ul class="pros cons">
+        <li>入れ子の生成仕様を渡しにくい（案 A の核心を失う）</li>
+        <li>配線は行マーカー inject 頼み。決定論の検証がしづらい</li>
+        <li>再生成ポリシー（<code>.gen.ts</code> / create-only）は自前で足す</li>
+        <li>ツール側の破壊的変更に追従する必要</li>
+      </ul>
+      <div class="panel amber"><h3>採るべき部分</h3><p style="font-size:14px">案 A の<b>テンプレートエンジン</b>として Hygen のテンプレート形式（EJS + frontmatter の <code>to:</code>）を借りるのは合理的。ただし CLI 入口・スキーマ・レジストリは自作にし、Hygen はライブラリとして呼ぶか、同等の薄い実装（Eta + 自前ライタ）にする。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 16 -->
+<section class="slide" data-sec="提案" data-title="4 案の比較">
+  <div class="eyebrow">比較</div>
+  <h2>4 案の比較<small>評価軸は検討メモの論点そのまま。◎ 十分 / ○ 可 / △ 工夫が要る / × 満たさない。</small></h2>
+  <div class="body">
+    <table class="compare dense">
+      <thead><tr><th>評価軸</th><th>A. 仕様駆動<br>自作ジェネレーター</th><th>B. TypeSpec<br>単一ソース</th><th>C. 規約 +<br>ガードレール</th><th>D. 既存<br>テンプレート CLI</th></tr></thead>
+      <tbody>
+        <tr><td>決定論性<small>同じ入力 → 同じ出力を検証できるか</small></td><td><span class="mk a">◎</span></td><td><span class="mk a">◎</span></td><td><span class="mk d">×</span></td><td><span class="mk b">○</span></td></tr>
+        <tr><td>入力の柔軟性<small>IDL が先でない案件</small></td><td><span class="mk a">◎</span></td><td><span class="mk d">×</span></td><td><span class="mk a">◎</span></td><td><span class="mk b">○</span></td></tr>
+        <tr><td>部分生成・再生成<small>手編集を壊さない</small></td><td><span class="mk a">◎</span></td><td><span class="mk b">○</span></td><td><span class="mk d">×</span></td><td><span class="mk c">△</span></td></tr>
+        <tr><td>「AI が引数を考える」との適合<small>スキーマで制約できるか</small></td><td><span class="mk a">◎</span></td><td><span class="mk b">○</span></td><td><span class="mk c">△</span></td><td><span class="mk c">△</span></td></tr>
+        <tr><td>配線（DI / store / ルート）<small>既存ファイルを壊さないか</small></td><td><span class="mk a">◎</span> レジストリ再生成</td><td><span class="mk a">◎</span></td><td><span class="mk d">×</span></td><td><span class="mk c">△</span> 行 inject</td></tr>
+        <tr><td>DTO と Entity の分離<small>DDD の作法との整合</small></td><td><span class="mk a">◎</span></td><td><span class="mk c">△</span> IDL に意味が混ざる</td><td><span class="mk b">○</span></td><td><span class="mk b">○</span></td></tr>
+        <tr><td>初期コスト</td><td><span class="mk c">△</span> 4〜6 週</td><td><span class="mk d">×</span> 6 週+</td><td><span class="mk a">◎</span> 1 週</td><td><span class="mk b">○</span> 2〜3 週</td></tr>
+        <tr><td>保守コスト<small>テンプレート・ツール追従</small></td><td><span class="mk b">○</span></td><td><span class="mk c">△</span></td><td><span class="mk b">○</span></td><td><span class="mk c">△</span></td></tr>
+        <tr><td>集約が増えたときのスケール</td><td><span class="mk a">◎</span></td><td><span class="mk a">◎</span></td><td><span class="mk d">×</span></td><td><span class="mk b">○</span></td></tr>
+      </tbody>
+    </table>
+    <p class="note">B は「IDL が常に先」なら A と互角以上だが、Issue の「そうでない場合もある」で決定的に不利。C は決定論の要件を満たさないが、A の前提工程として必ず通る。D は A の一部の外部化で、失うものの方が大きい。</p>
+  </div>
+</section>
+
+<!-- 17 -->
+<section class="slide" data-sec="提案" data-title="推奨：A を軸に B・C を吸収">
+  <div class="eyebrow">推奨</div>
+  <h2>推奨：案 A を軸に、B のインポータと C のガードレールを吸収する<small>単独の案ではなく、「A の Phase 0 = C」「A の Phase 3 = B の読み取り部分」として段階的に積む。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <div class="flow">
+        <div class="step human"><b>Phase 0 ＝ 案 C</b><span>ゴールデン集約・規約文書・arch lint。ここまでで AI 生成は「規約付きで」始められる</span></div>
+        <div class="step script"><b>Phase 1–2 ＝ 案 A の核</b><span>spec スキーマ・生成器・レジストリ・<code>gen check</code>。ゴールデンと一致するまで作る</span></div>
+        <div class="step script"><b>Phase 3 ＝ 案 B の読み取り</b><span>TypeSpec インポータ／エクスポータ。デコレータは任意</span></div>
+        <div class="step ai"><b>Phase 4 ＝ AI 統合</b><span>スキル <code>/gen</code>、構造化出力、Hook、3 起点のプロンプト</span></div>
+      </div>
+      <div class="grid2">
+        <div class="card top-green"><h3>なぜ A が軸か</h3><ul><li>Issue の 4 要件を全て「◎」で満たす唯一の案</li><li>決定論を<b>テストで証明できる</b>（ゴールデン・スナップショット・check）</li><li>入力起点が変わっても生成器を作り直さなくてよい</li></ul></div>
+        <div class="card top-amber"><h3>何を捨てるか</h3><ul><li>TypeSpec を唯一の真実にすること（spec と二重管理を受け入れ、インポータと <code>gen check</code> で同期を保つ）</li><li>非 CRUD の複雑な生成（Zone 3 は生成しない、と割り切る）</li><li>既存ファイルへの AST 追記（レジストリ方式で回避）</li></ul></div>
+      </div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel accent"><h3>途中で止まっても価値が残る順序</h3><ul style="font-size:14px"><li>Phase 0 で止まる → 規約付き AI 生成（案 C）が手に入る</li><li>Phase 1 で止まる → Domain / Infra の骨格だけ決定論生成。ID と Repository が揃う</li><li>Phase 2 で止まる → 4 レイヤー生成。AI は手動でスキル無しに spec を書く</li><li>Phase 3 で止まる → IDL-first が高速化</li></ul></div>
+      <div class="panel"><h3>判断の前提（変わったら再検討）</h3><ul style="font-size:14px"><li>集約が今後 10 以上増える見込み</li><li>IDL 以外から始まる案件が年に数回以上ある</li><li>チームが規約を自分たちで決められる</li></ul></div>
+      <p class="note">集約が数個で終わる小規模案件なら案 C で十分。この推奨は「生成器を作る価値がある規模」を前提にしている。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 18 -->
+<section class="slide section" data-sec="推奨案の設計" data-title="章：推奨案の設計">
+  <div class="eyebrow">Part 3</div>
+  <h2>推奨案の設計</h2>
+  <p class="lead">全体構成、生成仕様の例、生成物のツリー、レイヤー別テンプレートの中身、配線、TypeSpec との接続、テスト用バックエンド、AI ワークフロー、CLI 仕様。</p>
+</section>
+
+<!-- 19 -->
+<section class="slide" data-sec="推奨案の設計" data-title="全体構成">
+  <div class="eyebrow">設計 1</div>
+  <h2>全体構成：入力 → 仕様 → 生成器 → 4 レイヤー + ガードレール<small>生成器は <code>tools/gen/</code> に置くモノレポ内パッケージ。プロジェクト固有のテンプレートを持つ。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <div class="tree"><span class="d">tools/gen/</span>
+├── <span class="a">schema/spec.schema.json</span>     <span class="d">生成仕様の JSON Schema（AI にもそのまま渡す）</span>
+├── src/
+│   ├── cli.ts                  <span class="d">apply / check / import / export / list</span>
+│   ├── spec/                   <span class="d">読み込み・検証・正規化（名前の派生、参照解決）</span>
+│   ├── importers/typespec.ts   <span class="d">tsp → spec 草案（Phase 3）</span>
+│   ├── exporters/typespec.ts   <span class="d">spec → tsp 草案（Domain-first 用）</span>
+│   ├── model/                  <span class="d">正規化済みモデル（テンプレートが読む唯一の入力）</span>
+│   ├── render/                 <span class="d">テンプレート描画（Eta）+ Prettier</span>
+│   ├── writers/                <span class="d">create-only / always / registry の書き出し戦略</span>
+│   └── registry/               <span class="d">全 spec を集めて di / store / routes を再生成</span>
+├── templates/
+│   ├── domain/       <span class="g">Id.ts.eta  Entity.ts.eta  ValueObject.ts.eta  Repository.ts.eta  Entity.spec.ts.eta</span>
+│   ├── application/  <span class="g">UseCase.ts.eta  ports.ts.eta  UseCase.spec.ts.eta</span>
+│   ├── infrastructure/ <span class="g">ApiRepository.ts.eta  TestRepository.ts.eta  Mapper.gen.ts.eta  handlers.gen.ts.eta</span>
+│   └── presentation/ <span class="g">slice.ts.eta  useXxx.ts.eta  ListPage.tsx.eta  DetailPage.tsx.eta  Form.tsx.eta</span>
+├── test/
+│   ├── golden/       <span class="d">手書き Order と生成 Order の一致テスト</span>
+│   └── snapshots/    <span class="d">代表 spec の生成物スナップショット</span>
+└── package.json      <span class="d">bin: gen</span>
+<span class="d">spec/</span>                     <span class="d">集約ごとの生成仕様（git 管理、レビュー対象）</span>
+├── ordering/order.yaml
+└── customer/customer.yaml</div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>依存ライブラリ（最小）</h3><ul style="font-size:14px"><li><b>ajv</b>：JSON Schema 検証</li><li><b>yaml</b>：spec の読み込み</li><li><b>eta</b>（または EJS）：テンプレート。ロジックはテンプレートに書かず <code>model/</code> で前計算する</li><li><b>prettier</b>：固定バージョン</li><li><b>@typespec/compiler</b>：Phase 3 のインポータのみ</li><li>ts-morph は<b>入れない</b>（レジストリ方式で不要）</li></ul></div>
+      <div class="panel green"><h3>ガードレール（生成器と独立に効く）</h3><ul style="font-size:14px"><li>eslint-plugin-boundaries または dependency-cruiser：レイヤー間依存の向き</li><li>eslint ルール：<code>*.gen.ts</code> の手編集を検出（ヘッダ必須・変更禁止）</li><li>構造テスト：集約ごとに Id / Repository / TestRepository が存在する</li><li>CI：<code>gen check</code> + tsc + test</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 20 -->
+<section class="slide" data-sec="推奨案の設計" data-title="生成仕様の例">
+  <div class="eyebrow">設計 2</div>
+  <h2>生成仕様の例：<code>spec/ordering/order.yaml</code><small>AI が書き、人がレビューし、生成器が読む唯一の入力。コードは一切含まない。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <pre style="font-size:11.5px;line-height:1.42">version: 1
+context: ordering                      <span class="c"># 境界づけられたコンテキスト（ディレクトリ名）</span>
+aggregate:
+  name: Order
+  id: { name: OrderId, base: string, format: uuid }
+  fields:
+    - { name: customerId, type: CustomerId, ref: customer/Customer }   <span class="c"># 他集約は ID 参照のみ</span>
+    - { name: lines,      type: OrderLine, list: true, entity: true }
+    - { name: total,      type: Money }
+    - { name: status,     enum: [draft, placed, cancelled], default: draft }
+    - { name: placedAt,   type: datetime, optional: true }
+  entities:
+    - name: OrderLine
+      id: { name: OrderLineId, base: string }
+      fields:
+        - { name: productId, type: ProductId, ref: catalog/Product }
+        - { name: quantity,  type: Quantity }
+        - { name: unitPrice, type: Money }
+  valueObjects:
+    - { name: Money,    fields: { amount: number, currency: string }, invariants: ["amount >= 0"] }
+    - { name: Quantity, base: number, invariants: ["integer", "> 0"] }
+useCases:
+  - { name: PlaceOrder,  kind: command, input: { orderId: OrderId }, uses: [OrderRepository] }
+  - { name: CancelOrder, kind: command, input: { orderId: OrderId, reason: string } }
+  - { name: ListOrders,  kind: query,   output: { items: OrderSummary, list: true } }
+  - { name: GetOrder,    kind: query,   input: { orderId: OrderId } }
+api:
+  source: typespec
+  file: api/ordering.tsp
+  operations: { list: Orders.list, get: Orders.get, create: Orders.create, place: Orders.place }
+presentation:
+  screens: [list, detail, form]
+  route: /orders
+generate:
+  layers: [domain, application, infrastructure, presentation]
+  tests: true
+  testBackend: handlers                <span class="c"># テスト用バックエンドのハンドラ/フィクスチャも出す</span></pre>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>スキーマが強制すること</h3><ul style="font-size:14px"><li><b>全ての集約・Entity に ID 型がある</b>（<code>id</code> 必須）。「ID を厳重に」を仕様レベルで保証</li><li>他集約への参照は <code>ref</code> 付き ID 型のみ。オブジェクト埋め込みは書けない</li><li><code>invariants</code> は<b>文字列の宣言</b>。生成器は TODO コメントと failing test の雛形にするだけで、実装しない</li><li><code>api.operations</code> の値は TypeSpec の操作名。インポータが埋め、<code>gen check</code> が存在を検証</li></ul></div>
+      <div class="panel accent"><h3>AI が判断した箇所（この例）</h3><ul style="font-size:14px"><li><code>total</code> と <code>unitPrice</code> を <code>Money</code> VO に寄せた</li><li><code>customerId</code> を埋め込みではなく ID 参照にした</li><li><code>PlaceOrder</code> / <code>CancelOrder</code> を Command に分けた</li><li>画面は 3 種の標準画面で足りると判断した</li></ul><p style="font-size:13px;color:var(--muted)">→ これらが PR の diff として見える、というのが仕様ファイル方式の利点。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 21 -->
+<section class="slide" data-sec="推奨案の設計" data-title="生成物のツリー">
+  <div class="eyebrow">設計 3</div>
+  <h2>生成物のツリー：<code>gen apply spec/ordering/order.yaml</code><small>色は再生成ポリシー。<span class="pill amber">create-only</span> は一度きり、<span class="pill green">.gen.ts</span> は毎回、<span class="pill blue">registry</span> は全 spec から丸ごと。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <div class="tree">src/
+├── domain/ordering/order/
+│   ├── <span class="m">OrderId.ts</span>              <span class="d">branded type + parse()/equals()</span>
+│   ├── <span class="m">OrderLineId.ts</span>
+│   ├── <span class="m">Money.ts</span>                <span class="d">VO。invariants は TODO(gen) + failing test</span>
+│   ├── <span class="m">Quantity.ts</span>
+│   ├── <span class="m">OrderLine.ts</span>            <span class="d">Entity</span>
+│   ├── <span class="m">Order.ts</span>                <span class="d">Aggregate root。place()/cancel() は TODO(gen)</span>
+│   ├── <span class="m">OrderRepository.ts</span>      <span class="d">interface（ポート）</span>
+│   ├── <span class="m">Order.spec.ts</span>           <span class="d">不変条件ごとに it.todo()</span>
+│   └── index.ts                <span class="d">barrel（create-only）</span>
+├── application/ordering/
+│   ├── <span class="m">PlaceOrder.ts</span>  <span class="m">CancelOrder.ts</span>  <span class="m">ListOrders.ts</span>  <span class="m">GetOrder.ts</span>
+│   ├── <span class="g">ports.gen.ts</span>            <span class="d">DI トークン（Symbol）と型</span>
+│   └── <span class="m">PlaceOrder.spec.ts</span> …    <span class="d">TestRepository を使う雛形</span>
+├── infrastructure/ordering/
+│   ├── <span class="m">OrderApiRepository.ts</span>   <span class="d">生成 API クライアント経由。Mapper を呼ぶ</span>
+│   ├── <span class="m">OrderTestRepository.ts</span>  <span class="d">インメモリ。単体テストと Storybook 用</span>
+│   ├── <span class="g">OrderMapper.gen.ts</span>      <span class="d">DTO ⇄ Entity。フィールド対応は spec から決定</span>
+│   ├── <span class="g">OrderDto.gen.ts</span>         <span class="d">API の型（TypeSpec 由来）</span>
+│   └── <span class="g">testBackend/order.handlers.gen.ts</span> <span class="d">テスト用バックエンドのハンドラとフィクスチャ</span>
+├── presentation/ordering/
+│   ├── <span class="m">orderSlice.ts</span>           <span class="d">Redux slice + thunk（ユースケース呼び出し）</span>
+│   ├── <span class="m">useOrders.ts</span>            <span class="d">Hook。コンポーネントはこれだけを見る</span>
+│   ├── <span class="m">OrderListPage.tsx</span>  <span class="m">OrderDetailPage.tsx</span>  <span class="m">OrderForm.tsx</span>
+│   └── <span class="m">OrderListPage.stories.tsx</span>
+└── <span class="a">registry/</span>
+    ├── <span class="a">di.gen.ts</span>               <span class="d">全集約の Repository バインディング（Api / Test の切替）</span>
+    ├── <span class="a">store.gen.ts</span>            <span class="d">全 slice の reducer マップ</span>
+    └── <span class="a">routes.gen.ts</span>           <span class="d">全画面のルート定義</span></div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>数えると</h3><p style="font-size:14px">この例で <b>約 25 ファイル</b>。うち create-only が 19、常時再生成が 4、レジストリが 3。手で書けば半日、生成なら数秒。骨格の書き味が集約ごとにぶれない。</p></div>
+      <div class="panel amber"><h3>create-only の運用ルール</h3><ul style="font-size:14px"><li>生成後は<b>普通のソースコード</b>。ヘッダの「生成元」は残すが編集自由</li><li>spec を変えても上書きされない。必要なら <code>--force</code> で名指し、または <code>--dry-run</code> で差分を見て手で反映</li><li>フィールド追加のような変更は <code>.gen.ts</code>（Mapper / DTO）側が追随し、Entity は tsc エラーで気付ける設計にする</li></ul></div>
+      <div class="panel green"><h3>ヘッダ例</h3><pre style="font-size:11.5px"><span class="c">// @generated by gen 1.2.0 from spec/ordering/order.yaml
+// sha256: 3f9a…  — DO NOT EDIT (regenerated on every apply)</span></pre></div>
+    </div>
+  </div>
+</section>
+
+<!-- 22 -->
+<section class="slide" data-sec="推奨案の設計" data-title="レイヤー別テンプレートの中身">
+  <div class="eyebrow">設計 4</div>
+  <h2>レイヤー別テンプレートの中身<small>どこまで書き、どこから TODO にするかの線を、実物で示す。</small></h2>
+  <div class="body">
+    <div class="grid2">
+      <pre style="font-size:11.5px"><span class="c">// domain/ordering/order/OrderId.ts（create-only）</span>
+<span class="k">declare const</span> brand: <span class="k">unique symbol</span>;
+<span class="k">export type</span> OrderId = string &amp; { readonly [brand]: <span class="s">"OrderId"</span> };
+<span class="k">export const</span> OrderId = {
+  of(raw: string): OrderId { <span class="c">/* uuid 形式を検証 */</span> <span class="k">return</span> raw <span class="k">as</span> OrderId; },
+  equals(a: OrderId, b: OrderId) { <span class="k">return</span> a === b; },
+};
+
+<span class="c">// domain/ordering/order/Order.ts（create-only）</span>
+<span class="k">export class</span> Order {
+  <span class="k">private constructor</span>(<span class="k">readonly</span> id: OrderId, <span class="k">readonly</span> customerId: CustomerId,
+    <span class="k">readonly</span> lines: readonly OrderLine[], <span class="k">readonly</span> total: Money,
+    <span class="k">readonly</span> status: OrderStatus, <span class="k">readonly</span> placedAt?: Date) {}
+  <span class="k">static</span> reconstruct(p: OrderProps): Order { <span class="k">return new</span> Order(…); }
+  place(): Order {
+    <span class="r">// TODO(gen): invariant — draft からのみ遷移できる。lines は 1 件以上。</span>
+    <span class="k">throw new</span> Error(<span class="s">"not implemented"</span>);
+  }
+}
+
+<span class="c">// domain/ordering/order/OrderRepository.ts（create-only）</span>
+<span class="k">export interface</span> OrderRepository {
+  findById(id: OrderId): Promise&lt;Order | undefined&gt;;
+  findAll(): Promise&lt;OrderSummary[]&gt;;
+  save(order: Order): Promise&lt;void&gt;;
+}</pre>
+      <pre style="font-size:11.5px"><span class="c">// application/ordering/PlaceOrder.ts（create-only）</span>
+<span class="k">export class</span> PlaceOrder {
+  <span class="k">constructor</span>(<span class="k">private readonly</span> orders: OrderRepository) {}
+  <span class="k">async</span> execute(input: { orderId: OrderId }): Promise&lt;void&gt; {
+    <span class="k">const</span> order = <span class="k">await</span> <span class="k">this</span>.orders.findById(input.orderId);
+    <span class="k">if</span> (!order) <span class="k">throw new</span> NotFoundError(<span class="s">"Order"</span>, input.orderId);
+    <span class="k">await</span> <span class="k">this</span>.orders.save(order.place());   <span class="c">// 骨格はここまで決定論で書ける</span>
+  }
+}
+
+<span class="c">// infrastructure/ordering/OrderMapper.gen.ts（常時再生成）</span>
+<span class="k">export const</span> OrderMapper = {
+  toDomain(dto: OrderDto): Order {
+    <span class="k">return</span> Order.reconstruct({
+      id: OrderId.of(dto.id), customerId: CustomerId.of(dto.customerId),
+      lines: dto.lines.map(OrderLineMapper.toDomain),
+      total: Money.of(dto.total.amount, dto.total.currency), status: dto.status,
+      placedAt: dto.placedAt ? <span class="k">new</span> Date(dto.placedAt) : undefined,
+    });
+  },
+  toDto(order: Order): OrderDto { <span class="c">/* 逆方向。同じ対応表から生成 */</span> },
+};
+
+<span class="c">// presentation/ordering/useOrders.ts（create-only）</span>
+<span class="k">export function</span> useOrders() {
+  <span class="k">const</span> dispatch = useAppDispatch();
+  <span class="k">const</span> { items, status } = useAppSelector(s =&gt; s.ordering.order);
+  <span class="k">return</span> { items, status, load: () =&gt; dispatch(listOrders()),
+           place: (id: OrderId) =&gt; dispatch(placeOrder({ orderId: id })) };
+}</pre>
+    </div>
+    <p class="note">Mapper は「DTO のどのフィールドが Entity のどのフィールドに、どの VO のコンストラクタを通って入るか」が spec から一意に決まるため、常時再生成できる。Entity のメソッド本体は spec に載せない（載せた瞬間にコードになる）ので、TODO と失敗するテストだけを置く。</p>
+  </div>
+</section>
+
+<!-- 23 -->
+<section class="slide" data-sec="推奨案の設計" data-title="配線：レジストリの丸ごと再生成">
+  <div class="eyebrow">設計 5</div>
+  <h2>配線：既存ファイルに追記せず、レジストリを丸ごと再生成する<small>DI・Redux store・ルーターの 3 か所。生成器は全 spec を知っているので、追記ではなく全量生成ができる。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <pre style="font-size:12px"><span class="c">// src/registry/di.gen.ts — 全 spec から生成。手編集禁止</span>
+<span class="k">import</span> { PORTS } <span class="k">from</span> <span class="s">"@/application/ports.gen"</span>;
+<span class="k">export function</span> registerRepositories(c: Container, mode: <span class="s">"api"</span> | <span class="s">"test"</span>) {
+  c.bind(PORTS.OrderRepository).to(mode === <span class="s">"api"</span> ? OrderApiRepository : OrderTestRepository);
+  c.bind(PORTS.CustomerRepository).to(mode === <span class="s">"api"</span> ? CustomerApiRepository : CustomerTestRepository);
+  <span class="c">// … spec/ の集約ぶん。順序は context/aggregate 名の辞書順で固定</span>
+}
+
+<span class="c">// src/registry/store.gen.ts</span>
+<span class="k">export const</span> generatedReducers = {
+  <span class="s">"ordering/order"</span>: orderReducer,
+  <span class="s">"customer/customer"</span>: customerReducer,
+};
+
+<span class="c">// src/registry/routes.gen.ts</span>
+<span class="k">export const</span> generatedRoutes: RouteObject[] = [
+  { path: <span class="s">"/orders"</span>,     element: &lt;OrderListPage /&gt; },
+  { path: <span class="s">"/orders/:id"</span>, element: &lt;OrderDetailPage /&gt; },
+];
+
+<span class="c">// 手書き側（一度だけ書く）：レジストリを取り込むだけ</span>
+<span class="k">const</span> store = configureStore({ reducer: { ...generatedReducers, ...handWrittenReducers } });
+<span class="k">const</span> router = createBrowserRouter([...generatedRoutes, ...handWrittenRoutes]);</pre>
+    </div>
+    <div class="w40 stack">
+      <div class="panel green"><h3>この方式の利点</h3><ul style="font-size:14px"><li>既存ファイルを<b>一切編集しない</b>。マーカーや AST 操作が不要</li><li>集約を削除したら spec を消して <code>gen apply</code>。配線も消える</li><li><code>gen check</code> でレジストリの drift を検出できる（追記方式では不可能）</li><li>手書きの配線と生成の配線が<b>ファイル単位で分離</b>する</li></ul></div>
+      <div class="panel amber"><h3>制約</h3><ul style="font-size:14px"><li>手書き側に「レジストリを spread する 1 行」を最初に入れる必要がある（Phase 0 の作業）</li><li>集約ごとに配線を細かくカスタムしたい場合は、手書き側で上書き（後勝ち）する</li><li>DI コンテナの選定に依存する部分は <code>bind()</code> の 1 行のみ。テンプレート側で吸収</li></ul></div>
+      <div class="panel"><h3>Api / Test の切替</h3><p style="font-size:14px">「テスト用バックエンドを使っている」前提に合わせ、<code>mode</code> は 3 値にできる：<code>api</code>（本番 API）/ <code>testBackend</code>（テスト用バックエンドへ本物の ApiRepository で接続）/ <code>memory</code>（インメモリ）。生成器は 3 つとも同じ spec から出す。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 24 -->
+<section class="slide" data-sec="推奨案の設計" data-title="TypeSpec との接続">
+  <div class="eyebrow">設計 6</div>
+  <h2>TypeSpec との接続：インポータとエクスポータ<small>TypeSpec は「API の形」の真実の源、spec は「ドメイン意味と生成指示」の真実の源。両者の対応を機械で検証する。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <div class="grid2">
+        <div class="card top-blue"><h3>インポータ：tsp → spec 草案（IDL-first）</h3>
+          <ol style="font-size:13.5px"><li><code>tsp compile</code> で <code>@typespec/openapi3</code> を出す（自作エミッタを書かない最短経路）</li><li>OpenAPI の <code>components.schemas</code> → <code>aggregate.fields</code> の型・optional・enum</li><li><code>paths</code> の operationId → <code>api.operations</code> と <code>useCases</code> の候補</li><li>出力は<b>草案</b>。VO 化・集約境界・ref は <code># TODO(ai)</code> 付きで空欄</li></ol>
+          <p>Phase 3b（任意）：<code>@typespec/compiler</code> の <code>Program</code> を直接歩き、カスタムデコレータ（<code>@ddd.valueObject</code> 等）があれば草案に反映する。無くても動く。</p>
+        </div>
+        <div class="card top-green"><h3>エクスポータ：spec → tsp 草案（Domain-first / UI-first）</h3>
+          <ol style="font-size:13.5px"><li>spec の集約・Entity・VO を <code>model</code> に平坦化（VO は構造体または scalar に）</li><li><code>useCases</code> を <code>op</code> の候補に。Command は POST、Query は GET</li><li>出力は <code>api/ordering.draft.tsp</code>。バックエンドと合意して正式版にしたら spec の <code>api.file</code> を差し替える</li></ol>
+          <p>逆方向があることで「IDL が先でない」案件でも、最終的に IDL-first と同じ状態に収束する。</p>
+        </div>
+      </div>
+      <div class="panel"><h3>API クライアント</h3><p style="font-size:14px">OpenAPI から <code>openapi-typescript</code> + <code>openapi-fetch</code>（または TypeSpec の JS クライアントエミッタ）で型付きクライアントを生成し、<code>OrderApiRepository</code> はそれを呼ぶ。生成器はクライアントを作らず、<b>呼び方</b>だけをテンプレートで固定する。</p></div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel amber"><h3>DTO ≠ Entity を守る</h3><ul style="font-size:14px"><li>DTO 型は <code>OrderDto.gen.ts</code>（TypeSpec 由来）、Entity は <code>Order.ts</code>（spec 由来）。<b>同じ名前を付けない</b></li><li>変換は必ず <code>OrderMapper.gen.ts</code> を通す。Presentation が DTO を触ったら arch lint で落とす</li><li>API に無いフィールド（導出値・UI 状態）は Entity や slice に、spec で <code>api: false</code> と宣言</li></ul></div>
+      <div class="panel"><h3><code>gen check</code> が見るもの</h3><ul style="font-size:14px"><li><code>api.operations</code> で参照した操作が tsp に存在する</li><li>DTO のフィールド集合と Mapper の対応表が一致する</li><li>tsp 側で追加されたフィールドが spec に無ければ<b>警告</b>（エラーではない。UI に不要な項目もある）</li></ul></div>
+      <p class="note">TypeSpec のエミッタ自作は Phase 3b に隔離し、openapi3 経由で先に動かす。エミッタ API の変更に追従するコストを本体から切り離すため。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 25 -->
+<section class="slide" data-sec="推奨案の設計" data-title="テスト用バックエンドとテスト">
+  <div class="eyebrow">設計 7</div>
+  <h2>テスト用バックエンドとテストの生成<small>「テスト用バックエンドを使っている」前提を生成器に取り込む。3 段のテストを spec から雛形化する。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <table class="dense wrap">
+        <thead><tr><th>段</th><th>対象</th><th>Repository</th><th>生成するもの</th><th>ポリシー</th></tr></thead>
+        <tbody>
+          <tr><td>単体（Domain）</td><td>Entity / VO の不変条件</td><td>—</td><td><code>Order.spec.ts</code>：invariants ごとの <code>it.todo()</code>、VO の境界値テスト</td><td>create-only</td></tr>
+          <tr><td>単体（Application）</td><td>ユースケース</td><td><code>OrderTestRepository</code>（インメモリ）</td><td><code>PlaceOrder.spec.ts</code>：正常系 1 本 + NotFound の雛形</td><td>create-only</td></tr>
+          <tr><td>結合（Infrastructure）</td><td>ApiRepository ⇄ テスト用バックエンド</td><td><code>OrderApiRepository</code></td><td><code>OrderApiRepository.int.spec.ts</code>：list / get / save の往復。<code>handlers.gen.ts</code> にフィクスチャ</td><td>spec は create-only、handlers は再生成</td></tr>
+          <tr><td>コンポーネント</td><td>ページ・フォーム</td><td>DI を <code>memory</code> モードで</td><td>Storybook の stories、Testing Library の smoke テスト</td><td>create-only</td></tr>
+        </tbody>
+      </table>
+      <pre style="font-size:11.5px;margin-top:12px"><span class="c">// infrastructure/ordering/testBackend/order.handlers.gen.ts — テスト用バックエンドの雛形</span>
+<span class="k">export const</span> orderFixtures: OrderDto[] = [ { id: <span class="s">"00000000-0000-4000-8000-000000000001"</span>, customerId: <span class="s">"…"</span>,
+  lines: [], total: { amount: 0, currency: <span class="s">"JPY"</span> }, status: <span class="s">"draft"</span> } ];   <span class="c">// 決定論的な固定 ID</span>
+<span class="k">export const</span> orderHandlers = [
+  http.get(<span class="s">"/orders"</span>,     () =&gt; HttpResponse.json(orderFixtures)),
+  http.get(<span class="s">"/orders/:id"</span>, ({ params }) =&gt; HttpResponse.json(orderFixtures.find(o =&gt; o.id === params.id))),
+];</pre>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>テスト用バックエンドの形式は差し替え可能に</h3><p style="font-size:14px">上は MSW 形式の例。実際のテスト用バックエンドが別サーバー（json-server、独自モック API 等）なら、テンプレートを <code>testBackend: json-server</code> のように切り替える。<b>フィクスチャの内容（決定論的な固定 ID と値）は共通</b>で、出力形式だけが変わる。</p></div>
+      <div class="panel green"><h3>契約テストとしての役割</h3><p style="font-size:14px">「ApiRepository がテスト用バックエンドと往復できる」テストは、Mapper・DTO・API クライアントの整合を毎回検証する。TypeSpec が変わって DTO が再生成されたとき、最初に落ちるのがここ。</p></div>
+      <div class="panel amber"><h3>生成しないテスト</h3><ul style="font-size:14px"><li>業務ルールの本体テスト（Zone 3）。<code>it.todo()</code> を置くだけ</li><li>E2E。画面の意味は spec に無い</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 26 -->
+<section class="slide" data-sec="推奨案の設計" data-title="AI ワークフロー（スキル /gen）">
+  <div class="eyebrow">設計 8</div>
+  <h2>AI ワークフロー：Claude Code スキル <code>/gen</code><small>AI がやるのは「読む → spec を書く → dry-run を見せる → 承認後に apply → TODO を埋める」。配置・配線・整形には触らない。</small></h2>
+  <div class="body">
+    <div class="flow">
+      <div class="step ai"><b>入力を読む</b><span>tsp / 設計メモ / 画面 / 会話。起点を判定（IDL / Domain / UI）</span></div>
+      <div class="step script"><b>草案を作る</b><span>IDL-first なら <code>gen import tsp</code> で機械的に草案</span></div>
+      <div class="step ai"><b>spec を書く</b><span>Zone 2 の判断を埋める。<code>spec.schema.json</code> を構造化出力の制約に</span></div>
+      <div class="step script"><b>検証と dry-run</b><span><code>gen apply --dry-run</code>。作成／スキップ／上書きの一覧</span></div>
+      <div class="step human"><b>承認</b><span>人が spec と差分を見る。ここが唯一のゲート</span></div>
+      <div class="step script"><b>apply</b><span>生成 + Prettier + <code>tsc</code>。失敗したらテンプレートのバグ</span></div>
+      <div class="step ai"><b>TODO を埋める</b><span><code>TODO(gen)</code> を grep し、業務ルールと UI を実装。テストを緑に</span></div>
+      <div class="step script"><b>回帰</b><span>Hook で lint / test / <code>gen check</code>。PR</span></div>
+    </div>
+    <div class="grid3">
+      <div class="card"><h3>SKILL.md の骨子（<code>.claude/skills/gen/</code>）</h3><ul><li>目的と 3 起点ごとの手順</li><li>「spec 以外のファイルを直接書かない」「<code>.gen.ts</code> を編集しない」「dry-run の承認を待つ」の禁止事項</li><li><code>spec.schema.json</code> と <code>CONVENTIONS.md</code> への参照</li><li>TODO を埋める際の順序：Domain → Application → Presentation</li></ul></div>
+      <div class="card"><h3>Hook（<code>.claude/settings.json</code>）</h3><ul><li>PostToolUse（Write/Edit）：<code>prettier</code> と <code>tsc --noEmit</code></li><li>PreToolUse（Write）：対象が <code>*.gen.ts</code> なら拒否</li><li>Stop：<code>gen check</code> と該当集約のテスト</li></ul><p>禁止事項を「プロンプトで頼む」ではなく「Hook で止める」にする。</p></div>
+      <div class="card"><h3>MCP ツール化（任意）</h3><ul><li><code>gen_apply(spec, layers?, dryRun?)</code> / <code>gen_check()</code> / <code>gen_import_tsp(file)</code></li><li>ツールの入力スキーマ = <code>spec.schema.json</code>。AI の出力が自動で検証される</li><li>Claude Code 以外のエージェント（Orca の worker 等）からも同じ入口で使える</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 27 -->
+<section class="slide" data-sec="推奨案の設計" data-title="CLI 仕様">
+  <div class="eyebrow">設計 9</div>
+  <h2>CLI 仕様：<code>gen</code><small>サブコマンドは 5 つ。全て非対話。終了コードで CI と AI が結果を判定できる。</small></h2>
+  <div class="body cols">
+    <div class="w60">
+      <pre style="font-size:12px"><span class="g">gen apply</span> &lt;spec.yaml&gt; [options]      <span class="c"># 生成。spec を検証してから書く</span>
+  --layers domain,application,…        <span class="c"># 今回出すレイヤー（spec の generate.layers を上書き）</span>
+  --only repository|usecase|slice|…    <span class="c"># 成果物の種類で絞る</span>
+  --skip tests                         <span class="c"># 除外</span>
+  --dry-run                            <span class="c"># 作成 / スキップ / 上書き の一覧と差分を表示。書かない</span>
+  --force &lt;file&gt;…                      <span class="c"># create-only を名指しで上書き</span>
+  --json                               <span class="c"># 機械可読な結果（AI・CI 向け）</span>
+
+<span class="g">gen check</span> [--fix]                      <span class="c"># 全 spec を再生成し .gen.ts / registry と比較。差があれば exit 1</span>
+<span class="g">gen import tsp</span> &lt;file.tsp&gt; --out spec/… <span class="c"># TypeSpec → spec 草案（TODO(ai) 付き）</span>
+<span class="g">gen export tsp</span> &lt;spec.yaml&gt; --out api/… <span class="c"># spec → TypeSpec 草案</span>
+<span class="g">gen list</span>                               <span class="c"># spec 一覧と生成状態（未生成 / 最新 / drift）</span>
+
+<span class="c"># 終了コード</span>
+0 成功 / 1 drift または検証エラー / 2 spec スキーマ違反（メッセージに JSON Pointer） / 3 テンプレートエラー
+
+<span class="c"># dry-run の出力例</span>
+$ gen apply spec/ordering/order.yaml --dry-run --layers domain
+  create  src/domain/ordering/order/OrderId.ts
+  create  src/domain/ordering/order/Order.ts
+  skip    src/domain/ordering/order/Money.ts        (exists; use --force)
+  update  src/registry/di.gen.ts                    (+2 lines)
+  3 create, 1 skip, 1 update</pre>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>設計上の決め事</h3><ul style="font-size:14px"><li><b>非対話</b>：質問を返さない。足りない情報はスキーマ違反として exit 2。AI が spec を直して再実行する</li><li><b>冪等</b>：2 回続けて apply しても 2 回目は全部 skip / 変更なし</li><li><b>順序の固定</b>：出力ファイル一覧はパスの辞書順</li><li><b>spec の正規化</b>：派生名（<code>OrderRepository</code>、<code>useOrders</code>、<code>orderSlice</code>）は CLI が決め、spec には書かせない</li><li><b>Prettier は生成器の中</b>：外部の整形に依存しない</li></ul></div>
+      <div class="panel accent"><h3>AI から見た CLI</h3><p style="font-size:14px"><code>--json</code> の結果に「作成されたファイル」「TODO(gen) の位置」「次にやること」を含める。スキルはこれを読んで TODO 埋めに進む。エラーは JSON Pointer 付きなので、spec のどこを直すかが機械的に分かる。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 28 -->
+<section class="slide section" data-sec="実施計画" data-title="章：実施計画とタスク">
+  <div class="eyebrow">Part 4</div>
+  <h2>実施計画とタスク</h2>
+  <p class="lead">6 フェーズ、各 1〜2 週間。各フェーズは単独で価値が残るように区切る。タスクは <code>plan.md</code> にチェックリスト形式でも収録。</p>
+</section>
+
+<!-- 29 -->
+<section class="slide" data-sec="実施計画" data-title="フェーズ計画">
+  <div class="eyebrow">計画 1</div>
+  <h2>フェーズ計画<small>Phase 1 の「ゴールデン一致」が全体の要。ここが通らないうちは次に進まない。</small></h2>
+  <div class="body">
+    <table class="dense">
+      <thead><tr><th style="width:150px">フェーズ</th><th style="width:90px">目安</th><th>ゴール</th><th>主な成果物</th><th style="width:230px">完了条件</th></tr></thead>
+      <tbody>
+        <tr><td>Phase 0<br>規約の固定</td><td>1 週</td><td>生成器なしでも「同じ形」で書ける状態</td><td>手書きゴールデン集約 <code>Order</code>（4 レイヤー + テスト）、<code>CONVENTIONS.md</code>、arch lint、レジストリ取り込みの 1 行</td><td>arch lint が CI で通る。2 人目が Order を見て別集約を同じ形で書ける</td></tr>
+        <tr><td>Phase 1<br>生成器 MVP</td><td>1〜2 週</td><td>Domain + Infrastructure を決定論で生成</td><td><code>spec.schema.json</code>、<code>gen apply / check</code>、Domain / Infra テンプレート、レジストリ（di）、ゴールデンテスト</td><td><b>spec から生成した Order がゴールデンと一致</b>。<code>gen check</code> が CI で通る</td></tr>
+        <tr><td>Phase 2<br>4 レイヤー化</td><td>1〜2 週</td><td>Application + Presentation を生成</td><td>ユースケース / slice / Hook / 3 画面 / stories テンプレート、レジストリ（store, routes）、テスト用バックエンドの handlers</td><td>2 つ目の集約（例：Customer）を spec だけから生成し、画面が動く</td></tr>
+        <tr><td>Phase 3<br>TypeSpec 接続</td><td>1 週</td><td>IDL-first と Domain-first の往復</td><td><code>gen import tsp</code>（openapi3 経由）、<code>gen export tsp</code>、<code>gen check</code> の API 整合チェック</td><td>既存の tsp から spec 草案が出て、TODO(ai) を埋めれば生成できる</td></tr>
+        <tr><td>Phase 3b<br>（任意）</td><td>1 週</td><td>デコレータで意味を IDL に載せる</td><td><code>@myorg/typespec-ddd</code> ライブラリ、インポータの拡張</td><td>デコレータ付き tsp から TODO(ai) 無しの spec が出る</td></tr>
+        <tr><td>Phase 4<br>AI 統合</td><td>1 週</td><td>スキル 1 回で spec → 生成 → TODO 埋めまで</td><td><code>.claude/skills/gen/SKILL.md</code>、Hook、3 起点のプロンプト、（任意）MCP ツール</td><td>3 起点それぞれで新集約を AI 主導で追加できる。<code>.gen.ts</code> の手編集が Hook で止まる</td></tr>
+        <tr><td>Phase 5<br>展開と計測</td><td>継続</td><td>実案件で 3 集約に適用し、テンプレートを改善</td><td>計測（所要時間・手直し行数・drift 件数）、テンプレートの改訂、README</td><td>新集約 1 つの 4 レイヤー骨格が 30 分以内。drift 0</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 30 -->
+<section class="slide" data-sec="実施計画" data-title="タスク一覧 ①（Phase 0–2）">
+  <div class="eyebrow">計画 2</div>
+  <h2>タスク一覧 ①：Phase 0〜2<small>T 番号は <code>plan.md</code> と対応。「依存」は先行タスク。</small></h2>
+  <div class="body">
+    <div class="grid3">
+      <div class="card top-amber">
+        <h3>Phase 0 規約の固定</h3>
+        <ul style="font-size:13px">
+          <li><b>T-01</b> ゴールデン集約 Order を手書き（Domain: Id / VO / Entity / Repository / spec）</li>
+          <li><b>T-02</b> 同 Application（PlaceOrder / ListOrders / ports）と Infrastructure（Api / Test Repository / Mapper）</li>
+          <li><b>T-03</b> 同 Presentation（slice / Hook / 3 画面 / stories）　依存 T-02</li>
+          <li><b>T-04</b> <code>CONVENTIONS.md</code>：命名・配置・依存の向き・ID / VO / DTO の作法・create-only と .gen.ts</li>
+          <li><b>T-05</b> arch lint 導入（boundaries または dependency-cruiser）と CI 組み込み</li>
+          <li><b>T-06</b> 手書き側に <code>registry/*.gen.ts</code> を spread する取り込み口を用意（di / store / routes）</li>
+          <li><b>T-07</b> テスト用バックエンドの現状整理：形式（MSW / サーバー）、フィクスチャの置き場</li>
+        </ul>
+      </div>
+      <div class="card top-green">
+        <h3>Phase 1 生成器 MVP</h3>
+        <ul style="font-size:13px">
+          <li><b>T-10</b> <code>spec.schema.json</code> v1（集約 / Entity / VO / ID / ref / useCases / api / presentation / generate）</li>
+          <li><b>T-11</b> <code>tools/gen</code> 雛形：CLI、spec 読み込み・ajv 検証・正規化（派生名）</li>
+          <li><b>T-12</b> ライタ：create-only / always / registry の 3 戦略、dry-run、<code>--json</code></li>
+          <li><b>T-13</b> Domain テンプレート（Id / VO / Entity / Repository / spec）　依存 T-01</li>
+          <li><b>T-14</b> Infrastructure テンプレート（ApiRepository / TestRepository / Mapper.gen / Dto.gen）　依存 T-02</li>
+          <li><b>T-15</b> レジストリ生成（di.gen.ts）　依存 T-06</li>
+          <li><b>T-16</b> Prettier 固定・来歴ヘッダ・出力順序の固定</li>
+          <li><b>T-17</b> <b>ゴールデンテスト</b>：Order の spec → 生成物 == 手書き　依存 T-13, T-14</li>
+          <li><b>T-18</b> <code>gen check</code> と CI 組み込み、スナップショットテスト</li>
+        </ul>
+      </div>
+      <div class="card top-blue">
+        <h3>Phase 2 4 レイヤー化</h3>
+        <ul style="font-size:13px">
+          <li><b>T-20</b> Application テンプレート（UseCase / ports.gen / spec）　依存 T-17</li>
+          <li><b>T-21</b> Presentation テンプレート（slice / Hook / List / Detail / Form / stories）　依存 T-03</li>
+          <li><b>T-22</b> レジストリ生成（store.gen / routes.gen）</li>
+          <li><b>T-23</b> テスト用バックエンド handlers.gen とフィクスチャ生成　依存 T-07</li>
+          <li><b>T-24</b> 結合テスト雛形（ApiRepository ⇄ テスト用バックエンド）</li>
+          <li><b>T-25</b> <code>--layers / --only / --skip / --force</code> の実装とテスト</li>
+          <li><b>T-26</b> 2 つ目の集約 Customer を spec だけから生成し、画面が動くことを確認。ゴールデンを Order + Customer に拡張</li>
+          <li><b>T-27</b> <code>.gen.ts</code> 手編集検出の lint ルール</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 31 -->
+<section class="slide" data-sec="実施計画" data-title="タスク一覧 ②（Phase 3–5）とリスク">
+  <div class="eyebrow">計画 3</div>
+  <h2>タスク一覧 ②：Phase 3〜5、リスクと対策</h2>
+  <div class="body cols">
+    <div class="w60 grid2">
+      <div class="card top-blue">
+        <h3>Phase 3 TypeSpec 接続</h3>
+        <ul style="font-size:13px">
+          <li><b>T-30</b> <code>gen import tsp</code>：<code>tsp compile</code>（openapi3）→ spec 草案。VO / ref / 集約境界は <code>TODO(ai)</code></li>
+          <li><b>T-31</b> <code>gen export tsp</code>：spec → <code>*.draft.tsp</code></li>
+          <li><b>T-32</b> <code>gen check</code> に API 整合（operations の存在、DTO フィールド集合）を追加</li>
+          <li><b>T-33</b> 既存 tsp 1 本で import → 生成まで通す検証</li>
+          <li><b>T-34</b>（3b・任意）<code>@myorg/typespec-ddd</code> デコレータとインポータ拡張</li>
+        </ul>
+      </div>
+      <div class="card top-accent">
+        <h3>Phase 4 AI 統合</h3>
+        <ul style="font-size:13px">
+          <li><b>T-40</b> <code>.claude/skills/gen/SKILL.md</code>：3 起点の手順、禁止事項、schema / CONVENTIONS 参照</li>
+          <li><b>T-41</b> Hook：PostToolUse で prettier + tsc、PreToolUse で <code>.gen.ts</code> 書き込み拒否、Stop で <code>gen check</code> + test</li>
+          <li><b>T-42</b> 3 起点それぞれのプロンプト例と期待する spec の例（テストケースとして保存）</li>
+          <li><b>T-43</b>（任意）MCP ツール <code>gen_apply / gen_check / gen_import_tsp</code></li>
+          <li><b>T-44</b> 3 起点で新集約を AI 主導で追加するリハーサル。所要時間と手直し行数を記録</li>
+        </ul>
+      </div>
+      <div class="card top-green" style="grid-column:1/-1">
+        <h3>Phase 5 展開と計測</h3>
+        <ul style="font-size:13px">
+          <li><b>T-50</b> 実案件の 3 集約に適用　<b>T-51</b> 計測：骨格生成の所要時間、TODO 埋めの所要時間、生成物への手直し行数、drift 件数　<b>T-52</b> テンプレート改訂（手直しが多い箇所を規約に戻す）　<b>T-53</b> README と導入手順</li>
+        </ul>
+      </div>
+    </div>
+    <div class="w40">
+      <table class="dense">
+        <thead><tr><th>リスク</th><th>対策</th></tr></thead>
+        <tbody>
+          <tr><td>生成物が「貧血ドメイン」になる</td><td>生成器は骨格と TODO のみ。invariants を spec に必須項目として書かせ、failing test を出す</td></tr>
+          <tr><td>テンプレートと手書きの乖離</td><td>ゴールデンテストを CI で常時実行。乖離したらどちらかを直す</td></tr>
+          <tr><td>再生成で手編集が消える</td><td>create-only 既定、<code>--force</code> は名指し、dry-run の承認をワークフローに固定</td></tr>
+          <tr><td>spec と TypeSpec の二重管理</td><td>インポータ / エクスポータと <code>gen check</code> の API 整合チェック</td></tr>
+          <tr><td>AI が生成器を迂回して直接書く</td><td>Hook で <code>.gen.ts</code> 書き込みを拒否。骨格ファイルは arch lint と構造テストで検出</td></tr>
+          <tr><td>テンプレートの肥大化</td><td>「Zone 3 は生成しない」を CONVENTIONS に明記。テンプレートに分岐を増やす前に spec の項目を疑う</td></tr>
+          <tr><td>初期コストが回収できない</td><td>Phase 0 → 1 の順で、各フェーズ末に継続判断。Phase 0 は案 C としてそのまま使える</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 32 -->
+<section class="slide" data-sec="まとめ" data-title="まとめと参考リンク">
+  <div class="eyebrow">まとめ</div>
+  <h2>まとめ<small>「決定論的に進めたい。スクリプトを作り、渡す引数を AI が考える」を、そのまま構造にした。</small></h2>
+  <div class="body cols">
+    <div class="w60 stack">
+      <ul style="font-size:16px">
+        <li><b>ジェネレーターの前に規約</b>：Rails が生成できるのは規約が強いから。手書きゴールデン集約と CONVENTIONS.md を Phase 0 で作る</li>
+        <li><b>3 ゾーンで線を引く</b>：配置・配線・骨格はスクリプト（Zone 1）、集約境界・VO・ユースケースの判断は AI が spec に書く（Zone 2）、業務ルールと UI は生成後に AI か人が書く（Zone 3）</li>
+        <li><b>AI の引数 = スキーマ付き生成仕様ファイル</b>：レビューでき、再実行でき、構造化出力で制約できる</li>
+        <li><b>入力の起点は 3 通り、ハブは 1 つ</b>：IDL-first はインポータ、Domain-first / UI-first はエクスポータで TypeSpec に合流</li>
+        <li><b>再生成は 3 種のファイル分類で</b>：create-only / <code>.gen.ts</code> / レジストリの丸ごと再生成。既存ファイルへの追記はしない</li>
+        <li><b>決定論はテストで証明</b>：ゴールデン一致、スナップショット、CI の <code>gen check</code></li>
+        <li><b>推奨は案 A を軸に B・C を吸収</b>：Phase 0 = 案 C、Phase 3 = 案 B の読み取り部分。途中で止まっても価値が残る順序</li>
+      </ul>
+      <div class="panel accent"><h3>次のアクション</h3><p style="font-size:14px">T-01〜T-07（Phase 0、1 週間）から着手。ゴールデン集約の題材は実案件の集約から 1 つ選ぶ。<code>examples/order.spec.yaml</code> と <code>examples/spec.schema.json</code> を叩き台にスキーマの議論を始める。</p></div>
+    </div>
+    <div class="w40 stack">
+      <div class="panel"><h3>同梱物</h3><ul style="font-size:14px"><li><code>notes.md</code> — 検討メモの全文（却下した選択肢を含む）</li><li><code>plan.md</code> — フェーズ計画とタスクのチェックリスト</li><li><code>examples/order.spec.yaml</code> — 生成仕様の例</li><li><code>examples/spec.schema.json</code> — JSON Schema の叩き台</li></ul></div>
+      <div class="panel"><h3>参考リンク</h3><ul style="font-size:13.5px"><li>Rails Generators：<a href="https://guides.rubyonrails.org/generators.html">guides.rubyonrails.org/generators</a></li><li>TypeSpec：<a href="https://typespec.io/docs/">typespec.io/docs</a>（エミッタ・デコレータの自作）</li><li>Hygen：<a href="https://www.hygen.io/">hygen.io</a> / Plop：<a href="https://plopjs.com/">plopjs.com</a></li><li>Nx generators：<a href="https://nx.dev/features/generate-code">nx.dev/features/generate-code</a></li><li>openapi-typescript：<a href="https://openapi-ts.dev/">openapi-ts.dev</a></li><li>dependency-cruiser：<a href="https://github.com/sverweij/dependency-cruiser">github.com/sverweij/dependency-cruiser</a></li><li>eslint-plugin-boundaries：<a href="https://github.com/javierbrea/eslint-plugin-boundaries">github.com/javierbrea/eslint-plugin-boundaries</a></li><li>Claude Code スキル・Hook：<a href="https://docs.anthropic.com/en/docs/claude-code">docs.anthropic.com/claude-code</a></li></ul></div>
+      <p class="note">本資料は Issue #16 の記述と一般的な DDD / スキャフォールディングの知見を元に作成した設計提案であり、実装・実測はまだ行っていない。工数の目安は 1 名専任の場合。</p>
+    </div>
+  </div>
+</section>
+
+</div><!-- /stage -->
+</div><!-- /viewport -->
+
+<div class="chrome">
+  <div class="left">
+    <button id="tocBtn" type="button" aria-controls="toc" aria-expanded="false">目次</button>
+    <span class="hint">← → / Space で移動 · O で目次 · F で全画面 · P で印刷</span>
+  </div>
+  <div class="right">
+    <button id="prevBtn" type="button" aria-label="前のスライド">‹</button>
+    <span class="counter" id="counter">1 / 1</span>
+    <button id="nextBtn" type="button" aria-label="次のスライド">›</button>
+  </div>
+</div>
+
+<nav class="toc" id="toc" aria-label="目次">
+  <header><span>目次</span><button id="tocClose" type="button">閉じる</button></header>
+  <ol id="tocList"></ol>
+</nav>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var stage = document.getElementById('stage');
+  var progress = document.getElementById('progress');
+  var counter = document.getElementById('counter');
+  var toc = document.getElementById('toc');
+  var tocList = document.getElementById('tocList');
+  var tocBtn = document.getElementById('tocBtn');
+  var total = slides.length;
+  var idx = 0;
+
+  // slide numbers
+  slides.forEach(function(s, i){
+    var n = document.createElement('div');
+    n.className = 'slide-num';
+    n.textContent = (i + 1) + ' / ' + total;
+    s.appendChild(n);
+  });
+
+  // TOC
+  var lastSec = null;
+  slides.forEach(function(s, i){
+    var sec = s.getAttribute('data-sec') || '';
+    if (sec !== lastSec){
+      var h = document.createElement('li');
+      h.className = 'sec';
+      h.textContent = sec;
+      tocList.appendChild(h);
+      lastSec = sec;
+    }
+    var li = document.createElement('li');
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = '<span class="n">' + (i + 1) + '</span><span></span>';
+    b.lastChild.textContent = s.getAttribute('data-title') || ('スライド ' + (i + 1));
+    b.addEventListener('click', function(){ go(i); closeToc(); });
+    li.appendChild(b);
+    tocList.appendChild(li);
+  });
+
+  // stage は left:50%/top:50% に絶対配置し、transform-origin 0 0 で縮小後サイズの半分だけ戻す
+  function fit(){
+    var vw = window.innerWidth - 32, vh = window.innerHeight - 18 - 56;
+    var k = Math.min(vw / 1280, vh / 720);
+    stage.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+
+  // Shrink a slide body that still exceeds the 720px stage (dense tables), never below 70%.
+  function fitBody(slide){
+    var b = slide.querySelector('.body');
+    if (!b) return;
+    b.style.zoom = '';
+    if (b.scrollHeight <= b.clientHeight + 2) return;
+    var lo = 0.7, hi = 1, best = lo;
+    for (var k = 0; k < 7; k++){
+      var mid = (lo + hi) / 2;
+      b.style.zoom = mid;
+      if (b.scrollHeight <= b.clientHeight + 2){ best = mid; lo = mid; } else { hi = mid; }
+    }
+    b.style.zoom = best;
+  }
+
+  function go(i){
+    idx = Math.max(0, Math.min(total - 1, i));
+    slides.forEach(function(s, k){ s.classList.toggle('active', k === idx); });
+    fitBody(slides[idx]);
+    progress.style.width = ((idx + 1) / total * 100) + '%';
+    counter.textContent = (idx + 1) + ' / ' + total;
+    var btns = tocList.querySelectorAll('li:not(.sec) button');
+    btns.forEach(function(b, k){ b.classList.toggle('now', k === idx); });
+    if (location.hash !== '#' + (idx + 1)) history.replaceState(null, '', '#' + (idx + 1));
+  }
+  function openToc(){ toc.classList.add('open'); tocBtn.setAttribute('aria-expanded', 'true'); }
+  function closeToc(){ toc.classList.remove('open'); tocBtn.setAttribute('aria-expanded', 'false'); }
+
+  document.getElementById('prevBtn').addEventListener('click', function(){ go(idx - 1); });
+  document.getElementById('nextBtn').addEventListener('click', function(){ go(idx + 1); });
+  tocBtn.addEventListener('click', function(){ toc.classList.contains('open') ? closeToc() : openToc(); });
+  document.getElementById('tocClose').addEventListener('click', closeToc);
+
+  document.addEventListener('keydown', function(e){
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key){
+      case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown': e.preventDefault(); go(idx + 1); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'PageUp': e.preventDefault(); go(idx - 1); break;
+      case 'Home': e.preventDefault(); go(0); break;
+      case 'End': e.preventDefault(); go(total - 1); break;
+      case 't': case 'T': case 'o': case 'O': toc.classList.contains('open') ? closeToc() : openToc(); break;
+      case 'f': case 'F': document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); break;
+      case 'p': case 'P': window.print(); break;
+      case 'Escape': closeToc(); break;
+    }
+  });
+
+  // click on stage: right 60% forward, left 40% back (ignore links/buttons/code)
+  stage.addEventListener('click', function(e){
+    if (e.target.closest('a, button, pre')) return;
+    var r = stage.getBoundingClientRect();
+    ((e.clientX - r.left) / r.width > 0.4) ? go(idx + 1) : go(idx - 1);
+  });
+
+  // touch swipe
+  var tx = null;
+  stage.addEventListener('touchstart', function(e){ tx = e.touches[0].clientX; }, {passive:true});
+  stage.addEventListener('touchend', function(e){
+    if (tx === null) return;
+    var dx = e.changedTouches[0].clientX - tx; tx = null;
+    if (Math.abs(dx) > 40) go(idx + (dx < 0 ? 1 : -1));
+  });
+
+  window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', function(){ var n = parseInt(location.hash.slice(1), 10); if (n) go(n - 1); });
+
+  fit();
+  var start = parseInt(location.hash.slice(1), 10);
+  go(start ? start - 1 : 0);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ fitBody(slides[idx]); });
+  window.addEventListener('beforeprint', function(){ slides.forEach(function(s){ s.classList.add('active'); fitBody(s); }); });
+  window.addEventListener('afterprint', function(){ go(idx); });
+})();
+</script>
+</body>
+</html>

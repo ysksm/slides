@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ysksm/slides/ai-scaffold/spec.schema.json",
+  "title": "Generation spec (叩き台 v1)",
+  "description": "DDD レイヤードフロントエンド向け生成器 gen の入力。AI が書き、人がレビューし、gen が読む。コード片は含めない。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "context", "aggregate", "generate"],
+  "properties": {
+    "version": { "const": 1 },
+    "context": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "境界づけられたコンテキスト。ディレクトリ名になる"
+    },
+    "aggregate": { "$ref": "#/$defs/aggregate" },
+    "useCases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/useCase" }
+    },
+    "api": { "$ref": "#/$defs/api" },
+    "presentation": { "$ref": "#/$defs/presentation" },
+    "generate": { "$ref": "#/$defs/generate" }
+  },
+  "$defs": {
+    "pascal": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+    "camel": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+
+    "id": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "base"],
+      "properties": {
+        "name": { "$ref": "#/$defs/pascal", "description": "ID 型名。必ず XxxId で終わる", "pattern": "^[A-Z][A-Za-z0-9]*Id$" },
+        "base": { "enum": ["string", "number"] },
+        "format": { "enum": ["uuid", "ulid", "opaque"] }
+      }
+    },
+
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/camel" },
+        "type": {
+          "type": "string",
+          "description": "プリミティブ（string/number/boolean/datetime）、この spec で宣言した VO / Entity 名、または ref 付き ID 型名"
+        },
+        "enum": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "list": { "type": "boolean", "default": false },
+        "optional": { "type": "boolean", "default": false },
+        "entity": { "type": "boolean", "default": false, "description": "true なら type は entities に宣言した Entity" },
+        "ref": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*/[A-Z][A-Za-z0-9]*$",
+          "description": "他集約への参照 (context/Aggregate)。指定時 type はその集約の ID 型でなければならない"
+        },
+        "default": {},
+        "api": { "type": "boolean", "default": true, "description": "false なら API（DTO）に存在しないフィールド。Mapper は触らない" }
+      },
+      "oneOf": [
+        { "required": ["type"], "not": { "required": ["enum"] } },
+        { "required": ["enum"], "not": { "required": ["type"] } }
+      ]
+    },
+
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "id", "fields"],
+      "properties": {
+        "name": { "$ref": "#/$defs/pascal" },
+        "id": { "$ref": "#/$defs/id" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" }, "minItems": 1 },
+        "invariants": { "$ref": "#/$defs/invariants" }
+      }
+    },
+
+    "valueObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/pascal" },
+        "base": { "enum": ["string", "number", "boolean"], "description": "単一値 VO のとき" },
+        "fields": {
+          "type": "object",
+          "description": "複合 VO のとき。値はプリミティブ型名",
+          "additionalProperties": { "enum": ["string", "number", "boolean", "datetime"] },
+          "minProperties": 1
+        },
+        "invariants": { "$ref": "#/$defs/invariants" }
+      },
+      "oneOf": [{ "required": ["base"] }, { "required": ["fields"] }]
+    },
+
+    "invariants": {
+      "type": "array",
+      "description": "宣言のみ。生成器は TODO(gen) コメントと it.todo() にするだけで実装しない",
+      "items": { "type": "string", "minLength": 1 }
+    },
+
+    "aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "id", "fields"],
+      "properties": {
+        "name": { "$ref": "#/$defs/pascal" },
+        "id": { "$ref": "#/$defs/id" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" }, "minItems": 1 },
+        "invariants": { "$ref": "#/$defs/invariants" },
+        "entities": { "type": "array", "items": { "$ref": "#/$defs/entity" } },
+        "valueObjects": { "type": "array", "items": { "$ref": "#/$defs/valueObject" } }
+      }
+    },
+
+    "typeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string" },
+        "list": { "type": "boolean", "default": false }
+      }
+    },
+
+    "useCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind"],
+      "properties": {
+        "name": { "$ref": "#/$defs/pascal" },
+        "kind": { "enum": ["command", "query"] },
+        "input": {
+          "type": "object",
+          "description": "引数名 → 型名",
+          "additionalProperties": { "type": "string" }
+        },
+        "output": { "$ref": "#/$defs/typeRef" },
+        "uses": {
+          "type": "array",
+          "description": "依存する Repository ポート名。省略時はこの集約の Repository のみ",
+          "items": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*Repository$" }
+        }
+      }
+    },
+
+    "api": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": { "enum": ["typespec", "openapi", "none"] },
+        "file": { "type": "string", "description": "tsp または OpenAPI ファイルのパス" },
+        "operations": {
+          "type": "object",
+          "description": "Repository メソッド → IDL 側の操作名（Namespace.op）。gen check が存在を検証する",
+          "additionalProperties": { "type": "string", "pattern": "^[A-Za-z0-9_.]+$" }
+        }
+      }
+    },
+
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "screens": {
+          "type": "array",
+          "items": { "enum": ["list", "detail", "form"] },
+          "uniqueItems": true,
+          "default": ["list", "detail", "form"]
+        },
+        "route": { "type": "string", "pattern": "^/[a-z0-9/-]*$" }
+      }
+    },
+
+    "generate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layers"],
+      "properties": {
+        "layers": {
+          "type": "array",
+          "items": { "enum": ["domain", "application", "infrastructure", "presentation"] },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "tests": { "type": "boolean", "default": true },
+        "testBackend": {
+          "enum": ["none", "handlers", "json-server"],
+          "default": "none",
+          "description": "テスト用バックエンド向けハンドラ／フィクスチャの出力形式"
+        }
+      }
+    }
+  }
+}
