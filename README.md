@@ -6,10 +6,19 @@
 
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
+| [Orca 解説 — AI エージェント時代のオーケストレーター IDE](orca/index.html) | 42 | 手書き HTML | [#3](https://github.com/ysksm/slides/issues/3) |
 | [Playwright 概要 — ライブラリ・CLI・MCP](playwright-overview/index.html) | 16 | 手書き HTML | — |
 | [Claude Code コマンド一覧](claude-code-commands/index.html) | 201（6 デッキ） | Marp（`src/*.md` から生成） | [#2](https://github.com/ysksm/slides/issues/2) |
 | [tsc --lsp 徹底調査](antigravity-tsc-lsp-research/index.html) | 20 | 手書き HTML + 実証コード | [#1](https://github.com/ysksm/slides/issues/1) |
 | [tsc --lsp 調査報告（初版）](tsc-lsp/index.html) | 16 | 手書き HTML | [#1](https://github.com/ysksm/slides/issues/1) |
+
+### [Orca 解説 — AI エージェント時代のオーケストレーター IDE](orca/index.html)
+
+Claude Code・Codex・Cursor CLI などの CLI エージェントをタスクごとの git worktree で並列に走らせる IDE「Orca」（stablyai/orca）の解説スライド（全 42 枚）。機能一覧（1 行解説）、機能ごとの設定場所、オーケストレーション・オートメーション・タスク管理、リポジトリ／ワークスペースの切り方、マルチリポで 1 タスクを回す手順、組み合わせレシピ 5 本をまとめている。
+
+- `orca/index.html` を開き、← → / Space で移動、O または T で目次、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#12` など）でスライド番号を直接指定可能
+- 詳細: [orca/README.md](orca/README.md)
 
 ### [Playwright 概要 — ライブラリ・CLI・MCP](playwright-overview/index.html)
 
@@ -60,6 +69,7 @@ TypeScript 7 の Go ネイティブ言語サーバー `tsc --lsp` のアーキ�
 
 ```
 slides/
+├── orca/                          # Orca（AI エージェント IDE）解説スライド
 ├── playwright-overview/           # Playwright 概要スライド（ライブラリ・CLI・MCP）
 ├── claude-code-commands/          # Claude Code コマンド一覧スライド（Marp 製・全 6 デッキ）
 │   ├── src/                       #   Marp ソース（*.md）
@@ -86,13 +96,13 @@ slides/
 | 一覧表示 | `O` | Marp 製以外 |
 | 発表者ノート | `N` | `antigravity-tsc-lsp-research` |
 | 全画面 | `F` | すべて |
-| 印刷 / PDF | `P` | `playwright-overview`、`antigravity-tsc-lsp-research` |
+| 印刷 / PDF | `P` | `playwright-overview`、`antigravity-tsc-lsp-research`、`orca` |
 
 ※ Marp 製の `claude-code-commands` では `P` はプレゼンターモードです。`tsc-lsp`（初版）は `P` に未対応のため、ブラウザの印刷機能を使ってください。
 
 ## ビルド
 
-手書き HTML のスライド（`playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
+手書き HTML のスライド（`orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
 
 Marp 製の `claude-code-commands` のみ、ソース（`src/*.md`）を編集したら再生成が必要です。
 
