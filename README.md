@@ -7,6 +7,9 @@
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
 | [自動実装 × AI — Rails generate を DDD フロントエンドで再現する](ai-scaffold/index.html) | 32 | 手書き HTML | [#16](https://github.com/ysksm/slides/issues/16) |
+| [自動実装と AI の組み合わせ](ai-scaffolding/index.html) | 28 | 手書き HTML + 設計・タスク | [#16](https://github.com/ysksm/slides/issues/16) |
+| [Claude Code のトークン使用量と削減策](claude-code-token-usage/index.html) | 18 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
+| [すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）](ai-usage-cache/index.html) | 15 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
 | [Orca 解説 — AI エージェント時代のオーケストレーター IDE](orca/index.html) | 42 | 手書き HTML | [#3](https://github.com/ysksm/slides/issues/3) |
 | [Playwright 概要 — ライブラリ・CLI・MCP](playwright-overview/index.html) | 16 | 手書き HTML | — |
 | [Claude Code コマンド一覧](claude-code-commands/index.html) | 201（6 デッキ） | Marp（`src/*.md` から生成） | [#2](https://github.com/ysksm/slides/issues/2) |
@@ -15,12 +18,35 @@
 
 ### [自動実装 × AI — Rails generate を DDD フロントエンドで再現する](ai-scaffold/index.html)
 
-Rails の `generate` のようにモデル情報から UI・モデル・ユースケース・リポジトリを生成する仕組みを、DDD レイヤードアーキテクチャ（React・Hooks・Redux / DIP / Repository パターン / TypeSpec）の Web フロントエンド向けに検討した設計提案スライド（全 32 枚）。「スクリプトが決定論的に生成し、AI がその引数（生成仕様ファイル）を考える」を軸に、検討メモ、4 案（自作ジェネレーター / TypeSpec 単一ソース / 規約 + ガードレール / 既存テンプレート CLI）の比較、推奨案の設計、6 フェーズの実施計画とタスクをまとめている。
+Rails の `generate` のようにモデル情報から UI・モデル・ユースケース・リポジトリを生成する仕組みを、DDD レイヤードアーキテクチャ（React・Hooks・Redux / DIP / Repository パターン / TypeSpec）の Web フロントエンド向けに検討した設計提案スライド（全 32 枚）。「スクリプトが決定論的に生成し、AI がその引数（生成仕様ファイル）を考える」を軸に、検討メモ、4 案（自作ジェネレーター / TypeSpec 単一ソース / 規約 + ガードレール / 既存テンプレート CLI）の比較、推奨案の設計、6 フェーズの実施計画とタスクをまとめている。同じ Issue #16 を別の切り口で検討した [ai-scaffolding](ai-scaffolding/index.html) と併せて参照。
 
 - `ai-scaffold/index.html` を開き、← → / Space で移動、O または T で目次、F で全画面、P で印刷/PDF
 - URL のハッシュ（`#12` など）でスライド番号を直接指定可能
 - 同梱物: [notes.md](ai-scaffold/notes.md)（検討メモ全文）、[plan.md](ai-scaffold/plan.md)（実施計画とタスク）、`examples/order.spec.yaml`（生成仕様の例）、`examples/spec.schema.json`（JSON Schema の叩き台）
 - 詳細: [ai-scaffold/README.md](ai-scaffold/README.md)
+
+### [自動実装と AI の組み合わせ](ai-scaffolding/index.html)
+
+モデル情報から UI・Domain・UseCase・Repository を生成する仕組みを検討したスライド（全 28 枚）。テンプレート CLI、TypeSpec 拡張、共通生成定義の 3 案を比較し、推奨案の入力設計・部分生成・再生成・ID / VO・DI・テスト用 backend 接続・実施計画をまとめている。
+
+- `ai-scaffolding/index.html` を開き、← → / Space で移動、O で目次、F で全画面、P で印刷/PDF
+- [検討記録・詳細設計](ai-scaffolding/design.md) / [実施タスクと受け入れ条件](ai-scaffolding/tasks.md)
+- 詳細: [ai-scaffolding/README.md](ai-scaffolding/README.md)
+
+### [Claude Code のトークン使用量と削減策](claude-code-token-usage/index.html)
+
+Claude Code 公式ドキュメント（code.claude.com/docs）に基づき、トークンがどう消費されるか（毎リクエストで会話全体を送信、ツール使用ごとにリクエストが増える）、コンテキストウィンドウに何が乗るか、プロンプトキャッシュの 3 層構造・無効化する操作・TTL、`/usage` `/context` `/insights` による計測、削減策（`/clear` `/compact`、モデル・effort・thinking、MCP・CLAUDE.md・スキル、フック・サブエージェント、プロンプトの書き方）、組織での管理を、各スライドに出典 URL 付きで整理した解説スライド（全 18 枚）。
+
+- `claude-code-token-usage/index.html` を開き、← → / Space で移動、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#7` など）でスライド番号を直接指定可能
+- 詳細: [claude-code-token-usage/README.md](claude-code-token-usage/README.md)
+
+### [すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）](ai-usage-cache/index.html)
+
+YouTube 動画「[AIの使用枠がすぐになくなる？ChatGPTとClaudeの利用枠を節約するキャッシュの仕組みを解説してみた](https://www.youtube.com/watch?v=t22FELAl-BM)」（にゃんたのAIチャンネル）の要約スライド（全 15 枚）。会話履歴が毎回送り直される仕組み、プロンプトキャッシュ（先頭一致）の考え方、キャッシュを切らさない 3 原則、ChatGPT のチャット/ワーク・Claude のプロジェクト機能の使い分け、ツール呼び出し回数の抑制を図解付きで整理し、Claude 側の数値は公式ドキュメントで裏取りしている。
+
+- `ai-usage-cache/index.html` を開き、← → / Space で移動、O で一覧、F で全画面、P で印刷/PDF
+- 詳細: [ai-usage-cache/README.md](ai-usage-cache/README.md)
 
 ### [Orca 解説 — AI エージェント時代のオーケストレーター IDE](orca/index.html)
 
@@ -83,6 +109,9 @@ slides/
 │   ├── notes.md                   #   検討メモ全文
 │   ├── plan.md                    #   実施計画とタスク
 │   └── examples/                  #   生成仕様の例と JSON Schema
+├── ai-scaffolding/                # AI + 決定論的コード生成の検討（Issue #16）
+├── claude-code-token-usage/       # Claude Code のトークン使用量と削減策（公式ドキュメント整理）
+├── ai-usage-cache/                # AI の利用枠とキャッシュの仕組み（YouTube 動画要約）
 ├── orca/                          # Orca（AI エージェント IDE）解説スライド
 ├── playwright-overview/           # Playwright 概要スライド（ライブラリ・CLI・MCP）
 ├── claude-code-commands/          # Claude Code コマンド一覧スライド（Marp 製・全 6 デッキ）
@@ -110,13 +139,13 @@ slides/
 | 一覧表示 | `O` | Marp 製以外 |
 | 発表者ノート | `N` | `antigravity-tsc-lsp-research` |
 | 全画面 | `F` | すべて |
-| 印刷 / PDF | `P` | `playwright-overview`、`antigravity-tsc-lsp-research`、`orca` |
+| 印刷 / PDF | `P` | `playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding` |
 
 ※ Marp 製の `claude-code-commands` では `P` はプレゼンターモードです。`tsc-lsp`（初版）は `P` に未対応のため、ブラウザの印刷機能を使ってください。
 
 ## ビルド
 
-手書き HTML のスライド（`orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
+手書き HTML のスライド（`ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
 
 Marp 製の `claude-code-commands` のみ、ソース（`src/*.md`）を編集したら再生成が必要です。
 
