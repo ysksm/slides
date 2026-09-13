@@ -6,6 +6,7 @@
 
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
+| [自動実装と AI の組み合わせ](ai-scaffolding/index.html) | 28 | 手書き HTML + 設計・タスク | [#16](https://github.com/ysksm/slides/issues/16) |
 | [Claude Code のトークン使用量と削減策](claude-code-token-usage/index.html) | 18 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
 | [すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）](ai-usage-cache/index.html) | 15 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
 | [Orca 解説 — AI エージェント時代のオーケストレーター IDE](orca/index.html) | 42 | 手書き HTML | [#3](https://github.com/ysksm/slides/issues/3) |
@@ -13,6 +14,14 @@
 | [Claude Code コマンド一覧](claude-code-commands/index.html) | 201（6 デッキ） | Marp（`src/*.md` から生成） | [#2](https://github.com/ysksm/slides/issues/2) |
 | [tsc --lsp 徹底調査](antigravity-tsc-lsp-research/index.html) | 20 | 手書き HTML + 実証コード | [#1](https://github.com/ysksm/slides/issues/1) |
 | [tsc --lsp 調査報告（初版）](tsc-lsp/index.html) | 16 | 手書き HTML | [#1](https://github.com/ysksm/slides/issues/1) |
+
+### [自動実装と AI の組み合わせ](ai-scaffolding/index.html)
+
+モデル情報から UI・Domain・UseCase・Repository を生成する仕組みを検討したスライド（全 28 枚）。テンプレート CLI、TypeSpec 拡張、共通生成定義の 3 案を比較し、推奨案の入力設計・部分生成・再生成・ID / VO・DI・テスト用 backend 接続・実施計画をまとめている。
+
+- `ai-scaffolding/index.html` を開き、← → / Space で移動、O で目次、F で全画面、P で印刷/PDF
+- [検討記録・詳細設計](ai-scaffolding/design.md) / [実施タスクと受け入れ条件](ai-scaffolding/tasks.md)
+- 詳細: [ai-scaffolding/README.md](ai-scaffolding/README.md)
 
 ### [Claude Code のトークン使用量と削減策](claude-code-token-usage/index.html)
 
@@ -86,6 +95,7 @@ TypeScript 7 の Go ネイティブ言語サーバー `tsc --lsp` のアーキ�
 
 ```
 slides/
+├── ai-scaffolding/                # AI + 決定論的コード生成の検討（Issue #16）
 ├── claude-code-token-usage/       # Claude Code のトークン使用量と削減策（公式ドキュメント整理）
 ├── ai-usage-cache/                # AI の利用枠とキャッシュの仕組み（YouTube 動画要約）
 ├── orca/                          # Orca（AI エージェント IDE）解説スライド
@@ -115,13 +125,13 @@ slides/
 | 一覧表示 | `O` | Marp 製以外 |
 | 発表者ノート | `N` | `antigravity-tsc-lsp-research` |
 | 全画面 | `F` | すべて |
-| 印刷 / PDF | `P` | `playwright-overview`、`antigravity-tsc-lsp-research`、`orca` |
+| 印刷 / PDF | `P` | `playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding` |
 
 ※ Marp 製の `claude-code-commands` では `P` はプレゼンターモードです。`tsc-lsp`（初版）は `P` に未対応のため、ブラウザの印刷機能を使ってください。
 
 ## ビルド
 
-手書き HTML のスライド（`orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
+手書き HTML のスライド（`ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
 
 Marp 製の `claude-code-commands` のみ、ソース（`src/*.md`）を編集したら再生成が必要です。
 
