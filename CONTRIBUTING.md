@@ -54,7 +54,15 @@
 
 フックは、`.toc-update` マーカーファイルがリポジトリルートにあるか、ブランチ名に `toc` を含む場合のみ目次の編集を許可します。`update-toc` Skill は開始時にマーカーを作り、終了時に消します。**デッキ Issue の作業中にマーカーを作ってはいけません。**
 
-Codex 用の `AGENTS.md` と `.agents/skills/` は別セッションで作成します（内容は Claude Code 用と同一にする）。
+Codex は `AGENTS.md` と `.agents/skills/` を使います。`AGENTS.md` と `CLAUDE.md`、および両エージェントの同名 `SKILL.md` は、変更時に両方更新して同じ内容に保ちます。
+
+### Codex での検証
+
+Codex では Claude Code のフックによる編集拒否を前提にせず、ローカルでの差分確認と CI を検証手段にします。共有 Skill のフック・`.toc-update` マーカーの手順は Claude Code 用です。Codex 単独の作業ではマーカーの作成・削除は不要です。
+
+- **すべての作業**: PR 作成前に `git diff --name-only origin/main...HEAD` でコミット済みの変更範囲を確認します。未コミットの変更は `git diff --name-only` と `git diff --cached --name-only`、未追跡ファイルは `git status --short` でも確認します。CI（`.github/workflows/check-toc-separation.yml`）が目次とデッキの同時変更を拒否します。
+- **目次更新**: リポジトリルートで `scripts/check-toc.sh` を実行し、未登録・枚数のずれ・リンク切れがないことを確認します。目次のみを変更する PR では CI も同じスクリプトを実行します。
+- **デッキ作成・修正**: 変更を `<deck>/` 配下に限定します。新規デッキが目次に未登録なのは想定どおりなので、`scripts/check-toc.sh` の未登録エラーを解消するために目次を編集してはいけません。登録はマージ後の目次更新 Issue で行います。
 
 ## 将来の改善案（今回は実施しない）
 
