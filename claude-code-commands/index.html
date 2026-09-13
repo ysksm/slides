@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code コマンド一覧 ─ スライド目次</title>
+<style>
+  :root { --bg:#fbf9f6; --fg:#1f1d1a; --muted:#6b665f; --accent:#d97757; --accent-dark:#b85c3d; --line:#e6e0d8; }
+  body { margin:0; padding:40px 20px 64px; background:var(--bg); color:var(--fg); font-family:'Noto Sans JP','Hiragino Sans','Yu Gothic',system-ui,sans-serif; line-height:1.6; }
+  main { max-width:880px; margin:0 auto; }
+  h1 { font-size:2rem; margin:0 0 8px; }
+  h1 small { display:block; font-size:1rem; color:var(--muted); font-weight:400; margin-top:4px; }
+  p.lead { color:var(--muted); margin:0 0 28px; }
+  ol { list-style:none; padding:0; margin:0; display:grid; gap:14px; }
+  li a { display:block; padding:16px 20px; background:#fff; border:1px solid var(--line); border-left:6px solid var(--accent); border-radius:8px; color:inherit; text-decoration:none; transition:transform .1s, box-shadow .1s; }
+  li a:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,.06); }
+  li a b { display:block; font-size:1.1rem; color:var(--accent-dark); }
+  li a span { color:var(--muted); font-size:.95rem; }
+  code { font-family:'JetBrains Mono',Menlo,monospace; font-size:.9em; background:#f1ece5; padding:1px 5px; border-radius:4px; }
+  footer { margin-top:32px; color:var(--muted); font-size:.85rem; }
+  footer a { color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Claude Code コマンド一覧<small>ジャンル別一覧 → 1 コマンド 1 スライドの解説 → ユースケースと使い分け</small></h1>
+  <p class="lead">対象: Claude Code v2.1.269 / 公式ドキュメント（code.claude.com/docs）2026-09 時点。各デッキは矢印キーで送り、<code>F</code> で全画面表示。</p>
+  <ol>
+    <li><a href="01-overview.html"><b>01 概要・ジャンル別一覧</b><span>コマンドの 3 種類、基本ルール、11 ジャンル全コマンドの一行解説、CLI・キー操作の一覧</span></a></li>
+    <li><a href="02-session-context-model.html"><b>02 セッション・コンテキスト・モデル</b><span><code>/clear</code> <code>/resume</code> <code>/branch</code> <code>/fork</code> <code>/rewind</code> <code>/compact</code> <code>/context</code> <code>/memory</code> <code>/plan</code> <code>/model</code> <code>/effort</code> <code>/fast</code> <code>/advisor</code> など 27 コマンド</span></a></li>
+    <li><a href="03-review-parallel-permissions.html"><b>03 レビュー・並列・権限</b><span><code>/code-review</code> <code>/security-review</code> <code>/simplify</code> <code>/verify</code> <code>/batch</code> <code>/loop</code> <code>/schedule</code> <code>/workflows</code> <code>/permissions</code> <code>/hooks</code> <code>/config</code> など 33 コマンド</span></a></li>
+    <li><a href="04-extensions-integrations-account.html"><b>04 拡張・連携・アカウント・診断</b><span><code>/skills</code> <code>/plugin</code> <code>/mcp</code> <code>/import</code> <code>/ide</code> <code>/remote-control</code> <code>/teleport</code> <code>/usage</code> <code>/status</code> <code>/doctor</code> <code>/debug</code> <code>/bug</code> など 50 コマンド</span></a></li>
+    <li><a href="05-cli-shortcuts-skills.html"><b>05 CLI・ショートカット・カスタムコマンド</b><span><code>claude -p</code> <code>-c</code> <code>-r</code> <code>mcp</code> <code>plugin</code> <code>agents</code>、用途別フラグ、キー操作・入力プレフィックス、SKILL.md の書き方</span></a></li>
+    <li><a href="06-usecases.html"><b>06 ユースケースと使い分け</b><span>Explore→Plan→Code→Commit、検証ゲート、CI 実行、<code>/advisor</code> の要否、ダイナミックワークフローの要否、類似コマンド 10 組の使い分け、失敗パターン</span></a></li>
+  </ol>
+  <footer>ソース: <code>src/*.md</code>（Marp）／ 再生成: <code>./build.sh</code> ／ Issue: <a href="https://github.com/ysksm/slides/issues/2">ysksm/slides#2</a></footer>
+</main>
+</body>
+</html>

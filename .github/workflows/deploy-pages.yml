@@ -31,7 +31,9 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: ./docs
+          # リポジトリルートをそのまま公開する。ルートの index.html が目次、
+          # 各スライドは <deck>/index.html でそのまま配信される。
+          path: .
 
       - name: Deploy to GitHub Pages
         id: deployment

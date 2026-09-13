@@ -1,0 +1,17 @@
+{
+  "typescript": {
+    "command": "tsc",
+    "args": ["--lsp", "--stdio"],
+    "filePatterns": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts", "**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"],
+    "initializationOptions": {
+      "disablePushDiagnostics": false,
+      "userPreferences": {
+        "includeInlayParameterNameHints": "all",
+        "includeInlayFunctionParameterTypeHints": true,
+        "includeInlayVariableTypeHints": true,
+        "includeInlayPropertyDeclarationTypeHints": true,
+        "includeInlayFunctionLikeReturnTypeHints": true
+      }
+    }
+  }
+}
