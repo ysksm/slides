@@ -6,6 +6,7 @@
 
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
+| [自動実装 × AI — Rails generate を DDD フロントエンドで再現する](ai-scaffold/index.html) | 32 | 手書き HTML | [#16](https://github.com/ysksm/slides/issues/16) |
 | [自動実装と AI の組み合わせ](ai-scaffolding/index.html) | 28 | 手書き HTML + 設計・タスク | [#16](https://github.com/ysksm/slides/issues/16) |
 | [Claude Code のトークン使用量と削減策](claude-code-token-usage/index.html) | 18 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
 | [すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）](ai-usage-cache/index.html) | 15 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
@@ -14,6 +15,15 @@
 | [Claude Code コマンド一覧](claude-code-commands/index.html) | 201（6 デッキ） | Marp（`src/*.md` から生成） | [#2](https://github.com/ysksm/slides/issues/2) |
 | [tsc --lsp 徹底調査](antigravity-tsc-lsp-research/index.html) | 20 | 手書き HTML + 実証コード | [#1](https://github.com/ysksm/slides/issues/1) |
 | [tsc --lsp 調査報告（初版）](tsc-lsp/index.html) | 16 | 手書き HTML | [#1](https://github.com/ysksm/slides/issues/1) |
+
+### [自動実装 × AI — Rails generate を DDD フロントエンドで再現する](ai-scaffold/index.html)
+
+Rails の `generate` のようにモデル情報から UI・モデル・ユースケース・リポジトリを生成する仕組みを、DDD レイヤードアーキテクチャ（React・Hooks・Redux / DIP / Repository パターン / TypeSpec）の Web フロントエンド向けに検討した設計提案スライド（全 32 枚）。「スクリプトが決定論的に生成し、AI がその引数（生成仕様ファイル）を考える」を軸に、検討メモ、4 案（自作ジェネレーター / TypeSpec 単一ソース / 規約 + ガードレール / 既存テンプレート CLI）の比較、推奨案の設計、6 フェーズの実施計画とタスクをまとめている。同じ Issue #16 を別の切り口で検討した [ai-scaffolding](ai-scaffolding/index.html) と併せて参照。
+
+- `ai-scaffold/index.html` を開き、← → / Space で移動、O または T で目次、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#12` など）でスライド番号を直接指定可能
+- 同梱物: [notes.md](ai-scaffold/notes.md)（検討メモ全文）、[plan.md](ai-scaffold/plan.md)（実施計画とタスク）、`examples/order.spec.yaml`（生成仕様の例）、`examples/spec.schema.json`（JSON Schema の叩き台）
+- 詳細: [ai-scaffold/README.md](ai-scaffold/README.md)
 
 ### [自動実装と AI の組み合わせ](ai-scaffolding/index.html)
 
@@ -95,6 +105,10 @@ TypeScript 7 の Go ネイティブ言語サーバー `tsc --lsp` のアーキ�
 
 ```
 slides/
+├── ai-scaffold/                   # 自動実装 × AI（DDD フロントエンドの generate 設計）スライド
+│   ├── notes.md                   #   検討メモ全文
+│   ├── plan.md                    #   実施計画とタスク
+│   └── examples/                  #   生成仕様の例と JSON Schema
 ├── ai-scaffolding/                # AI + 決定論的コード生成の検討（Issue #16）
 ├── claude-code-token-usage/       # Claude Code のトークン使用量と削減策（公式ドキュメント整理）
 ├── ai-usage-cache/                # AI の利用枠とキャッシュの仕組み（YouTube 動画要約）
