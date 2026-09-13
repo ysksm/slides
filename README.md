@@ -7,6 +7,8 @@
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
 | [自動実装と AI の組み合わせ](ai-scaffolding/index.html) | 28 | 手書き HTML + 設計・タスク | [#16](https://github.com/ysksm/slides/issues/16) |
+| [Claude Code のトークン使用量と削減策](claude-code-token-usage/index.html) | 18 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
+| [すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）](ai-usage-cache/index.html) | 15 | 手書き HTML | [#15](https://github.com/ysksm/slides/issues/15) |
 | [Orca 解説 — AI エージェント時代のオーケストレーター IDE](orca/index.html) | 42 | 手書き HTML | [#3](https://github.com/ysksm/slides/issues/3) |
 | [Playwright 概要 — ライブラリ・CLI・MCP](playwright-overview/index.html) | 16 | 手書き HTML | — |
 | [Claude Code コマンド一覧](claude-code-commands/index.html) | 201（6 デッキ） | Marp（`src/*.md` から生成） | [#2](https://github.com/ysksm/slides/issues/2) |
@@ -20,6 +22,21 @@
 - `ai-scaffolding/index.html` を開き、← → / Space で移動、O で目次、F で全画面、P で印刷/PDF
 - [検討記録・詳細設計](ai-scaffolding/design.md) / [実施タスクと受け入れ条件](ai-scaffolding/tasks.md)
 - 詳細: [ai-scaffolding/README.md](ai-scaffolding/README.md)
+
+### [Claude Code のトークン使用量と削減策](claude-code-token-usage/index.html)
+
+Claude Code 公式ドキュメント（code.claude.com/docs）に基づき、トークンがどう消費されるか（毎リクエストで会話全体を送信、ツール使用ごとにリクエストが増える）、コンテキストウィンドウに何が乗るか、プロンプトキャッシュの 3 層構造・無効化する操作・TTL、`/usage` `/context` `/insights` による計測、削減策（`/clear` `/compact`、モデル・effort・thinking、MCP・CLAUDE.md・スキル、フック・サブエージェント、プロンプトの書き方）、組織での管理を、各スライドに出典 URL 付きで整理した解説スライド（全 18 枚）。
+
+- `claude-code-token-usage/index.html` を開き、← → / Space で移動、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#7` など）でスライド番号を直接指定可能
+- 詳細: [claude-code-token-usage/README.md](claude-code-token-usage/README.md)
+
+### [すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）](ai-usage-cache/index.html)
+
+YouTube 動画「[AIの使用枠がすぐになくなる？ChatGPTとClaudeの利用枠を節約するキャッシュの仕組みを解説してみた](https://www.youtube.com/watch?v=t22FELAl-BM)」（にゃんたのAIチャンネル）の要約スライド（全 15 枚）。会話履歴が毎回送り直される仕組み、プロンプトキャッシュ（先頭一致）の考え方、キャッシュを切らさない 3 原則、ChatGPT のチャット/ワーク・Claude のプロジェクト機能の使い分け、ツール呼び出し回数の抑制を図解付きで整理し、Claude 側の数値は公式ドキュメントで裏取りしている。
+
+- `ai-usage-cache/index.html` を開き、← → / Space で移動、O で一覧、F で全画面、P で印刷/PDF
+- 詳細: [ai-usage-cache/README.md](ai-usage-cache/README.md)
 
 ### [Orca 解説 — AI エージェント時代のオーケストレーター IDE](orca/index.html)
 
@@ -79,6 +96,8 @@ TypeScript 7 の Go ネイティブ言語サーバー `tsc --lsp` のアーキ�
 ```
 slides/
 ├── ai-scaffolding/                # AI + 決定論的コード生成の検討（Issue #16）
+├── claude-code-token-usage/       # Claude Code のトークン使用量と削減策（公式ドキュメント整理）
+├── ai-usage-cache/                # AI の利用枠とキャッシュの仕組み（YouTube 動画要約）
 ├── orca/                          # Orca（AI エージェント IDE）解説スライド
 ├── playwright-overview/           # Playwright 概要スライド（ライブラリ・CLI・MCP）
 ├── claude-code-commands/          # Claude Code コマンド一覧スライド（Marp 製・全 6 デッキ）

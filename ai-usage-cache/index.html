@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>すぐ溶ける AI の利用枠 — ChatGPT と Claude の利用枠を節約するキャッシュの仕組み（動画要約）</title>
+<meta name="description" content="YouTube 動画「AIの使用枠がすぐになくなる？ChatGPTとClaudeの利用枠を節約するキャッシュの仕組みを解説してみた」（にゃんたのAIチャンネル）の要約スライド。会話履歴の再送、プロンプトキャッシュの仕組み、キャッシュを切らさない 3 原則、ツール呼び出し回数の抑制を図解で整理。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F7F5FA;
+    --paper-2: #ECE8F3;
+    --ink: #1B1626;
+    --ink-2: #4A4358;
+    --ink-3: #80788F;
+    --rule: #D3CCDF;
+    --ac: #6B3FC7;          /* accent: violet */
+    --ac-soft: #E4DAF7;
+    --ai: #2F6FBF;          /* blue */
+    --ai-soft: #D9E7F8;
+    --amber: #B7791F;
+    --amber-soft: #FBEBC8;
+    --red: #B4432F;
+    --red-soft: #F6DAD5;
+    --green: #1E7F2C;
+    --green-soft: #D8EEDA;
+    --term: #14101E;
+    --term-ink: #E6DFF2;
+    --term-dim: #8F86A3;
+    --term-key: #C9A8FF;
+    --term-str: #9EC9E0;
+    --term-num: #F5C97A;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--term); color: var(--ink);
+    font-family: var(--body); font-size: 16px; line-height: 1.6; overflow: hidden;
+  }
+  #stage { position: fixed; inset: 0; padding: 16px; }
+  .deck { width: 1280px; height: 720px; position: absolute; left: 50%; top: 50%; transform-origin: 0 0; }
+  .slide {
+    position: absolute; inset: 0; background: var(--paper); color: var(--ink);
+    padding: 48px 72px 60px; display: none; flex-direction: column; gap: 18px; overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "動画要約 — すぐ溶ける AI の利用枠とキャッシュの仕組み";
+    position: absolute; left: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  .eyebrow { font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ac); margin: 0; }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 56px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 18px; margin: 0 0 6px; }
+  p { margin: 0; }
+  .lead { font-size: 19px; color: var(--ink-2); max-width: 48em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code { background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: .92em; }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--ac); }
+  b, strong { font-weight: 600; }
+  a { color: var(--ac); text-decoration: none; border-bottom: 1px solid var(--ac-soft); }
+
+  .cols { display: grid; gap: 24px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.2fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.2fr; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px; }
+  .panel.ac { border-top: 3px solid var(--ac); }
+  .panel.ai { border-top: 3px solid var(--ai); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .panel.green { border-top: 3px solid var(--green); }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: var(--ac-soft); color: var(--ac); vertical-align: middle; }
+  .tag.ai { background: var(--ai-soft); color: var(--ai); }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  .tag.green { background: var(--green-soft); color: var(--green); }
+  ul.plusminus { list-style: none; padding-left: 1.4em; }
+  ul.plusminus li { text-indent: -1.4em; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--green); font-weight: 700; }
+  ul.plusminus li.bad::before { content: "× "; color: var(--red); font-weight: 700; }
+  ul.plusminus li.warn::before { content: "△ "; color: var(--amber); font-weight: 700; }
+
+  .term { background: var(--term); color: var(--term-ink); border-radius: 8px; padding: 14px 18px; font-family: var(--mono); font-size: 13px; line-height: 1.55; overflow: auto; white-space: pre; tab-size: 2; }
+  .term .k { color: var(--term-key); } .term .s { color: var(--term-str); } .term .n { color: var(--term-num); } .term .d { color: var(--term-dim); } .term .c { color: var(--term-dim); font-style: italic; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 5px 8px; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* diagrams */
+  .fig { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+  .fig svg { width: 100%; height: auto; display: block; }
+  .fig .cap { font-size: 12.5px; color: var(--ink-3); }
+  .cols > .fig { align-self: start; }
+  .cols.fill > .fig { align-self: stretch; }
+  svg text { font-family: var(--body); }
+  svg .mono { font-family: var(--mono); }
+  svg .t { font-family: var(--display); font-weight: 700; }
+
+  .big { display: grid; grid-template-columns: 60px 1fr; gap: 14px; align-items: start; background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 18px; }
+  .big .no { font-family: var(--display); font-weight: 900; font-size: 34px; color: var(--ac); line-height: 1.1; }
+  .big .name { font-family: var(--display); font-weight: 700; font-size: 17px; line-height: 1.35; }
+  .big .desc { font-size: 13.5px; color: var(--ink-2); margin-top: 2px; }
+
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 80px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 28px; flex-wrap: wrap; }
+  .cover .meta a { color: var(--term-key); border-bottom-color: rgba(201,168,255,.4); }
+  .cover .frame {
+    position: absolute; right: 72px; top: 56px; width: 460px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--ac); padding-left: 16px;
+  }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); }
+
+  #hud { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7; }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────── -->
+<section class="slide cover">
+  <div class="frame"><span class="k">turn 1</span>  [こんにちは]                      <span class="n">→ 全部計算</span>
+<span class="k">turn 2</span>  [こんにちは|返答|こんばんは]        <span class="n">→ 先頭はキャッシュ</span>
+<span class="k">turn 3</span>  [こんにちは|返答|こんばんは|返答|…]  <span class="n">→ 先頭はキャッシュ</span>
+
+<span class="s"># キャッシュが切れる 3 つの原因</span>
+1. 先頭からの位置が変わる  (/compact, 履歴の書き換え)
+2. 時間を空けすぎる        (Claude Code は 1 時間)
+3. モデル / パラメータ変更 (model, effort, subagent)
+
+<span class="s"># もう 1 つ</span>
+ツール呼び出し 1 回 = モデルへの入力 +1 回</div>
+  <p class="eyebrow">YouTube 要約 · ysksm/slides</p>
+  <h1>すぐ溶ける AI の利用枠<br>キャッシュの仕組みを知って節約する</h1>
+  <p class="lead">「AIの使用枠がすぐになくなる？ChatGPTとClaudeの利用枠を節約するキャッシュの仕組みを解説してみた」（にゃんたのAIチャンネル）の要約。会話履歴の再送、プロンプトキャッシュ、キャッシュを切らさない 3 原則、ツール呼び出し回数の抑制を図解で整理する。</p>
+  <p class="meta"><span>動画公開 2026-09-12 · 27:31</span><span><a href="https://www.youtube.com/watch?v=t22FELAl-BM">youtube.com/watch?v=t22FELAl-BM</a></span><span>要約作成 2026-09-13</span></p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Summary</p>
+  <h2>結論を先に：利用枠は「毎回送り直される入力」で溶ける</h2>
+  <div class="cols cols-3">
+    <div class="panel ac stack">
+      <h3>① 会話は毎回ぜんぶ送り直される <span class="tag">基本</span></h3>
+      <p class="small">モデルは前の会話を覚えていない。50 回目の入力では 49 回分の履歴がまるごと再入力される。<b>履歴が不要なら新しいセッション</b>、質問は<b>1 回の入力にまとめる</b>。</p>
+    </div>
+    <div class="panel ai stack">
+      <h3>② キャッシュ＝先頭が同じなら再計算しない <span class="tag ai">仕組み</span></h3>
+      <p class="small">2 回目以降、<b>先頭から同じ位置にある文章</b>は前回の計算結果を再利用できる。キャッシュ読み取りは通常入力の約 1/10（Fable 5.1 は 1/40）の価格。</p>
+    </div>
+    <div class="panel amber stack">
+      <h3>③ キャッシュを切らさない 3 原則 <span class="tag amber">実践</span></h3>
+      <ul class="small">
+        <li>先頭からの位置を変えない（<code>/compact</code> 乱用しない）</li>
+        <li>時間を空けすぎない（Claude Code は 1 時間）</li>
+        <li>途中でモデル・effort・サブエージェント構成を変えない</li>
+      </ul>
+    </div>
+  </div>
+  <div class="cols cols-3" style="flex:0 0 auto">
+    <div class="panel green"><h3>ChatGPT の使い分け</h3><p class="small">調べ物は上限が緩い<b>チャット</b>で、資料化は<b>ワーク</b>で。デスクトップアプリの <code>@</code> でチャット履歴をワークに渡せる。</p></div>
+    <div class="panel green"><h3>Claude の使い分け</h3><p class="small">長いドキュメントは<b>プロジェクト機能</b>にアップロード。ナレッジはキャッシュされ、再利用時は制限にカウントされない（公式ヘルプ）。</p></div>
+    <div class="panel red"><h3>ツール呼び出しを減らす</h3><p class="small">ツール 1 回＝モデル入力 +1 回。MCP はツールサーチの往復も増える。<b>不要な MCP を外す・effort を下げる</b>。</p></div>
+  </div>
+</section>
+
+<!-- 3 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Basics ① · 動画 01:03–03:02</p>
+  <h2>1 つのセッションで会話を続けない</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="ターンごとに再送される入力が積み上がる図">
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#80788F"/></marker></defs>
+        <g font-size="13" fill="#4A4358">
+          <text x="10" y="42" class="t">turn 1</text>
+          <rect x="80" y="26" width="90" height="26" rx="4" fill="#6B3FC7"/><text x="125" y="44" fill="#fff" text-anchor="middle" font-size="12">こんにちは</text>
+          <text x="10" y="102" class="t">turn 2</text>
+          <rect x="80" y="86" width="90" height="26" rx="4" fill="#B9A7E0"/><text x="125" y="104" fill="#fff" text-anchor="middle" font-size="12">こんにちは</text>
+          <rect x="172" y="86" width="70" height="26" rx="4" fill="#D3CCDF"/><text x="207" y="104" fill="#4A4358" text-anchor="middle" font-size="12">返答</text>
+          <rect x="244" y="86" width="90" height="26" rx="4" fill="#6B3FC7"/><text x="289" y="104" fill="#fff" text-anchor="middle" font-size="12">こんばんは</text>
+          <text x="10" y="162" class="t">turn 3</text>
+          <rect x="80" y="146" width="90" height="26" rx="4" fill="#B9A7E0"/><text x="125" y="164" fill="#fff" text-anchor="middle" font-size="12">こんにちは</text>
+          <rect x="172" y="146" width="70" height="26" rx="4" fill="#D3CCDF"/><text x="207" y="164" fill="#4A4358" text-anchor="middle" font-size="12">返答</text>
+          <rect x="244" y="146" width="90" height="26" rx="4" fill="#B9A7E0"/><text x="289" y="164" fill="#fff" text-anchor="middle" font-size="12">こんばんは</text>
+          <rect x="336" y="146" width="70" height="26" rx="4" fill="#D3CCDF"/><text x="371" y="164" fill="#4A4358" text-anchor="middle" font-size="12">返答</text>
+          <rect x="408" y="146" width="90" height="26" rx="4" fill="#6B3FC7"/><text x="453" y="164" fill="#fff" text-anchor="middle" font-size="12">おはよう</text>
+          <text x="10" y="222" class="t">turn 50</text>
+          <rect x="80" y="206" width="470" height="26" rx="4" fill="#B9A7E0"/><text x="315" y="224" fill="#fff" text-anchor="middle" font-size="12">turn 1〜49 の入力と返答（すべて再送）</text>
+          <rect x="552" y="206" width="78" height="26" rx="4" fill="#6B3FC7"/><text x="591" y="224" fill="#fff" text-anchor="middle" font-size="12">新しい入力</text>
+          <line x1="80" y1="262" x2="630" y2="262" stroke="#80788F" stroke-width="1.5" marker-end="url(#arr)"/>
+          <text x="355" y="284" text-anchor="middle" fill="#80788F" font-size="12">モデルに渡される入力の長さ ＝ 毎回の消費量</text>
+        </g>
+      </svg>
+      <p class="cap">濃い紫＝今回の入力、薄い紫＝過去の入力の再送。ターンが進むほど 1 回あたりの入力が長くなる。</p>
+    </div>
+    <div class="stack">
+      <div class="panel ac">
+        <h3>何が起きているか</h3>
+        <ul class="small">
+          <li>AI モデルは<b>前の会話を保持できない</b>。「こんばんは」と打ったとき、内部では「こんにちは」とその返答も含めた<b>全部</b>が入力として渡されている。</li>
+          <li>1 つのセッションで会話を続けると、処理してもらう文字数が<b>毎回増えていく</b>。50 回やり取りすれば 50 回目は 49 回分の履歴を再送している。</li>
+        </ul>
+      </div>
+      <div class="panel green">
+        <h3>対策</h3>
+        <ul class="small">
+          <li>これまでの履歴を<b>参照しなくても問題ない</b>なら、すぐ新しいセッションを開く。</li>
+          <li>教えている中で実際にあった例：1 つの会話でずっと使い続けて利用枠が溶けていた。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Basics ② · 動画 03:05–04:06</p>
+  <h2>できるだけ 1 回の入力にまとめる</h2>
+  <div class="cols cols-2">
+    <div class="fig">
+      <h3 style="color:var(--red)">× 3 回に分けて聞く</h3>
+      <svg viewBox="0 0 560 190" role="img" aria-label="質問を3回に分けると履歴が毎回再送される図">
+        <g font-size="12" fill="#4A4358">
+          <rect x="10" y="12" width="130" height="24" rx="4" fill="#D3CCDF"/><text x="75" y="29" text-anchor="middle">ドキュメント</text>
+          <rect x="144" y="12" width="90" height="24" rx="4" fill="#B4432F"/><text x="189" y="29" text-anchor="middle" fill="#fff">A の観点は?</text>
+          <text x="250" y="29" fill="#80788F">→ 送信 1</text>
+
+          <rect x="10" y="66" width="130" height="24" rx="4" fill="#D3CCDF"/><text x="75" y="83" text-anchor="middle">ドキュメント</text>
+          <rect x="144" y="66" width="90" height="24" rx="4" fill="#E9C6C0"/><text x="189" y="83" text-anchor="middle">A の観点は?</text>
+          <rect x="238" y="66" width="60" height="24" rx="4" fill="#D3CCDF"/><text x="268" y="83" text-anchor="middle">返答</text>
+          <rect x="302" y="66" width="90" height="24" rx="4" fill="#B4432F"/><text x="347" y="83" text-anchor="middle" fill="#fff">B の観点は?</text>
+          <text x="408" y="83" fill="#80788F">→ 送信 2</text>
+
+          <rect x="10" y="120" width="130" height="24" rx="4" fill="#D3CCDF"/><text x="75" y="137" text-anchor="middle">ドキュメント</text>
+          <rect x="144" y="120" width="90" height="24" rx="4" fill="#E9C6C0"/><text x="189" y="137" text-anchor="middle">A の観点は?</text>
+          <rect x="238" y="120" width="60" height="24" rx="4" fill="#D3CCDF"/><text x="268" y="137" text-anchor="middle">返答</text>
+          <rect x="302" y="120" width="90" height="24" rx="4" fill="#E9C6C0"/><text x="347" y="137" text-anchor="middle">B の観点は?</text>
+          <rect x="396" y="120" width="60" height="24" rx="4" fill="#D3CCDF"/><text x="426" y="137" text-anchor="middle">返答</text>
+          <rect x="460" y="120" width="90" height="24" rx="4" fill="#B4432F"/><text x="505" y="137" text-anchor="middle" fill="#fff">C の観点は?</text>
+          <text x="20" y="178" fill="#B4432F" class="t">ドキュメント × 3 回、A の返答 × 2 回 … が余分に送られる</text>
+        </g>
+      </svg>
+    </div>
+    <div class="fig">
+      <h3 style="color:var(--green)">○ 1 回でまとめて聞く</h3>
+      <svg viewBox="0 0 560 190" role="img" aria-label="質問を1回にまとめると入力が1回で済む図">
+        <g font-size="12" fill="#4A4358">
+          <rect x="10" y="12" width="130" height="24" rx="4" fill="#D3CCDF"/><text x="75" y="29" text-anchor="middle">ドキュメント</text>
+          <rect x="144" y="12" width="300" height="24" rx="4" fill="#1E7F2C"/><text x="294" y="29" text-anchor="middle" fill="#fff">A・B・C の観点はそれぞれどうですか?</text>
+          <text x="458" y="29" fill="#80788F">→ 送信 1</text>
+          <text x="20" y="80" fill="#1E7F2C" class="t">やっていることは同じでも、消費する利用枠は少ない</text>
+          <text x="20" y="108" fill="#4A4358">・ドキュメントは 1 回だけ入力される</text>
+          <text x="20" y="130" fill="#4A4358">・返答も 1 回分だけ生成される</text>
+          <text x="20" y="152" fill="#4A4358">・ターン数が減るぶん、以降の再送も減る</text>
+          <text x="20" y="178" fill="#80788F">仕事で使うときは「なるべく少ないターン数で入力できないか」を意識する</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+  <p class="small muted">スライド 3 の理解があれば自然に導ける結論。ドキュメントを読ませて複数の観点で質問する場面が典型例。</p>
+</section>
+
+<!-- 5 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">ChatGPT · 動画 04:07–07:20</p>
+  <h2>ChatGPT：チャットとワークで利用枠は別々</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 290" role="img" aria-label="ChatGPT のチャットとワークの使い分け図">
+        <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2F6FBF"/></marker></defs>
+        <g font-size="13" fill="#4A4358">
+          <rect x="10" y="20" width="280" height="200" rx="10" fill="#D9E7F8" stroke="#2F6FBF"/>
+          <text x="150" y="48" text-anchor="middle" class="t" font-size="17" fill="#2F6FBF">チャット</text>
+          <text x="150" y="72" text-anchor="middle" font-size="12">利用枠の上限が体感でかなり緩い</text>
+          <rect x="30" y="90" width="240" height="14" rx="7" fill="#fff"/><rect x="30" y="90" width="60" height="14" rx="7" fill="#2F6FBF"/>
+          <text x="150" y="128" text-anchor="middle">調べ物・壁打ち</text>
+          <text x="150" y="150" text-anchor="middle" font-size="12">（GPT-5.6 相当でも十分）</text>
+          <text x="150" y="196" text-anchor="middle" font-size="12" fill="#80788F">動画時点：チャットでは GPT-6 を選べない</text>
+
+          <rect x="350" y="20" width="280" height="200" rx="10" fill="#FBEBC8" stroke="#B7791F"/>
+          <text x="490" y="48" text-anchor="middle" class="t" font-size="17" fill="#B7791F">ワーク</text>
+          <text x="490" y="72" text-anchor="middle" font-size="12">長時間かけた資料作成・GPT-6 が使える</text>
+          <rect x="370" y="90" width="240" height="14" rx="7" fill="#fff"/><rect x="370" y="90" width="200" height="14" rx="7" fill="#B7791F"/>
+          <text x="490" y="128" text-anchor="middle">資料にまとめる</text>
+          <text x="490" y="150" text-anchor="middle" font-size="12">（枠の消費が速い）</text>
+
+          <line x1="292" y1="120" x2="346" y2="120" stroke="#2F6FBF" stroke-width="2" marker-end="url(#arr2)"/>
+          <rect x="262" y="230" width="116" height="28" rx="14" fill="#fff" stroke="#2F6FBF"/>
+          <text x="320" y="249" text-anchor="middle" class="mono" font-size="13" fill="#2F6FBF">@ で履歴を参照</text>
+          <text x="320" y="282" text-anchor="middle" font-size="12" fill="#80788F">デスクトップアプリ：チャットの会話履歴をワークに渡せる</text>
+        </g>
+      </svg>
+      <p class="cap">バーは利用枠の消費イメージ（動画の体感ベース）。</p>
+    </div>
+    <div class="stack">
+      <div class="panel ai">
+        <h3>使い分けの要点</h3>
+        <ul class="small">
+          <li>チャットとワークは<b>利用枠が別</b>。発表者は月額 100 ドルのプランで、チャット側の上限に当たったことはない。</li>
+          <li>なので<b>調べ物はチャット</b>で。利用枠を消費したくない発表者は調べ物を GPT-5.6 系で行っている。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>調べた内容を資料にしたいとき</h3>
+        <ul class="small">
+          <li>ChatGPT デスクトップアプリで、ワーク側の入力欄から <code>@</code> を押すと<b>チャットの会話履歴を参照</b>させられる。</li>
+          <li>チャットで調べる → ワークに切り替えて <code>@</code> で履歴参照 → 入力としては調べた内容が<b>1 回入るだけ</b>で済む。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Claude · 動画 07:21–10:12</p>
+  <h2>Claude：長いドキュメントは「プロジェクト機能」に置く</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 280" role="img" aria-label="Claude プロジェクトのナレッジがキャッシュされる図">
+        <g font-size="13" fill="#4A4358">
+          <text x="10" y="24" class="t" font-size="15" fill="#B4432F">通常のチャット</text>
+          <rect x="10" y="36" width="200" height="26" rx="4" fill="#B4432F"/><text x="110" y="54" text-anchor="middle" fill="#fff" font-size="12">巨大なドキュメント</text>
+          <rect x="214" y="36" width="80" height="26" rx="4" fill="#D3CCDF"/><text x="254" y="54" text-anchor="middle" font-size="12">質問 1</text>
+          <rect x="10" y="68" width="200" height="26" rx="4" fill="#B4432F"/><text x="110" y="86" text-anchor="middle" fill="#fff" font-size="12">巨大なドキュメント</text>
+          <rect x="214" y="68" width="80" height="26" rx="4" fill="#D3CCDF"/><text x="254" y="86" text-anchor="middle" font-size="12">質問 1</text>
+          <rect x="298" y="68" width="60" height="26" rx="4" fill="#D3CCDF"/><text x="328" y="86" text-anchor="middle" font-size="12">返答</text>
+          <rect x="362" y="68" width="80" height="26" rx="4" fill="#D3CCDF"/><text x="402" y="86" text-anchor="middle" font-size="12">質問 2</text>
+          <text x="10" y="118" font-size="12" fill="#B4432F">毎回ドキュメント分の利用枠を消費</text>
+
+          <text x="10" y="164" class="t" font-size="15" fill="#1E7F2C">プロジェクト機能（ナレッジにアップロード）</text>
+          <rect x="10" y="176" width="200" height="26" rx="4" fill="#1E7F2C"/><text x="110" y="194" text-anchor="middle" fill="#fff" font-size="12">ドキュメント（キャッシュ済）</text>
+          <rect x="214" y="176" width="80" height="26" rx="4" fill="#6B3FC7"/><text x="254" y="194" text-anchor="middle" fill="#fff" font-size="12">質問 1</text>
+          <rect x="10" y="208" width="200" height="26" rx="4" fill="#1E7F2C"/><text x="110" y="226" text-anchor="middle" fill="#fff" font-size="12">ドキュメント（キャッシュ済）</text>
+          <rect x="214" y="208" width="80" height="26" rx="4" fill="#D3CCDF"/><text x="254" y="226" text-anchor="middle" font-size="12">質問 1</text>
+          <rect x="298" y="208" width="60" height="26" rx="4" fill="#D3CCDF"/><text x="328" y="226" text-anchor="middle" font-size="12">返答</text>
+          <rect x="362" y="208" width="80" height="26" rx="4" fill="#6B3FC7"/><text x="402" y="226" text-anchor="middle" fill="#fff" font-size="12">質問 2</text>
+          <text x="10" y="258" font-size="12" fill="#1E7F2C">再利用時は「制限にカウントされない」（公式ヘルプ）。新しい部分だけがカウントされる</text>
+        </g>
+      </svg>
+    </div>
+    <div class="stack">
+      <div class="panel green">
+        <h3>公式ヘルプ「使用制限のベストプラクティス」より</h3>
+        <ul class="small">
+          <li>「プロジェクト内のコンテンツは<b>キャッシュされ、再利用時に制限にカウントされません</b>」</li>
+          <li>「プロジェクトナレッジベースを効果的に使用しましょう」— ドキュメントをアップロードすると将来の使用のためにキャッシュされ、<b>新しい部分だけ</b>がカウントされる。</li>
+        </ul>
+        <p class="xs muted" style="margin-top:6px">出典: <a href="https://support.claude.com/en/articles/9797557-usage-limit-best-practices">support.claude.com — Usage limit best practices</a></p>
+      </div>
+      <div class="panel ac">
+        <h3>発表者の見立て</h3>
+        <ul class="small">
+          <li>「カウントされない」は予想以上にお得。仕組みとしては、入力文章の<b>位置が変わらなければキャッシュが効く</b>ので、プロジェクトはそれを活かしているのだろう。</li>
+          <li>普段のチャットでもキャッシュは効いていそうだが公式の明言はない。まずは<b>長いドキュメントはプロジェクト</b>で。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Cache · 動画 10:13–12:40</p>
+  <h2>キャッシュとは：「先頭から同じ位置」の入力を 2 回目以降は再計算しない</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="プレフィックスキャッシュの図">
+        <g font-size="13" fill="#4A4358">
+          <text x="10" y="40" class="t">1 回目</text>
+          <rect x="80" y="24" width="110" height="26" rx="4" fill="#6B3FC7"/><text x="135" y="42" text-anchor="middle" fill="#fff" font-size="12">こんにちは</text>
+          <text x="200" y="42" font-size="12" fill="#80788F">→ 全部計算して、結果を保存（キャッシュ書き込み）</text>
+
+          <text x="10" y="104" class="t">2 回目</text>
+          <rect x="80" y="88" width="110" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="135" y="106" text-anchor="middle" fill="#1E7F2C" font-size="12">こんにちは</text>
+          <rect x="192" y="88" width="70" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="227" y="106" text-anchor="middle" fill="#1E7F2C" font-size="12">返答</text>
+          <rect x="264" y="88" width="110" height="26" rx="4" fill="#6B3FC7"/><text x="319" y="106" text-anchor="middle" fill="#fff" font-size="12">こんばんは</text>
+          <text x="384" y="106" font-size="12" fill="#80788F">→ 緑は再利用、紫だけ計算</text>
+
+          <text x="10" y="168" class="t">3 回目</text>
+          <rect x="80" y="152" width="110" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="135" y="170" text-anchor="middle" fill="#1E7F2C" font-size="12">こんにちは</text>
+          <rect x="192" y="152" width="70" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="227" y="170" text-anchor="middle" fill="#1E7F2C" font-size="12">返答</text>
+          <rect x="264" y="152" width="110" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="319" y="170" text-anchor="middle" fill="#1E7F2C" font-size="12">こんばんは</text>
+          <rect x="376" y="152" width="70" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="411" y="170" text-anchor="middle" fill="#1E7F2C" font-size="12">返答</text>
+          <rect x="448" y="152" width="100" height="26" rx="4" fill="#6B3FC7"/><text x="498" y="170" text-anchor="middle" fill="#fff" font-size="12">おはよう</text>
+
+          <rect x="80" y="200" width="468" height="4" fill="#1E7F2C" opacity=".5"/>
+          <text x="314" y="226" text-anchor="middle" font-size="12" fill="#1E7F2C">先頭から 1 文字も変わっていない範囲 ＝ キャッシュが効く範囲</text>
+
+          <text x="10" y="270" font-size="12" fill="#B4432F">先頭側のどこかが変わると、それ以降はすべて再計算になる（後述の /compact など）</text>
+        </g>
+      </svg>
+    </div>
+    <div class="stack">
+      <div class="panel ac">
+        <h3>難しいことを抜きにすると</h3>
+        <ul class="small">
+          <li>AI モデルに<b>2 回以上、先頭から同じ位置で</b>入力した場合に使える機能。</li>
+          <li>2 回目の入力では「こんにちは」を処理するための計算結果を再利用できるので、<b>少ない計算量</b>で処理できる。</li>
+          <li>細かくは「何文字以上ないとキャッシュされない」などの条件もあるが、押さえるべきは<b>先頭から同じ ＋ 2 回以上</b>の 2 点。</li>
+        </ul>
+      </div>
+      <div class="panel ai">
+        <h3>どこで使えるか</h3>
+        <p class="small">ChatGPT ワーク、Codex、Claude Code のいずれもこの仕組みを使う。<b>どういう場合にキャッシュが効いて、どういう場合に切れるか</b>を理解して使えば消費を抑えられる。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Cache · 動画 12:41–13:50</p>
+  <h2>キャッシュはどれくらいお得か：API 価格で見る</h2>
+  <div class="cols cols-52">
+    <div class="panel ac stack">
+      <h3>動画で紹介された価格（100 万トークンあたり）</h3>
+      <table>
+        <tr><th>モデル</th><th>通常入力</th><th>キャッシュ読み取り</th><th>比率</th></tr>
+        <tr><td>Claude Opus 5</td><td class="num">$5</td><td class="num">$0.50</td><td class="num">1/10</td></tr>
+        <tr><td>Claude Fable 5.1</td><td class="num">$10</td><td class="num">$0.25</td><td class="num">1/40</td></tr>
+        <tr><td>OpenAI（GPT 系）</td><td colspan="2">キャッシュが効くと約 90% 安くなると言われている</td><td class="num">≈1/10</td></tr>
+      </table>
+      <p class="xs muted">※ 実際はキャッシュを<b>書き込む</b>コストが通常入力より少し高いので単純比較はできない、と動画でも注記。</p>
+      <div class="fig" style="padding:8px 12px">
+        <svg viewBox="0 0 560 74" role="img" aria-label="Opus 5 の通常入力とキャッシュ読み取りの価格比較バー">
+          <g font-size="12" fill="#4A4358">
+            <text x="0" y="20">通常入力</text><rect x="90" y="8" width="450" height="16" rx="3" fill="#B4432F"/><text x="534" y="20" class="mono" text-anchor="end" font-size="11" fill="#fff">$5.00</text>
+            <text x="0" y="52">キャッシュ読取</text><rect x="90" y="40" width="45" height="16" rx="3" fill="#1E7F2C"/><text x="142" y="52" fill="#1E7F2C" class="mono" font-size="11">$0.50（Opus 5）</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel green">
+        <h3>公式価格表での確認（要約作成時点）</h3>
+        <table class="tight small">
+          <tr><th>モデル</th><th>入力</th><th>5 分書込</th><th>1 時間書込</th><th>読取</th></tr>
+          <tr><td>Fable 5.1</td><td class="num">$10</td><td class="num">$12.50</td><td class="num">$20</td><td class="num">$0.25</td></tr>
+          <tr><td>Opus 5</td><td class="num">$5</td><td class="num">$6.25</td><td class="num">$10</td><td class="num">$0.50</td></tr>
+          <tr><td>Sonnet 5</td><td class="num">$2</td><td class="num">$2.50</td><td class="num">$4</td><td class="num">$0.20</td></tr>
+          <tr><td>Haiku 4.5</td><td class="num">$1</td><td class="num">$1.25</td><td class="num">$2</td><td class="num">$0.10</td></tr>
+        </table>
+        <p class="xs muted" style="margin-top:6px">読取は基本入力の 0.1 倍（Fable 5.1 / Mythos 5.1 は 0.025 倍）。5 分書込 1.25 倍、1 時間書込 2 倍。<br>出典: <a href="https://platform.claude.com/docs/en/about-claude/pricing">platform.claude.com — Pricing</a></p>
+      </div>
+      <div class="panel amber">
+        <h3>だから</h3>
+        <p class="small"><b>いかにキャッシュを切らさないか</b>が、利用枠を長持ちさせる上で最重要。次のスライドから 3 原則。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Three rules · 動画 13:51–</p>
+  <h2>キャッシュを切らさない 3 原則</h2>
+  <div class="cols cols-3">
+    <div class="big" style="grid-template-columns:1fr; text-align:center; padding:26px 20px">
+      <div class="no">①</div>
+      <div class="name">文章の位置を<br>先頭から変えない</div>
+      <p class="desc">2 回目以降は「先頭から一致する範囲」しか再利用されない。<code>/compact</code> のように履歴を書き換える操作は、そこから先のキャッシュを全部捨てる。</p>
+      <p class="xs" style="margin-top:10px"><span class="tag red">/compact の乱用</span></p>
+    </div>
+    <div class="big" style="grid-template-columns:1fr; text-align:center; padding:26px 20px">
+      <div class="no">②</div>
+      <div class="name">使う間隔を<br>空けすぎない</div>
+      <p class="desc">キャッシュにはライフタイムがある。一定時間入力がないとクリアされ、次の入力はセッション全体をキャッシュなしで送ることになる。</p>
+      <p class="xs" style="margin-top:10px"><span class="tag amber">Claude Code は 1 時間</span></p>
+    </div>
+    <div class="big" style="grid-template-columns:1fr; text-align:center; padding:26px 20px">
+      <div class="no">③</div>
+      <div class="name">モデル・パラメータを<br>途中で変えない</div>
+      <p class="desc">キャッシュは「そのモデルで計算した結果」。別モデルでは使えない。effort レベルもモデルによっては切れる。サブエージェントは別キャッシュ。</p>
+      <p class="xs" style="margin-top:10px"><span class="tag ai">model / effort / subagent</span></p>
+    </div>
+  </div>
+  <p class="small muted">3 原則はいずれも「キャッシュ＝先頭から同じ入力を、同じモデルで、時間内に再送すること」から導ける。</p>
+</section>
+
+<!-- 10 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Rule ① · 動画 14:20–16:30</p>
+  <h2>原則①：/compact を頻繁にやると、かえって消費が増える</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 290" role="img" aria-label="compact で履歴が書き換わりキャッシュが切れる図">
+        <g font-size="13" fill="#4A4358">
+          <text x="10" y="30" class="t">compact 前</text>
+          <rect x="110" y="14" width="90" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="155" y="32" text-anchor="middle" fill="#1E7F2C" font-size="12">入力 1</text>
+          <rect x="202" y="14" width="70" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="237" y="32" text-anchor="middle" fill="#1E7F2C" font-size="12">返答</text>
+          <rect x="274" y="14" width="90" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="319" y="32" text-anchor="middle" fill="#1E7F2C" font-size="12">入力 2</text>
+          <rect x="366" y="14" width="70" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="401" y="32" text-anchor="middle" fill="#1E7F2C" font-size="12">返答</text>
+          <rect x="438" y="14" width="90" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="483" y="32" text-anchor="middle" fill="#1E7F2C" font-size="12">入力 3</text>
+          <rect x="530" y="14" width="70" height="26" rx="4" fill="#D8EEDA" stroke="#1E7F2C"/><text x="565" y="32" text-anchor="middle" fill="#1E7F2C" font-size="12">返答</text>
+          <text x="110" y="62" font-size="12" fill="#1E7F2C">すべてキャッシュ済み</text>
+
+          <rect x="110" y="86" width="140" height="28" rx="14" fill="#14101E"/><text x="180" y="105" text-anchor="middle" class="mono" fill="#C9A8FF" font-size="13">/compact</text>
+          <text x="262" y="105" font-size="12" fill="#80788F">← これ自体がセッション全体を入力する処理（利用枠を消費）</text>
+
+          <text x="10" y="160" class="t">compact 後</text>
+          <rect x="110" y="144" width="200" height="26" rx="4" fill="#B4432F"/><text x="210" y="162" text-anchor="middle" fill="#fff" font-size="12">要約（新しい文章）</text>
+          <rect x="312" y="144" width="90" height="26" rx="4" fill="#6B3FC7"/><text x="357" y="162" text-anchor="middle" fill="#fff" font-size="12">入力 4</text>
+          <text x="110" y="192" font-size="12" fill="#B4432F">先頭からの内容が変わった → 以前のキャッシュはまったく効かない。要約分を再計算</text>
+
+          <rect x="10" y="216" width="620" height="60" rx="8" fill="#FBEBC8"/>
+          <text x="24" y="240" font-size="12.5" fill="#4A4358">節約のつもりで頻繁に compact すると：① キャッシュが切れて再計算 ② compact 処理そのものの消費</text>
+          <text x="24" y="262" font-size="12.5" fill="#4A4358">→ 逆にトークン消費が増えることがある。「別の問題」もあり（動画では次回予告）</text>
+        </g>
+      </svg>
+    </div>
+    <div class="stack">
+      <div class="panel ac">
+        <h3>compact とは</h3>
+        <p class="small">それまでの会話履歴を<b>要約して短くする</b>操作。Claude Code でも ChatGPT ワークでも使え、<code>/compact</code> と入力すると「セッションを圧縮しました」と出る。</p>
+      </div>
+      <div class="panel red">
+        <h3>なぜ逆効果になりうるか</h3>
+        <ul class="small">
+          <li>要約に置き換わると<b>先頭からの入力情報が変わる</b>ので、入力や返答のキャッシュが切れる。</li>
+          <li>compact 自体が<b>それまでのセッションを入力して処理</b>するので、その分も消費する。</li>
+        </ul>
+      </div>
+      <div class="panel green">
+        <h3>示唆</h3>
+        <p class="small">履歴が不要なら compact より<b>新しいセッション</b>。使うなら頻繁にではなく<b>区切りで</b>。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Rule ② · 動画 16:31–18:00</p>
+  <h2>原則②：時間を空けすぎない（キャッシュライフタイム）</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 260" role="img" aria-label="キャッシュライフタイムのタイムライン図">
+        <g font-size="13" fill="#4A4358">
+          <line x1="40" y1="70" x2="600" y2="70" stroke="#D3CCDF" stroke-width="6" stroke-linecap="round"/>
+          <line x1="40" y1="70" x2="330" y2="70" stroke="#1E7F2C" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="40" cy="70" r="9" fill="#6B3FC7"/><text x="40" y="46" text-anchor="middle" font-size="12">最後の入力</text>
+          <circle cx="330" cy="70" r="9" fill="#B4432F"/><text x="330" y="46" text-anchor="middle" font-size="12">1 時間（Claude Code）</text>
+          <text x="185" y="100" text-anchor="middle" font-size="12" fill="#1E7F2C">この間に再開 → キャッシュ有効</text>
+          <text x="470" y="100" text-anchor="middle" font-size="12" fill="#B4432F">ここで再開 → 全履歴をキャッシュなしで送信</text>
+
+          <rect x="40" y="130" width="270" height="100" rx="8" fill="#D8EEDA"/>
+          <text x="175" y="156" text-anchor="middle" class="t" fill="#1E7F2C">Claude Code</text>
+          <text x="175" y="180" text-anchor="middle" font-size="12">キャッシュ保持は最大 1 時間</text>
+          <text x="175" y="202" text-anchor="middle" font-size="12">1 時間放置後の同じセッションは注意</text>
+
+          <rect x="330" y="130" width="270" height="100" rx="8" fill="#FBEBC8"/>
+          <text x="465" y="156" text-anchor="middle" class="t" fill="#B7791F">ChatGPT ワーク / Codex</text>
+          <text x="465" y="180" text-anchor="middle" font-size="12">公式に何分とは明言なし</text>
+          <text x="465" y="202" text-anchor="middle" font-size="12">GPT-5.6 系のスペック表では最低 30 分</text>
+        </g>
+      </svg>
+    </div>
+    <div class="stack">
+      <div class="panel ac">
+        <h3>仕組み</h3>
+        <ul class="small">
+          <li>キャッシュは Anthropic や OpenAI のサーバー側で<b>一時的に保管</b>されるだけで、保管期間は無制限ではない。</li>
+          <li>一定時間入力がないとクリアされる。これが<b>キャッシュライフタイム</b>。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>実務上の注意</h3>
+        <ul class="small">
+          <li>作業後 1 時間ほど放置して同じセッションで再開すると、<b>それまでの全セッション分</b>がキャッシュなしで送られる。</li>
+          <li>時間を空けて再開するときは「キャッシュが切れているかもしれないが、それでも<b>続きからやりたいのか</b>」を考える。</li>
+        </ul>
+      </div>
+      <p class="xs muted">補足（要約者注）：Claude Code 公式ドキュメントでは、サブスクリプションのプラン内利用でメイン会話が 1 時間、API キーや利用クレジット消費時は 5 分がデフォルト。詳細は姉妹スライド「Claude Code のトークン使用量と削減策」を参照。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 12 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Rule ③ · 動画 18:01–22:20</p>
+  <h2>原則③：モデル・サブエージェント・effort を途中で変えない</h2>
+  <div class="cols cols-3 fill">
+    <div class="fig">
+      <h3>モデル変更</h3>
+      <svg viewBox="0 0 360 150" role="img" aria-label="モデルを切り替えるとキャッシュが使えない図">
+        <g font-size="12" fill="#4A4358">
+          <rect x="10" y="10" width="150" height="50" rx="8" fill="#E4DAF7" stroke="#6B3FC7"/><text x="85" y="32" text-anchor="middle" class="t" fill="#6B3FC7">モデル A</text><text x="85" y="50" text-anchor="middle" font-size="11">キャッシュ A</text>
+          <rect x="200" y="10" width="150" height="50" rx="8" fill="#D9E7F8" stroke="#2F6FBF"/><text x="275" y="32" text-anchor="middle" class="t" fill="#2F6FBF">モデル B</text><text x="275" y="50" text-anchor="middle" font-size="11">キャッシュなし</text>
+          <line x1="162" y1="35" x2="198" y2="35" stroke="#B4432F" stroke-width="2"/><text x="180" y="28" text-anchor="middle" fill="#B4432F" font-size="14">✕</text>
+          <text x="10" y="90" font-size="11.5">キャッシュ＝そのモデルで計算した結果を保持しているだけ。</text>
+          <text x="10" y="108" font-size="11.5">パラメータが違えば計算結果も違うので流用できない。</text>
+          <text x="10" y="136" font-size="11.5" fill="#B4432F">ワーク / Codex / Claude Code どれも途中変更は可能だが注意</text>
+        </g>
+      </svg>
+    </div>
+    <div class="fig">
+      <h3>サブエージェント</h3>
+      <svg viewBox="0 0 360 150" role="img" aria-label="サブエージェントはメインと別キャッシュになる図">
+        <g font-size="12" fill="#4A4358">
+          <rect x="10" y="10" width="120" height="44" rx="8" fill="#E4DAF7" stroke="#6B3FC7"/><text x="70" y="30" text-anchor="middle" class="t" fill="#6B3FC7">メイン</text><text x="70" y="46" text-anchor="middle" font-size="11">キャッシュ 1</text>
+          <rect x="150" y="4" width="95" height="30" rx="6" fill="#D9E7F8" stroke="#2F6FBF"/><text x="197" y="24" text-anchor="middle" font-size="11">サブ A · 別キャッシュ</text>
+          <rect x="150" y="40" width="95" height="30" rx="6" fill="#D9E7F8" stroke="#2F6FBF"/><text x="197" y="60" text-anchor="middle" font-size="11">サブ B · 別キャッシュ</text>
+          <rect x="150" y="76" width="95" height="30" rx="6" fill="#D9E7F8" stroke="#2F6FBF"/><text x="197" y="96" text-anchor="middle" font-size="11">サブ C · 別キャッシュ</text>
+          <line x1="132" y1="32" x2="148" y2="19" stroke="#80788F"/><line x1="132" y1="32" x2="148" y2="55" stroke="#80788F"/><line x1="132" y1="32" x2="148" y2="91" stroke="#80788F"/>
+          <text x="258" y="20" font-size="11">それぞれが</text><text x="258" y="36" font-size="11">キャッシュを</text><text x="258" y="52" font-size="11">別々に作る</text>
+          <text x="10" y="126" font-size="11.5">Fable 1 体で 1 セッション（キャッシュが効く）の方が、</text>
+          <text x="10" y="142" font-size="11.5">Opus のサブエージェント複数より安いことは結構ある</text>
+        </g>
+      </svg>
+    </div>
+    <div class="fig">
+      <h3>effort レベル</h3>
+      <table class="tight xs">
+        <tr><th>環境</th><th>途中変更でキャッシュ</th></tr>
+        <tr><td>Claude Fable 5.1（サブスク）</td><td><span class="tag green">保持される</span></td></tr>
+        <tr><td>Claude Opus / Sonnet</td><td><span class="tag red">クリアされる</span></td></tr>
+        <tr><td>GPT-6 ASTRA（API）</td><td><span class="tag green">保持できる模様</span></td></tr>
+        <tr><td>GPT-6 ASTRA（ワーク / Codex）</td><td><span class="tag red">現状は切れる（GitHub issue）</span></td></tr>
+        <tr><td>GPT-5.6 以前</td><td><span class="tag red">切れる</span></td></tr>
+      </table>
+      <p class="xs muted" style="margin-top:8px">「ここぞで effort を上げる」使い方はコスト増に注意。GPT 系は安全側に倒して<b>途中で変えない</b>のが無難（いずれ修正されそう）。</p>
+    </div>
+  </div>
+  <p class="small muted">サブエージェントの効率は「使えば良くなる」とは限らない。<b>Fable 単体 vs サブエージェント併用</b>で 2 パターン計測してみるのがおすすめ。</p>
+</section>
+
+<!-- 13 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tools · 動画 22:21–25:00</p>
+  <h2>ツールを使う回数をなるべく減らす</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="ツール呼び出しごとにモデル入力が増える図">
+        <defs><marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#6B3FC7"/></marker></defs>
+        <g font-size="12.5" fill="#4A4358">
+          <text x="10" y="24" class="t" font-size="14">ツールなし：入力 1 回</text>
+          <rect x="10" y="34" width="110" height="28" rx="6" fill="#6B3FC7"/><text x="65" y="53" text-anchor="middle" fill="#fff">ユーザー入力</text>
+          <line x1="122" y1="48" x2="160" y2="48" stroke="#6B3FC7" stroke-width="2" marker-end="url(#arr3)"/>
+          <rect x="162" y="34" width="80" height="28" rx="6" fill="#E4DAF7" stroke="#6B3FC7"/><text x="202" y="53" text-anchor="middle">モデル</text>
+          <line x1="244" y1="48" x2="282" y2="48" stroke="#6B3FC7" stroke-width="2" marker-end="url(#arr3)"/>
+          <rect x="284" y="34" width="70" height="28" rx="6" fill="#D3CCDF"/><text x="319" y="53" text-anchor="middle">出力</text>
+
+          <text x="10" y="108" class="t" font-size="14">MCP ツールあり：入力が往復のたびに増える（毎回それまでの履歴つき）</text>
+          <rect x="10" y="120" width="110" height="28" rx="6" fill="#6B3FC7"/><text x="65" y="139" text-anchor="middle" fill="#fff">ユーザー入力</text>
+          <line x1="122" y1="134" x2="150" y2="134" stroke="#6B3FC7" stroke-width="2" marker-end="url(#arr3)"/>
+          <rect x="152" y="120" width="80" height="28" rx="6" fill="#E4DAF7" stroke="#6B3FC7"/><text x="192" y="139" text-anchor="middle">モデル ①</text>
+          <line x1="234" y1="134" x2="262" y2="134" stroke="#6B3FC7" stroke-width="2" marker-end="url(#arr3)"/>
+          <rect x="264" y="120" width="110" height="28" rx="6" fill="#FBEBC8" stroke="#B7791F"/><text x="319" y="139" text-anchor="middle">ツールサーチ</text>
+          <line x1="376" y1="134" x2="404" y2="134" stroke="#6B3FC7" stroke-width="2" marker-end="url(#arr3)"/>
+          <rect x="406" y="120" width="80" height="28" rx="6" fill="#E4DAF7" stroke="#6B3FC7"/><text x="446" y="139" text-anchor="middle">モデル ②</text>
+          <line x1="488" y1="134" x2="516" y2="134" stroke="#6B3FC7" stroke-width="2" marker-end="url(#arr3)"/>
+          <rect x="518" y="120" width="110" height="28" rx="6" fill="#FBEBC8" stroke="#B7791F"/><text x="573" y="139" text-anchor="middle">ツール実行</text>
+
+          <line x1="573" y1="150" x2="573" y2="186" stroke="#6B3FC7" stroke-width="2"/><line x1="573" y1="186" x2="150" y2="186" stroke="#6B3FC7" stroke-width="2"/><line x1="150" y1="186" x2="150" y2="200" stroke="#6B3FC7" stroke-width="2" marker-end="url(#arr3)"/>
+          <rect x="110" y="202" width="80" height="28" rx="6" fill="#E4DAF7" stroke="#6B3FC7"/><text x="150" y="221" text-anchor="middle">モデル ③</text>
+          <line x1="192" y1="216" x2="220" y2="216" stroke="#6B3FC7" stroke-width="2" marker-end="url(#arr3)"/>
+          <rect x="222" y="202" width="70" height="28" rx="6" fill="#D3CCDF"/><text x="257" y="221" text-anchor="middle">出力</text>
+          <text x="310" y="221" font-size="12" fill="#B4432F">① 説明文を読む ② 仕様に沿って呼ぶ ③ 結果を読む … 各回に全履歴</text>
+
+          <text x="10" y="270" font-size="12" fill="#80788F">ツールサーチ：以前は全ツールの説明文を最初から入れていたが、最近は使うと判断したときだけ説明を読む方式に（節約にはなった）</text>
+          <text x="10" y="290" font-size="12" fill="#80788F">Web 検索など標準ツールは内部で仕様が既知で即実行できるため効率がよい。MCP は「検索して仕様を読んで呼ぶ」手間がある</text>
+        </g>
+      </svg>
+    </div>
+    <div class="stack">
+      <div class="panel ac">
+        <h3>ポイント 1：ツールの分だけ入力回数が増える</h3>
+        <p class="small">「ユーザー入力 → 出力」ではなく、ツール実行の結果を<b>またモデルに入力</b>する。その度にそれまでの入力も再送されるので、ツールを使いすぎると消費も時間も増える。</p>
+      </div>
+      <div class="panel amber">
+        <h3>ポイント 2：effort レベルが高いとツールを多用する</h3>
+        <p class="small">effort を「高」「最大」にすると、頑張ってツールをたくさん使ってタスクをこなそうとする → 呼び出し回数が増える → 入力が膨らむ。</p>
+      </div>
+      <div class="panel green">
+        <h3>対策</h3>
+        <ul class="small">
+          <li>無駄な MCP はなるべく使わない・接続しない</li>
+          <li>速度や利用枠がネックなら effort を下げる</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Checklist</p>
+  <h2>まとめ：利用枠を溶かさないチェックリスト</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="big"><div class="no">1</div><div><div class="name">履歴が不要なら新しいセッションを開く</div><p class="desc">1 セッションで会話を続けるほど、毎回の入力が長くなる。</p></div></div>
+      <div class="big"><div class="no">2</div><div><div class="name">質問は 1 回の入力にまとめる</div><p class="desc">A・B・C の観点を 3 回に分けず、1 回で送る。</p></div></div>
+      <div class="big"><div class="no">3</div><div><div class="name">ChatGPT は調べ物＝チャット、資料化＝ワーク</div><p class="desc">デスクトップアプリの <code>@</code> でチャット履歴をワークへ渡す。</p></div></div>
+      <div class="big"><div class="no">4</div><div><div class="name">Claude の長文はプロジェクトのナレッジへ</div><p class="desc">キャッシュされ、再利用時は制限にカウントされない。</p></div></div>
+    </div>
+    <div class="stack">
+      <div class="big"><div class="no">5</div><div><div class="name">/compact を頻繁にやらない</div><p class="desc">先頭からの位置が変わってキャッシュが切れ、compact 自体も消費する。</p></div></div>
+      <div class="big"><div class="no">6</div><div><div class="name">時間を空けて再開するなら「続きが本当に必要か」</div><p class="desc">Claude Code は 1 時間でキャッシュが切れる。</p></div></div>
+      <div class="big"><div class="no">7</div><div><div class="name">途中でモデル・effort・サブエージェント構成を変えない</div><p class="desc">別モデル＝別キャッシュ。Fable 5.1 は effort 変更に耐えるが他は要注意。</p></div></div>
+      <div class="big"><div class="no">8</div><div><div class="name">ツール呼び出し（特に MCP）と effort を絞る</div><p class="desc">ツール 1 回＝モデル入力 +1 回。必要なタスクにだけ高性能モデルを使う。</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 15 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Sources & notes</p>
+  <h2>出典・補足</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel ac">
+        <h3>要約元の動画</h3>
+        <ul class="small">
+          <li>タイトル：<b>AIの使用枠がすぐになくなる？ChatGPTとClaudeの利用枠を節約するキャッシュの仕組みを解説してみた</b></li>
+          <li>チャンネル：にゃんたのAIチャンネル（<a href="https://www.youtube.com/@aivtuber2866">@aivtuber2866</a>）</li>
+          <li>公開：2026-09-12 · 長さ 27:31 · <a href="https://www.youtube.com/watch?v=t22FELAl-BM">youtube.com/watch?v=t22FELAl-BM</a></li>
+          <li>各スライドの「動画 mm:ss」は自動生成字幕をもとにした概ねの位置。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>動画内のその他の話題</h3>
+        <ul class="small">
+          <li>撮影時点で Claude Code の利用枠が月中旬に 17% 減る予定と言及。発表者は GPT-6 Pro への乗り換えも検討中。</li>
+          <li>書籍『0から分かる Claude Code 業務エージェントの教科書』（技術評論社）を執筆中・予約受付中とのお知らせ。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel green">
+        <h3>要約者による裏取り（公式ドキュメント）</h3>
+        <ul class="small">
+          <li>キャッシュ読取 = 入力の 0.1 倍、Fable 5.1 は 0.025 倍（$0.25/MTok）— <a href="https://platform.claude.com/docs/en/about-claude/pricing">Pricing</a></li>
+          <li>Claude Code のキャッシュ TTL：サブスク・プラン内はメイン会話 1 時間、それ以外は 5 分 — <a href="https://code.claude.com/docs/en/prompt-caching#cache-lifetime">prompt-caching#cache-lifetime</a></li>
+          <li>Fable 5.1（API キー / サブスク）では effort 変更でキャッシュ維持。他モデルは無効化 — <a href="https://code.claude.com/docs/en/prompt-caching#changing-effort-level">#changing-effort-level</a></li>
+          <li>compact はキャッシュ無効化操作の 1 つ。/rewind はキャッシュを保つ — <a href="https://code.claude.com/docs/en/prompt-caching#compacting-the-conversation">#compacting-the-conversation</a></li>
+          <li>サブエージェントは別の会話・別キャッシュ。fork は親のキャッシュを読む — <a href="https://code.claude.com/docs/en/prompt-caching#subagents-and-the-cache">#subagents-and-the-cache</a></li>
+          <li>プロジェクト機能のキャッシュ — <a href="https://support.claude.com/en/articles/9797557-usage-limit-best-practices">Usage limit best practices</a></li>
+        </ul>
+      </div>
+      <p class="small muted">Claude Code 公式ドキュメントに基づく詳細は姉妹デッキ <a href="../claude-code-token-usage/index.html">Claude Code のトークン使用量と削減策</a> を参照。</p>
+    </div>
+  </div>
+</section>
+
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>

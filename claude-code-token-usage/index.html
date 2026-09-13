@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code のトークン使用量と削減策 — 公式ドキュメントに基づく整理</title>
+<meta name="description" content="Claude Code 公式ドキュメント（code.claude.com/docs）に基づき、トークンがどう消費されるか、コンテキストウィンドウに何が乗るか、プロンプトキャッシュの仕組みと無効化条件、計測コマンド、削減策を出典付きで整理した解説スライド。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #FAF7F2;
+    --paper-2: #F1EBE1;
+    --ink: #241C14;
+    --ink-2: #55493B;
+    --ink-3: #8A7D6C;
+    --rule: #DDD3C4;
+    --ac: #C2532A;          /* accent: Claude orange */
+    --ac-soft: #F7DED2;
+    --ai: #2F6FBF;
+    --ai-soft: #D9E7F8;
+    --amber: #B7791F;
+    --amber-soft: #FBEBC8;
+    --red: #B4432F;
+    --red-soft: #F6DAD5;
+    --green: #1E7F2C;
+    --green-soft: #D8EEDA;
+    --violet: #6B3FC7;
+    --violet-soft: #E4DAF7;
+    --term: #1B150F;
+    --term-ink: #F0E8DC;
+    --term-dim: #9C8F7E;
+    --term-key: #F5A06E;
+    --term-str: #9EC9E0;
+    --term-num: #F5C97A;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--term); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.6; overflow: hidden; }
+  #stage { position: fixed; inset: 0; padding: 16px; }
+  .deck { width: 1280px; height: 720px; position: absolute; left: 50%; top: 50%; transform-origin: 0 0; }
+  .slide {
+    position: absolute; inset: 0; background: var(--paper); color: var(--ink);
+    padding: 46px 72px 62px; display: none; flex-direction: column; gap: 16px; overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "Claude Code のトークン使用量と削減策 — 公式ドキュメントに基づく整理";
+    position: absolute; left: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  .eyebrow { font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ac); margin: 0; }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 56px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 33px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 17.5px; margin: 0 0 6px; }
+  p { margin: 0; }
+  .lead { font-size: 19px; color: var(--ink-2); max-width: 48em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code { background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: .92em; }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 3px 0; }
+  li::marker { color: var(--ac); }
+  b, strong { font-weight: 600; }
+  a { color: var(--ac); text-decoration: none; border-bottom: 1px solid var(--ac-soft); }
+
+  .cols { display: grid; gap: 22px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.2fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.2fr; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 13px 17px; }
+  .panel.ac { border-top: 3px solid var(--ac); }
+  .panel.ai { border-top: 3px solid var(--ai); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .panel.green { border-top: 3px solid var(--green); }
+  .panel.violet { border-top: 3px solid var(--violet); }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: var(--ac-soft); color: var(--ac); vertical-align: middle; }
+  .tag.ai { background: var(--ai-soft); color: var(--ai); }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  .tag.green { background: var(--green-soft); color: var(--green); }
+  .tag.violet { background: var(--violet-soft); color: var(--violet); }
+
+  .term { background: var(--term); color: var(--term-ink); border-radius: 8px; padding: 13px 17px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; overflow: auto; white-space: pre; tab-size: 2; }
+  .term .k { color: var(--term-key); } .term .s { color: var(--term-str); } .term .n { color: var(--term-num); } .term .d { color: var(--term-dim); } .term .c { color: var(--term-dim); font-style: italic; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 4px 8px; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .fig { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+  .fig svg { width: 100%; height: auto; display: block; }
+  .fig .cap { font-size: 12.5px; color: var(--ink-3); }
+  svg text { font-family: var(--body); }
+  svg .mono { font-family: var(--mono); }
+  svg .t { font-family: var(--display); font-weight: 700; }
+
+  .src { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); border-top: 1px dashed var(--rule); padding-top: 8px; }
+  .src a { color: var(--ink-3); border-bottom-color: var(--rule); }
+  .src b { color: var(--ac); font-weight: 500; }
+
+  .big { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: start; background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 10px 16px; }
+  .big .no { font-family: var(--display); font-weight: 900; font-size: 30px; color: var(--ac); line-height: 1.1; }
+  .big .name { font-family: var(--display); font-weight: 700; font-size: 16px; line-height: 1.35; }
+  .big .desc { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 80px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 28px; flex-wrap: wrap; }
+  .cover .frame {
+    position: absolute; right: 72px; top: 56px; width: 470px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--ac); padding-left: 16px;
+  }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); }
+
+  #hud { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7; }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────── -->
+<section class="slide cover">
+  <div class="frame"><span class="k">&gt;</span> /usage
+Total cost:            <span class="n">$0.55</span>
+Usage by model:
+   claude-sonnet-4-6:  <span class="n">1.2k</span> input, <span class="n">5.3k</span> output,
+                       <span class="n">940.0k</span> cache read, <span class="n">50.0k</span> cache write
+Prompt cache (main):   14 requests · <span class="n">91%</span> of input tokens from cache
+                       · warm (<span class="n">1h</span> TTL)
+
+<span class="k">&gt;</span> /context
+<span class="s"># 何がコンテキストを占めているかを確認</span>
+
+<span class="k">&gt;</span> /clear          <span class="s"># 無関係な作業に移るなら</span>
+<span class="k">&gt;</span> /compact 〜に絞って要約   <span class="s"># 区切りで</span></div>
+  <p class="eyebrow">Claude Code · Official docs digest · ysksm/slides</p>
+  <h1>Claude Code の<br>トークン使用量と削減策</h1>
+  <p class="lead">公式ドキュメント（code.claude.com/docs）に基づき、トークンがどう消費されるか、コンテキストウィンドウに何が乗るか、プロンプトキャッシュの仕組みと無効化条件、計測コマンド、削減策を出典付きで整理する。</p>
+  <p class="meta"><span>2026-09-13 時点のドキュメント</span><span>code.claude.com/docs/en/costs ほか</span><span>各スライド下部に出典 URL</span></p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Summary</p>
+  <h2>結論を先に：コストは「コンテキストの大きさ × リクエスト回数」</h2>
+  <div class="cols cols-3">
+    <div class="panel ac stack">
+      <h3>仕組み</h3>
+      <ul class="small">
+        <li>Claude Code は<b>毎リクエストで会話全体を送る</b>。ツールを使うたびにリクエストが 1 回増える。</li>
+        <li>プロンプトキャッシュにより、変わっていない<b>先頭部分</b>はキャッシュ価格（入力の 0.1 倍、Fable 5.1 は 0.025 倍）で再読込される。</li>
+        <li>コンテキスト上限が近づくと<b>自動コンパクト</b>で履歴が要約される。</li>
+      </ul>
+    </div>
+    <div class="panel ai stack">
+      <h3>計測</h3>
+      <ul class="small">
+        <li><code>/usage</code>：セッションのコスト、モデル別トークン、<b>キャッシュヒット率</b>、プラン内訳</li>
+        <li><code>/context</code>：何がコンテキストを占めているか</li>
+        <li><code>/insights</code>：作業パターンの分析レポート</li>
+        <li>ステータスラインにコンテキスト使用量とコストを常時表示</li>
+      </ul>
+    </div>
+    <div class="panel green stack">
+      <h3>削減策（公式の見出し順）</h3>
+      <ul class="small">
+        <li>コンテキストを能動的に管理（<code>/clear</code>・<code>/compact</code>）</li>
+        <li>適切なモデル選択、MCP オーバーヘッド削減</li>
+        <li>コードインテリジェンス、フック・スキルへの前処理オフロード</li>
+        <li>CLAUDE.md をスキルへ移す、extended thinking 調整</li>
+        <li>冗長な処理をサブエージェントへ、エージェントチーム抑制</li>
+        <li>具体的なプロンプト、計画モード・早期修正・検証ターゲット</li>
+      </ul>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs">code.claude.com/docs/en/costs</a> — "Reduce token usage" / "Track your costs"；<a href="https://code.claude.com/docs/en/prompt-caching">/docs/en/prompt-caching</a></p>
+</section>
+
+<!-- 3 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Mechanism ①</p>
+  <h2>トークンはどう消費されるか：エージェントループとリクエスト</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="エージェントループで毎リクエストに全履歴が送られる図">
+        <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#C2532A"/></marker></defs>
+        <g font-size="12.5" fill="#55493B">
+          <text x="10" y="22" class="t" font-size="14">1 ターン（「失敗するテストを直して」）の中で起きるリクエスト</text>
+          <g>
+            <rect x="10" y="40" width="100" height="26" rx="5" fill="#C2532A"/><text x="60" y="58" text-anchor="middle" fill="#fff">req 1</text>
+            <rect x="114" y="40" width="200" height="26" rx="5" fill="#F7DED2"/><text x="214" y="58" text-anchor="middle">system + 履歴 + あなたの入力</text>
+            <text x="322" y="58" fill="#8A7D6C">→ テストを実行しよう（tool_use）</text>
+          </g>
+          <g>
+            <rect x="10" y="76" width="100" height="26" rx="5" fill="#C2532A"/><text x="60" y="94" text-anchor="middle" fill="#fff">req 2</text>
+            <rect x="114" y="76" width="200" height="26" rx="5" fill="#F7DED2"/><text x="214" y="94" text-anchor="middle">…上と同じ全部…</text>
+            <rect x="316" y="76" width="110" height="26" rx="5" fill="#FBEBC8"/><text x="371" y="94" text-anchor="middle">+ テスト出力</text>
+            <text x="434" y="94" fill="#8A7D6C">→ ファイルを読もう</text>
+          </g>
+          <g>
+            <rect x="10" y="112" width="100" height="26" rx="5" fill="#C2532A"/><text x="60" y="130" text-anchor="middle" fill="#fff">req 3</text>
+            <rect x="114" y="112" width="200" height="26" rx="5" fill="#F7DED2"/><text x="214" y="130" text-anchor="middle">…全部…</text>
+            <rect x="316" y="112" width="110" height="26" rx="5" fill="#FBEBC8"/><text x="371" y="130" text-anchor="middle">+ テスト出力</text>
+            <rect x="428" y="112" width="110" height="26" rx="5" fill="#FBEBC8"/><text x="483" y="130" text-anchor="middle">+ ファイル内容</text>
+            <text x="546" y="130" fill="#8A7D6C">→ 編集</text>
+          </g>
+          <g>
+            <rect x="10" y="148" width="100" height="26" rx="5" fill="#C2532A"/><text x="60" y="166" text-anchor="middle" fill="#fff">req 4…</text>
+            <rect x="114" y="148" width="516" height="26" rx="5" fill="#F7DED2"/><text x="372" y="166" text-anchor="middle">…全部 + 編集結果 + 再テスト出力 …（ツールを使うたびに 1 リクエスト増える）</text>
+          </g>
+          <line x1="10" y1="196" x2="630" y2="196" stroke="#C2532A" stroke-width="1.5" marker-end="url(#a1)"/>
+          <text x="320" y="216" text-anchor="middle" fill="#8A7D6C">1 リクエストあたりの入力サイズ（コンテキスト）は単調に増える</text>
+
+          <rect x="10" y="232" width="620" height="56" rx="8" fill="#D8EEDA"/>
+          <text x="24" y="254" fill="#1E7F2C" class="t">プロンプトキャッシュがあるので</text>
+          <text x="24" y="276" fill="#55493B">変わっていない先頭部分は「キャッシュ読取」価格で再読込。新しく追加された部分だけを通常入力価格で処理する。</text>
+        </g>
+      </svg>
+    </div>
+    <div class="stack">
+      <div class="panel ac">
+        <h3>公式の説明</h3>
+        <ul class="small">
+          <li>「Claude Code は<b>毎リクエストで会話全体を送信</b>し、Claude がツールを使うたびに、そのツール結果を載せた<b>もう 1 回のリクエスト</b>を送る」</li>
+          <li>「一日中開いていたセッションでの 1 行の質問でも、<b>会話全体分の使用量</b>を引く」</li>
+          <li>モデルはリクエスト間で何も記憶しないので、Claude Code はシステムプロンプト、プロジェクトコンテキスト、過去の全メッセージとツール結果、新しいメッセージを毎回送り直す。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>参考：平均コスト</h3>
+        <p class="small">エンタープライズ利用の平均は<b>1 開発者あたり 1 稼働日 約 $13、月 $150–250</b>。90% のユーザーは 1 稼働日 $30 未満。モデル選択・コードベース規模・並列インスタンスや自動化の有無で大きく変動する。</p>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs#why-usage-climbs-in-a-long-session">costs#why-usage-climbs-in-a-long-session</a>；<a href="https://code.claude.com/docs/en/prompt-caching#how-the-cache-is-organized">prompt-caching#how-the-cache-is-organized</a>；<a href="https://code.claude.com/docs/en/how-claude-code-works#the-agentic-loop">how-claude-code-works#the-agentic-loop</a>；平均コストは <a href="https://code.claude.com/docs/en/costs">costs</a> 冒頭</p>
+</section>
+
+<!-- 4 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Mechanism ②</p>
+  <h2>コンテキストウィンドウに何が乗るか（セッション開始時）</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="セッション開始時にコンテキストに載る要素と目安トークン数の積み上げ図">
+        <g font-size="12.5" fill="#55493B">
+          <text x="10" y="20" class="t" font-size="14">公式のインタラクティブ解説で示される起動時の目安（合計 約 7,850 トークン）</text>
+          <!-- bar scale: 4200 -> 420px ; x0=170 -->
+          <text x="10" y="52">System prompt</text><rect x="170" y="40" width="420" height="18" rx="3" fill="#6B6964"/><text x="596" y="54" class="mono" font-size="11.5">4,200</text>
+          <text x="10" y="80">Project CLAUDE.md</text><rect x="170" y="68" width="180" height="18" rx="3" fill="#C2532A"/><text x="356" y="82" class="mono" font-size="11.5">1,800</text>
+          <text x="10" y="108">Auto memory (MEMORY.md)</text><rect x="170" y="96" width="68" height="18" rx="3" fill="#E8A45C"/><text x="244" y="110" class="mono" font-size="11.5">680</text>
+          <text x="10" y="136">Skill descriptions</text><rect x="170" y="124" width="45" height="18" rx="3" fill="#2F6FBF"/><text x="221" y="138" class="mono" font-size="11.5">450</text>
+          <text x="10" y="164">~/.claude/CLAUDE.md</text><rect x="170" y="152" width="32" height="18" rx="3" fill="#C2532A"/><text x="208" y="166" class="mono" font-size="11.5">320</text>
+          <text x="10" y="192">Environment info</text><rect x="170" y="180" width="28" height="18" rx="3" fill="#6B6964"/><text x="204" y="194" class="mono" font-size="11.5">280</text>
+          <text x="10" y="220">MCP tools (deferred)</text><rect x="170" y="208" width="12" height="18" rx="3" fill="#9B7BC4"/><text x="188" y="222" class="mono" font-size="11.5">120（ツール名のみ）</text>
+
+          <text x="10" y="258" class="t" font-size="13">その後、作業中に積み上がるもの</text>
+          <text x="10" y="280">ファイル読取（数百〜数千 / 件）· grep 結果 · テスト出力 · 編集 diff · フック出力 · path 付きルール · スキル本文 · Claude の応答</text>
+        </g>
+      </svg>
+      <p class="cap">数値は公式ページ「Explore the context window」の<b>シミュレーション例</b>。実際の値は環境で変わる。<code>/context</code> で実測できる。</p>
+    </div>
+    <div class="stack">
+      <div class="panel ac">
+        <h3>コンテキストの中身</h3>
+        <p class="small">会話履歴・ファイル内容・コマンド出力・CLAUDE.md・auto memory・読み込んだスキル・システム指示。作業するほど埋まり、上限に近づくと自動コンパクトされる（<b>早い段階の指示は失われうる</b>ので恒久ルールは CLAUDE.md へ）。</p>
+      </div>
+      <div class="panel ai">
+        <h3>機能ごとのコンテキストコスト</h3>
+        <table class="tight xs">
+          <tr><th>機能</th><th>読込タイミング</th><th>コスト</th></tr>
+          <tr><td>CLAUDE.md</td><td>セッション開始</td><td>毎リクエスト（全文）</td></tr>
+          <tr><td>スキル</td><td>開始＋使用時</td><td>説明のみ常駐、本文は使用時</td></tr>
+          <tr><td>MCP サーバー</td><td>開始</td><td>ツール名のみ。schema は使用時</td></tr>
+          <tr><td>コードインテリジェンス</td><td>編集後・参照時</td><td>低。ファイル読取を減らす</td></tr>
+          <tr><td>サブエージェント</td><td>生成時</td><td>メインから隔離</td></tr>
+          <tr><td>フック</td><td>イベント時</td><td>ゼロ（出力を返さない限り）</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/context-window">context-window</a>（Explore the context window）；<a href="https://code.claude.com/docs/en/features-overview#understand-context-costs">features-overview#understand-context-costs</a>；<a href="https://code.claude.com/docs/en/how-claude-code-works#the-context-window">how-claude-code-works#the-context-window</a></p>
+</section>
+
+<!-- 5 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Prompt caching ①</p>
+  <h2>プロンプトキャッシュ：先頭一致（プレフィックス）で再利用される</h2>
+  <div class="cols cols-52">
+    <div class="fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="リクエストの3層構造とキャッシュされる範囲の図">
+        <g font-size="12.5" fill="#55493B">
+          <text x="10" y="20" class="t" font-size="14">Claude Code は「変わりにくいものが先頭」になるようリクエストを並べる</text>
+          <rect x="10" y="34" width="620" height="40" rx="6" fill="#6B6964"/><text x="24" y="52" fill="#fff" class="t">① System prompt</text><text x="24" y="68" fill="#fff" font-size="11.5">コア指示・ツール定義 — 読み込まれるツール定義の集合が変わると変化</text>
+          <rect x="10" y="80" width="620" height="40" rx="6" fill="#C2532A"/><text x="24" y="98" fill="#fff" class="t">② Project context</text><text x="24" y="114" fill="#fff" font-size="11.5">CLAUDE.md・auto memory・スコープなしルール — セッション開始、/clear、/compact 後に変化</text>
+          <rect x="10" y="126" width="620" height="40" rx="6" fill="#F7DED2"/><text x="24" y="144" class="t">③ Conversation</text><text x="24" y="160" font-size="11.5">あなたのメッセージ・Claude の応答・ツール結果 — 毎ターン末尾に追加</text>
+
+          <text x="10" y="200" class="t" font-size="13">通常ターン：①②と③の既存部分はキャッシュ読取、新しい末尾だけ処理</text>
+          <rect x="10" y="210" width="480" height="18" rx="3" fill="#D8EEDA" stroke="#1E7F2C"/><text x="250" y="223" text-anchor="middle" fill="#1E7F2C" font-size="11.5">cache read（入力価格の 0.1 倍）</text>
+          <rect x="492" y="210" width="138" height="18" rx="3" fill="#C2532A"/><text x="561" y="223" text-anchor="middle" fill="#fff" font-size="11.5">新規（通常価格）</text>
+
+          <text x="10" y="258" class="t" font-size="13" fill="#B4432F">先頭側が変わったターン：一致はそこで途切れ、以降を全部再計算・再書込</text>
+          <rect x="10" y="268" width="120" height="18" rx="3" fill="#D8EEDA" stroke="#1E7F2C"/><text x="70" y="281" text-anchor="middle" fill="#1E7F2C" font-size="11.5">一致</text>
+          <rect x="132" y="268" width="498" height="18" rx="3" fill="#F6DAD5" stroke="#B4432F"/><text x="381" y="281" text-anchor="middle" fill="#B4432F" font-size="11.5">cache write（5 分 1.25 倍 / 1 時間 2 倍）＋通常処理</text>
+        </g>
+      </svg>
+    </div>
+    <div class="stack">
+      <div class="panel ac">
+        <h3>公式の要点</h3>
+        <ul class="small">
+          <li>API はリクエストの<b>先頭（プレフィックス）</b>を最近処理した内容と照合する。一致は<b>完全一致</b>で、プレフィックスのどこかが変わると<b>それ以降すべて</b>再計算。ファイル単位・セグメント単位のキャッシュはない。</li>
+          <li>会話層の変化はシステムプロンプト層・プロジェクト層のキャッシュを保つ。<b>システムプロンプト層の変化はすべてを無効化</b>する。</li>
+          <li>計画モードやスキル読込は<b>会話メッセージとして末尾に追加</b>されるので、キャッシュ済みプレフィックスは保たれる。</li>
+        </ul>
+      </div>
+      <div class="panel green">
+        <h3>公式の Tip</h3>
+        <p class="small">「モデルと effort レベルは<b>セッションの最初に決め</b>、<code>/compact</code> はタスク間の自然な区切りに取っておく。タスク途中の変更が少ないほどキャッシュヒット率は高い」</p>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/prompt-caching#how-the-cache-is-organized">prompt-caching#how-the-cache-is-organized</a>；価格倍率は <a href="https://platform.claude.com/docs/en/about-claude/pricing#prompt-caching">platform.claude.com — pricing#prompt-caching</a></p>
+</section>
+
+<!-- 6 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Prompt caching ② · pricing</p>
+  <h2>キャッシュの価格：読取は入力の 1/10、Fable 5.1 は 1/40</h2>
+  <div class="cols cols-52">
+    <div class="panel ac stack">
+      <h3>モデル別 API 価格（USD / 100 万トークン）</h3>
+      <table class="tight small">
+        <tr><th>モデル</th><th>入力</th><th>5 分 write</th><th>1 時間 write</th><th>read</th><th>出力</th></tr>
+        <tr><td style="white-space:nowrap">Fable 5.1</td><td class="num">$10</td><td class="num">$12.50</td><td class="num">$20</td><td class="num"><b>$0.25</b></td><td class="num">$50</td></tr>
+        <tr><td style="white-space:nowrap">Opus 5</td><td class="num">$5</td><td class="num">$6.25</td><td class="num">$10</td><td class="num">$0.50</td><td class="num">$25</td></tr>
+        <tr><td style="white-space:nowrap">Sonnet 5</td><td class="num">$2</td><td class="num">$2.50</td><td class="num">$4</td><td class="num">$0.20</td><td class="num">$10</td></tr>
+        <tr><td style="white-space:nowrap">Haiku 4.5</td><td class="num">$1</td><td class="num">$1.25</td><td class="num">$2</td><td class="num">$0.10</td><td class="num">$5</td></tr>
+      </table>
+      <table class="tight small" style="margin-top:4px">
+        <tr><th>操作</th><th>倍率（基本入力比）</th><th>有効期間</th></tr>
+        <tr><td style="white-space:nowrap">5 分 cache write</td><td class="num">1.25×</td><td>5 分</td></tr>
+        <tr><td style="white-space:nowrap">1 時間 cache write</td><td class="num">2×</td><td>1 時間</td></tr>
+        <tr><td style="white-space:nowrap">cache read</td><td>0.1×（Fable 5.1 / Mythos 5.1 は 0.025×）</td><td>直前の write と同じ</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="panel green">
+        <h3>損益分岐</h3>
+        <ul class="small">
+          <li>ヒットが基本入力の 10% なので、<b>5 分 TTL は 1 回の読取</b>で、<b>1 時間 TTL は 2 回の読取</b>で書込コストを回収できる（公式）。</li>
+          <li>Claude Code の <code>/usage</code> は「cache read」と「cache write」を分けて表示する。表紙の例：940k cache read に対し 1.2k input。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>思考トークン・トークナイザ</h3>
+        <ul class="small">
+          <li>Extended thinking のトークンは<b>出力トークンとして課金</b>。デフォルト予算はモデルによって 1 リクエスト数万トークンに達する。</li>
+          <li>Claude 4.7 以降のモデルは新トークナイザで、同じテキストに対して<b>約 30% 多くトークン</b>を生成する。</li>
+        </ul>
+      </div>
+      <p class="xs muted">サブスクリプション（Pro / Max / Team / Enterprise）は利用枠に含まれるため、<code>/usage</code> のセッションコスト額は請求には直接関係しない（API 利用者向けの数値）。</p>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://platform.claude.com/docs/en/about-claude/pricing#model-pricing">pricing#model-pricing</a>・<a href="https://platform.claude.com/docs/en/about-claude/pricing#prompt-caching">#prompt-caching</a>；thinking 課金は <a href="https://code.claude.com/docs/en/costs#adjust-extended-thinking">costs#adjust-extended-thinking</a>；/usage の注記は <a href="https://code.claude.com/docs/en/costs#using-the-usage-command">costs#using-the-usage-command</a></p>
+</section>
+
+<!-- 7 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Prompt caching ③ · invalidation</p>
+  <h2>キャッシュを無効化する操作 / 維持される操作</h2>
+  <div class="cols cols-2">
+    <div class="panel red stack">
+      <h3>無効化する（次のターンが 1 回だけ遅く・高くなる）</h3>
+      <table class="tight xs">
+        <tr><td style="white-space:nowrap"><b>モデル切替</b></td><td>モデルごとに別キャッシュ。<code>opusplan</code> は計画モード切替のたびにモデル切替。スキルの <code>model:</code> も同様</td></tr>
+        <tr><td><b>effort 変更</b></td><td>多くのモデルで全体を再読込。<b>Fable 5.1（API キー / サブスク）は維持</b>（v2.1.260〜）</td></tr>
+        <tr><td><b>fast mode ON</b></td><td>ヘッダがキャッシュキーの一部。会話につき 1 回、fast mode 価格で再読込</td></tr>
+        <tr><td><b>MCP 接続 / 切断</b></td><td>ツール定義が<b>プレフィックスに載っている</b>場合のみ。deferred（既定）なら末尾追加で無効化しない</td></tr>
+        <tr><td><b>プラグイン有効 / 無効</b></td><td>MCP サーバーを含むプラグインは上と同じ。skill / hook / agent のみなら維持</td></tr>
+        <tr><td><b>ツール全体の deny</b></td><td><code>Bash</code> など素のツール名の deny ルールは定義を外すので無効化。<code>Bash(rm *)</code> は影響なし</td></tr>
+        <tr><td><b>/compact</b></td><td>履歴が要約に置き換わるので会話層が無効化。要約リクエスト自体はウォームなら安い</td></tr>
+        <tr><td style="white-space:nowrap"><b>画像の蓄積</b></td><td>上限超過で古い画像をまとめて除去 → その位置から再処理</td></tr>
+        <tr><td style="white-space:nowrap"><b>Claude Code 更新</b></td><td>システムプロンプトが変わる。次回起動後の最初の会話から</td></tr>
+      </table>
+    </div>
+    <div class="panel green stack">
+      <h3>維持される（末尾に追加、またはリクエストに触れない）</h3>
+      <table class="tight xs">
+        <tr><td><b>リポジトリのファイル編集</b></td><td>過去の読取は書き換わらず、変更通知が末尾に付く</td></tr>
+        <tr><td><b>CLAUDE.md の途中編集</b></td><td>キャッシュは保たれるが<b>編集も反映されない</b>（次の <code>/clear</code> / <code>/compact</code> / 再起動で反映）</td></tr>
+        <tr><td><b>権限モード切替</b></td><td>Manual ↔ accept edits などは cache-safe（<code>opusplan</code> の計画モードは例外）</td></tr>
+        <tr><td><b>出力スタイル変更</b></td><td>会話メッセージとして配信（v2.1.251〜）</td></tr>
+        <tr><td><b>スキル / コマンド実行</b></td><td>ユーザーメッセージとして注入</td></tr>
+        <tr><td><b>/recap</b></td><td>要約を表示用に末尾へ追加するだけ</td></tr>
+        <tr><td><b>/rewind</b></td><td>既にキャッシュ済みのプレフィックスに戻る。<b>compact より安い</b></td></tr>
+        <tr><td><b>サブエージェント生成</b></td><td>親のプレフィックスは無傷。サブは自分のキャッシュを別に温める。<b>fork は親のキャッシュを読む</b></td></tr>
+        <tr><td><b>/advisor の切替</b></td><td>定義がブレークポイントの後ろにあるので維持</td></tr>
+      </table>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/prompt-caching#actions-that-invalidate-the-cache">prompt-caching#actions-that-invalidate-the-cache</a>；<a href="https://code.claude.com/docs/en/prompt-caching#actions-that-keep-the-cache">#actions-that-keep-the-cache</a>；<a href="https://code.claude.com/docs/en/prompt-caching#subagents-and-the-cache">#subagents-and-the-cache</a></p>
+</section>
+
+<!-- 8 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Prompt caching ④ · TTL</p>
+  <h2>キャッシュ寿命（TTL）：サブスク・プラン内は 1 時間、それ以外は 5 分</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel ac">
+        <h3>リクエストの種類ごとのデフォルト TTL</h3>
+        <table class="tight small">
+          <tr><th>バケット</th><th>サブスク（プラン内利用）</th><th>利用クレジット / API キー / クラウド</th></tr>
+          <tr><td><b>メイン会話</b><br><span class="xs muted">対話ターン、<code>-p</code>、Agent SDK</span></td><td><span class="tag green">1 時間</span></td><td><span class="tag amber">5 分</span></td></tr>
+          <tr><td><b>それ以外</b><br><span class="xs muted">サブエージェント、ワークフロー、チームメイト、fork、compact、セッションタイトル</span></td><td><span class="tag amber">5 分</span><br><span class="xs muted">サーバー制御のヘルパーは 1 時間</span></td><td><span class="tag amber">5 分</span></td></tr>
+        </table>
+        <p class="xs muted" style="margin-top:6px">プラン上限を超えて利用クレジットを消費し始めると、メイン会話は自動的に 5 分へ落ちる（課金対象になるため）。</p>
+      </div>
+      <div class="panel amber">
+        <h3>どちらの TTL が得か（公式）</h3>
+        <ul class="small">
+          <li>1 時間 TTL は<b>席を外して戻る</b>使い方で有利（期限切れの再処理を避けられる）。</li>
+          <li>5 分以上空けない短い連続作業では、書込単価が高い分<b>1 時間 TTL は割高</b>。</li>
+          <li>確認：<code>claude -p "hello" --output-format json</code> の <code>usage.cache_creation</code> に <code>ephemeral_1h_input_tokens</code> / <code>ephemeral_5m_input_tokens</code> が出る。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="fig">
+        <svg viewBox="0 0 520 130" role="img" aria-label="TTL 内の再開はキャッシュ有効、超過後は全再計算の図">
+          <g font-size="12" fill="#55493B">
+            <line x1="30" y1="46" x2="490" y2="46" stroke="#DDD3C4" stroke-width="6" stroke-linecap="round"/>
+            <line x1="30" y1="46" x2="300" y2="46" stroke="#1E7F2C" stroke-width="6" stroke-linecap="round"/>
+            <circle cx="30" cy="46" r="8" fill="#C2532A"/><text x="34" y="26">最後のリクエスト</text>
+            <circle cx="300" cy="46" r="8" fill="#B4432F"/><text x="300" y="26" text-anchor="middle">TTL 経過</text>
+            <text x="165" y="74" text-anchor="middle" fill="#1E7F2C">ヒットするたびにタイマーはリセット</text>
+            <text x="400" y="74" text-anchor="middle" fill="#B4432F">次の 1 回は全入力を再計算</text>
+            <text x="260" y="104" text-anchor="middle" fill="#8A7D6C">休憩明けの最初のターンが目に見えて遅いのはこのため</text>
+            <text x="260" y="122" text-anchor="middle" fill="#8A7D6C">Pro / Max では長い休止後の大きなセッション再開時に「要約から再開」を提案</text>
+          </g>
+        </svg>
+      </div>
+      <div class="panel ai">
+        <h3>自分で TTL を選ぶ（v2.1.242〜、値は <code>5m</code> か <code>1h</code>）</h3>
+        <div class="term"><span class="c"># メイン会話</span>
+<span class="k">promptCacheTtl</span>: "1h"               <span class="c"># settings</span>
+<span class="k">CLAUDE_CODE_PROMPT_CACHE_TTL</span>=1h     <span class="c"># env</span>
+<span class="c"># それ以外（サブエージェント等）</span>
+<span class="k">subagentPromptCacheTtl</span>: "1h"
+<span class="k">CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL</span>=1h
+<span class="c"># 両方まとめて</span>
+<span class="k">FORCE_PROMPT_CACHING_5M</span>=1   <span class="c"># 最優先で 5 分</span>
+<span class="k">ENABLE_PROMPT_CACHING_1H</span>=1  <span class="c"># 低優先で 1 時間</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/prompt-caching#cache-lifetime">prompt-caching#cache-lifetime</a>；<a href="https://code.claude.com/docs/en/prompt-caching#which-ttl-each-request-gets">#which-ttl-each-request-gets</a>；<a href="https://code.claude.com/docs/en/prompt-caching#choose-the-ttl-yourself">#choose-the-ttl-yourself</a></p>
+</section>
+
+<!-- 9 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Measure</p>
+  <h2>使用量を計測する：/usage・/context・/insights・ステータスライン</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="term"><span class="k">&gt;</span> /usage
+Total cost:            <span class="n">$0.55</span>
+Total duration (API):  6m 20s   <span class="c">(wall: 6h 33m 10s)</span>
+Usage by model:
+   claude-sonnet-4-6:  <span class="n">1.2k</span> input, <span class="n">5.3k</span> output,
+                       <span class="n">940.0k</span> cache read, <span class="n">50.0k</span> cache write ($0.55)
+Prompt cache (main):   <span class="n">14</span> requests · <span class="n">91%</span> of input tokens from cache
+                       · <span class="n">2</span> misses (last 6m 10s ago, 310.2k tokens re-cached)
+                       · 1 expected rebuild · <span class="s">warm</span> (1h TTL, last activity 40s ago)
+                       <span class="d">likely cause: tool definitions changed</span>  <span class="c"># v2.1.260〜</span></div>
+      <div class="panel ac">
+        <h3><code>/usage</code> の読み方</h3>
+        <ul class="xs">
+          <li><b>Session ブロック</b>：トークン数から定価でローカル計算した見積り。<code>/clear</code> でリセット。管理設定の <code>modelPricing</code> で契約単価に合わせられる。</li>
+          <li><b>Prompt cache (main)</b>（v2.1.251〜）：リクエスト数、キャッシュ由来の入力比率、ミス回数、想定内の再構築、warm / cold。サブエージェントは含まない。</li>
+          <li><b>プラン内訳</b>（サブスク）：スキル・サブエージェント・プラグイン・MCP 別の帰属、長いコンテキストやキャッシュミスなどの<b>行動フラグ</b>（10% 以上で表示）、重いスケジュールタスク。<kbd>d</kbd> / <kbd>w</kbd> で 24 時間 / 7 日切替。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel ai">
+        <h3>ほかの計測手段</h3>
+        <table class="tight xs">
+          <tr><td style="white-space:nowrap"><code>/context</code></td><td>何がコンテキストを占めているか。<code>/context all</code> で MCP ツール別のトークン数</td></tr>
+          <tr><td style="white-space:nowrap"><code>/insights</code></td><td>直近最大 200 セッションを分析し、作業内容・つまずき・改善提案を HTML レポートに出力</td></tr>
+          <tr><td style="white-space:nowrap">ステータスライン</td><td>コンテキスト使用量・コスト・<code>prompt_cache</code>（ヒット率など）を常時表示</td></tr>
+          <tr><td style="white-space:nowrap"><code>--max-budget-usd</code></td><td>セッションコスト見積りに上限を掛ける CLI フラグ</td></tr>
+          <tr><td style="white-space:nowrap">OpenTelemetry</td><td>組織全体でユーザー・セッション別の token / cost を収集（cache read / creation も）</td></tr>
+        </table>
+      </div>
+      <div class="panel amber">
+        <h3>「上限に当たった」メッセージの見分け</h3>
+        <ul class="xs">
+          <li>「session / weekly limit」＝席ベースの利用枠。モデルを変えても回復しない。「Opus / Sonnet limit」＝系列別で、別系列なら継続できる。</li>
+          <li>「context / auto-compact の警告」＝利用枠ではなく<b>コンテキスト</b>の問題。削減策へ。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs#track-your-costs">costs#track-your-costs</a>；<a href="https://code.claude.com/docs/en/costs#prompt-cache-statistics">#prompt-cache-statistics</a>；<a href="https://code.claude.com/docs/en/costs#analyze-your-usage-patterns">#analyze-your-usage-patterns</a>；<a href="https://code.claude.com/docs/en/prompt-caching#check-cache-performance">prompt-caching#check-cache-performance</a>；<a href="https://code.claude.com/docs/en/costs#when-a-developer-asks-about-a-limit">costs#when-a-developer-asks-about-a-limit</a></p>
+</section>
+
+<!-- 10 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Reduce ① · context</p>
+  <h2>削減策①：コンテキストを能動的に管理する</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel ac">
+        <h3>タスクの切れ目で <code>/clear</code></h3>
+        <ul class="small">
+          <li>無関係な作業に移るときは <code>/clear</code> で新規開始。<b>古いコンテキストは以降の全メッセージでトークンを浪費</b>する。</li>
+          <li>後で戻れるように <code>/rename</code> してから clear し、<code>/resume</code> で復帰。</li>
+          <li>API / クラウド課金で想定外に高い場合、原因は大抵「clear されなかった長いセッション」か「Opus が既定のまま」。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3><code>/compact</code> は指示付きで、区切りに</h3>
+        <ul class="small">
+          <li><code>/compact Focus on code samples and API usage</code> のように<b>何を残すか</b>を指定できる。</li>
+          <li>CLAUDE.md に <code># Compact instructions</code> セクションを置くと自動コンパクトにも適用。</li>
+          <li>自動コンパクトを待つより、<b>タスク間の自然な区切り</b>で自分で実行する方がオーバーヘッドの発生時点を選べる。捨てたい経路なら <code>/rewind</code> の方が安い。</li>
+          <li>ウォームなら要約リクエストはキャッシュを読むので安いが、<b>長い休止後の compact は最も高い</b>。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="fig">
+        <svg viewBox="0 0 520 210" role="img" aria-label="clear / compact / rewind の違いの図">
+          <g font-size="12" fill="#55493B">
+            <text x="10" y="18" class="t" font-size="13">同じ長い会話に対する 3 つの操作</text>
+            <text x="10" y="48">元の会話</text>
+            <rect x="90" y="36" width="420" height="16" rx="3" fill="#D8EEDA" stroke="#1E7F2C"/>
+            <text x="10" y="88" class="mono" fill="#C2532A">/clear</text>
+            <rect x="90" y="76" width="0" height="16"/><text x="96" y="88" fill="#8A7D6C">空。次のセッションは $0 から。コスト 0（継続性なし）</text>
+            <text x="10" y="128" class="mono" fill="#C2532A">/compact</text>
+            <rect x="90" y="116" width="120" height="16" rx="3" fill="#F6DAD5" stroke="#B4432F"/><text x="150" y="128" text-anchor="middle" fill="#B4432F" font-size="11">要約（新規）</text>
+            <text x="220" y="128" fill="#8A7D6C">会話層のキャッシュは無効化。要約生成にも 1 リクエスト</text>
+            <text x="10" y="168" class="mono" fill="#C2532A">/rewind</text>
+            <rect x="90" y="156" width="240" height="16" rx="3" fill="#D8EEDA" stroke="#1E7F2C"/><text x="210" y="168" text-anchor="middle" fill="#1E7F2C" font-size="11">既存プレフィックス（キャッシュ済）</text>
+            <text x="340" y="168" fill="#8A7D6C">切り詰めるだけ。キャッシュ有効</text>
+            <text x="10" y="200" fill="#8A7D6C">自動コンパクト：上限接近時に古いツール出力を先に消し、必要なら要約。1 ファイルが大きすぎて即再充填する場合は数回で停止しエラー表示</text>
+          </g>
+        </svg>
+      </div>
+      <div class="panel ai">
+        <h3>自動コンパクトの窓を調整</h3>
+        <div class="term"><span class="k">&gt;</span> /autocompact 500k       <span class="c"># 既定として保存</span>
+<span class="k">$</span> claude --autocompact 200k   <span class="c"># 今回だけ</span>
+<span class="k">CLAUDE_CODE_AUTO_COMPACT_WINDOW</span>=750000
+<span class="c"># 範囲 100K〜1M。既定は 200K モデルで 200K、1M モデルで約 967K</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs#manage-context-proactively">costs#manage-context-proactively</a>；<a href="https://code.claude.com/docs/en/prompt-caching#compacting-the-conversation">prompt-caching#compacting-the-conversation</a>；<a href="https://code.claude.com/docs/en/how-claude-code-works#when-context-fills-up">how-claude-code-works#when-context-fills-up</a>；<a href="https://code.claude.com/docs/en/model-config#set-the-auto-compact-window">model-config#set-the-auto-compact-window</a></p>
+</section>
+
+<!-- 11 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Reduce ② · model / effort / thinking</p>
+  <h2>削減策②：モデル・effort・extended thinking を仕事に合わせる</h2>
+  <div class="cols cols-3">
+    <div class="panel ac stack">
+      <h3>適切なモデルを選ぶ</h3>
+      <ul class="small">
+        <li><b>Sonnet はほとんどのコーディング作業を十分にこなし、Opus より安い</b>。Opus は複雑なアーキテクチャ判断や多段推論に取っておく。</li>
+        <li><code>/model</code> で途中切替（ただしキャッシュは切れる）、<code>/config</code> で既定を設定。</li>
+        <li>単純なサブエージェント作業には <code>model: haiku</code>。</li>
+        <li>エージェントチームのチームメイトは Sonnet を推奨。</li>
+      </ul>
+      <table class="tight xs" style="margin-top:4px">
+        <tr><th>エイリアス</th><th>意味</th></tr>
+        <tr><td><code>default</code></td><td>Max/Team/Enterprise/API は Opus 5、Pro は Sonnet 5</td></tr>
+        <tr><td><code>opusplan</code></td><td>計画モードは Opus、実行は Sonnet（切替ごとにキャッシュ再構築）</td></tr>
+        <tr><td><code>sonnet[1m]</code></td><td>1M コンテキスト（プランにより利用クレジット要）</td></tr>
+      </table>
+    </div>
+    <div class="panel amber stack">
+      <h3>effort レベルを下げる</h3>
+      <ul class="small">
+        <li><code>/effort</code>（スライダー）、<code>/effort medium</code>、<code>claude --effort low</code>、<code>CLAUDE_CODE_EFFORT_LEVEL</code>、settings の <code>effortLevel</code>。</li>
+        <li>既定は <code>high</code>。<code>medium</code> はコスト重視、<code>low</code> は短く範囲の狭い遅延重視タスク向け。</li>
+        <li><code>max</code> は考えすぎになりやすい。広く採用する前にテスト。</li>
+        <li>スライダーで <kbd>s</kbd> を押すと<b>今回のセッションだけ</b>に適用（v2.1.257〜）。</li>
+      </ul>
+      <p class="xs muted">effort 変更は多くのモデルでキャッシュを無効化するので、セッション冒頭で決めるのが原則（Fable 5.1 は維持）。</p>
+    </div>
+    <div class="panel ai stack">
+      <h3>extended thinking を調整</h3>
+      <ul class="small">
+        <li>既定で有効。<b>思考トークンは出力トークンとして課金</b>され、既定予算はモデルによって 1 リクエスト数万トークン。</li>
+        <li>単純なタスクでは <code>/effort</code> や <code>/model</code> で effort を下げるか、<code>/config</code> で thinking を無効化。<b>Fable モデルは無効化できない</b>。</li>
+        <li>固定予算モデル（Opus 4.6 / Sonnet 4.6）では <code>MAX_THINKING_TOKENS=8000</code> のように上限を下げられる。適応推論モデル（Fable、Sonnet 5、Opus 4.7 以降）は非ゼロの予算を無視するので effort で制御。</li>
+        <li>表示を畳んでいても<b>全思考トークンが課金</b>される。</li>
+      </ul>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs#choose-the-right-model">costs#choose-the-right-model</a>；<a href="https://code.claude.com/docs/en/costs#adjust-extended-thinking">costs#adjust-extended-thinking</a>；<a href="https://code.claude.com/docs/en/model-config#adjust-effort-level">model-config#adjust-effort-level</a>；<a href="https://code.claude.com/docs/en/model-config#adaptive-reasoning-and-fixed-thinking-budgets">model-config#adaptive-reasoning-and-fixed-thinking-budgets</a></p>
+</section>
+
+<!-- 12 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Reduce ③ · always-on context</p>
+  <h2>削減策③：常駐コンテキストを削る — MCP・CLAUDE.md・スキル</h2>
+  <div class="cols cols-3">
+    <div class="panel violet stack">
+      <h3>MCP サーバーのオーバーヘッド</h3>
+      <ul class="small">
+        <li>MCP ツール定義は<b>既定で deferred</b>（tool search）。Claude が特定のツールを使うまで、ツール名とサーバー指示だけがコンテキストに入る。</li>
+        <li><code>/context</code> で占有量を確認。<code>/mcp</code> で未使用サーバーを無効化。</li>
+        <li><b>CLI があるなら CLI を優先</b>：<code>gh</code>、<code>aws</code>、<code>gcloud</code>、<code>sentry-cli</code> はツール一覧を一切追加しないので、MCP より context 効率が良い。</li>
+      </ul>
+      <p class="xs muted">キャッシュ観点でも、deferred ツールなら MCP 接続・切断はプレフィックスを乱さない。</p>
+    </div>
+    <div class="panel ac stack">
+      <h3>CLAUDE.md は 200 行以内、詳細はスキルへ</h3>
+      <ul class="small">
+        <li>CLAUDE.md は<b>セッション開始時に全文</b>が読み込まれ、無関係な作業中も毎リクエスト居座る。</li>
+        <li>PR レビュー手順や DB マイグレーション手順のような<b>特定ワークフロー向けの詳細</b>はスキルへ。スキルは呼ばれたときだけ本文が載る。</li>
+        <li>「必須のみ」に絞って 200 行以内を目安に。大きすぎる場合は <code>/doctor</code> がトリム案を出す。</li>
+        <li><code>.claude/rules/</code> の <code>paths:</code> 付きルールは、該当ファイルを扱うときだけ読み込まれる。</li>
+      </ul>
+    </div>
+    <div class="panel ai stack">
+      <h3>スキルの見え方を絞る</h3>
+      <ul class="small">
+        <li>既定ではスキルの<b>説明文</b>が毎リクエストに載る（本文は使用時）。</li>
+        <li>自分で手動起動するスキルには <code>disable-model-invocation: true</code> を付けると、呼ぶまで説明文すら載らない。</li>
+        <li>自分が書いていないスキルは settings の <code>skillOverrides</code> で同じことができる。</li>
+        <li>サブエージェントの <code>skills:</code> に列挙したスキルは<b>起動時に全文プリロード</b>される点に注意。</li>
+      </ul>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs#reduce-mcp-server-overhead">costs#reduce-mcp-server-overhead</a>；<a href="https://code.claude.com/docs/en/costs#move-instructions-from-claude-md-to-skills">costs#move-instructions-from-claude-md-to-skills</a>；<a href="https://code.claude.com/docs/en/how-claude-code-works#manage-context-with-skills-and-subagents">how-claude-code-works#manage-context-with-skills-and-subagents</a>；<a href="https://code.claude.com/docs/en/features-overview#understand-how-features-load">features-overview#understand-how-features-load</a></p>
+</section>
+
+<!-- 13 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Reduce ④ · offload</p>
+  <h2>削減策④：前処理と冗長な出力をオフロードする</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel ac">
+        <h3>フックで「Claude が見る前」に前処理する</h3>
+        <p class="small">10,000 行のログを Claude に読ませる代わりに、フックが <code>ERROR</code> を grep して該当行だけ返す → <b>数万トークンが数百に</b>。公式例は、テストコマンドを失敗行だけ表示するよう書き換える PreToolUse フック（下）。</p>
+      </div>
+      <div class="term"><span class="c"># ~/.claude/hooks/filter-test-output.sh（公式例の要点）</span>
+input=$(cat)
+cmd=$(echo "$input" | jq -r '.tool_input.command')
+<span class="k">if</span> [[ "$cmd" =~ ^(npm test|pytest|go test) ]]; <span class="k">then</span>
+  filtered_cmd="$cmd 2>&1 | grep -A 5 -E '(FAIL|ERROR|error:)' | head -100"
+  echo "$input" | jq --arg filtered "$filtered_cmd" \
+    '{hookSpecificOutput: {hookEventName: "PreToolUse",
+      permissionDecision: "allow",
+      updatedInput: (.tool_input + {command: $filtered})}}'
+<span class="k">else</span>
+  echo "{}"
+<span class="k">fi</span>
+<span class="c"># settings.json の hooks.PreToolUse に matcher "Bash" で登録</span></div>
+    </div>
+    <div class="stack">
+      <div class="panel green">
+        <h3>スキルで「探索」を省く</h3>
+        <p class="small">"codebase-overview" スキルにアーキテクチャ・主要ディレクトリ・命名規約を書いておくと、複数ファイルを読んで構造を理解する<b>トークンを使わずに</b>文脈を得られる。</p>
+      </div>
+      <div class="panel ai">
+        <h3>冗長な処理はサブエージェントへ</h3>
+        <p class="small">テスト実行、ドキュメント取得、ログ処理は大量のコンテキストを食う。<b>サブエージェントに委譲</b>すれば冗長な出力はサブ側に留まり、メインには要約だけ戻る。</p>
+        <p class="xs muted" style="margin-top:4px">ただしサブは別キャッシュを別に温める（TTL も既定 5 分）。小さな作業を大量に分散すると割高になりうる。</p>
+      </div>
+      <div class="panel violet">
+        <h3>型付き言語はコードインテリジェンスプラグイン</h3>
+        <p class="small">「定義へ移動」1 回が「grep → 候補ファイルを複数読む」を置き換える。編集後に型エラーが自動で返り、正味の context 使用が下がることが多い。</p>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs#offload-processing-to-hooks-and-skills">costs#offload-processing-to-hooks-and-skills</a>；<a href="https://code.claude.com/docs/en/costs#delegate-verbose-operations-to-subagents">costs#delegate-verbose-operations-to-subagents</a>；<a href="https://code.claude.com/docs/en/costs#install-code-intelligence-plugins-for-typed-languages">costs#install-code-intelligence-plugins-for-typed-languages</a>；<a href="https://code.claude.com/docs/en/prompt-caching#subagents-and-the-cache">prompt-caching#subagents-and-the-cache</a></p>
+</section>
+
+<!-- 14 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Reduce ⑤ · how you work</p>
+  <h2>削減策⑤：プロンプトと進め方 — 無駄な経路に入らない</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="big"><div class="no">1</div><div><div class="name">具体的なプロンプトを書く</div><p class="desc">「このコードベースを改善して」は広範なスキャンを誘発する。「auth.ts の login 関数に入力バリデーションを追加して」なら最小限のファイル読取で済む。</p></div></div>
+      <div class="big"><div class="no">2</div><div><div class="name">複雑なタスクは計画モードから</div><p class="desc"><kbd>Shift+Tab</kbd> で計画モードへ。Claude が探索して方針を提案し、承認後に実装。<b>最初の方向が間違っていたときの高価なやり直し</b>を防ぐ。計画モードの指示は会話メッセージとして追加されるのでキャッシュも保たれる。</p></div></div>
+      <div class="big"><div class="no">3</div><div><div class="name">早めに軌道修正する</div><p class="desc">間違った方向に進み始めたら <kbd>Esc</kbd> で即停止。<code>/rewind</code> か <kbd>Esc</kbd> 2 回で会話とコードをチェックポイントへ戻す（rewind はキャッシュ済みプレフィックスに戻るので安い）。</p></div></div>
+    </div>
+    <div class="stack">
+      <div class="big"><div class="no">4</div><div><div class="name">検証ターゲットを渡す</div><p class="desc">テストケース、スクリーンショット、期待する出力をプロンプトに含める。Claude が自分の仕事を検証できれば、修正依頼の往復が減る。</p></div></div>
+      <div class="big"><div class="no">5</div><div><div class="name">段階的にテストする</div><p class="desc">1 ファイル書いてテストし、次へ。問題が安いうちに捕まえる。</p></div></div>
+      <div class="big"><div class="no">6</div><div><div class="name">モデル・effort は冒頭で決め、compact は区切りで</div><p class="desc">タスク途中の変更が少ないほどキャッシュヒット率が高い（prompt-caching の Tip）。</p></div></div>
+      <div class="panel amber">
+        <h3>公式の姿勢</h3>
+        <p class="small">「委任せよ、指示するな」— どのファイルを読むか、どのコマンドを走らせるかは Claude が決められる。ただし<b>範囲と場所</b>（例：<code>src/payments/</code> の中）を与えると効率が上がる。</p>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs#write-specific-prompts">costs#write-specific-prompts</a>；<a href="https://code.claude.com/docs/en/costs#work-efficiently-on-complex-tasks">costs#work-efficiently-on-complex-tasks</a>；<a href="https://code.claude.com/docs/en/prompt-caching#rewinding-the-conversation">prompt-caching#rewinding-the-conversation</a>；<a href="https://code.claude.com/docs/en/how-claude-code-works#delegate-dont-dictate">how-claude-code-works#delegate-dont-dictate</a></p>
+</section>
+
+<!-- 15 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Hidden usage</p>
+  <h2>長いセッションで使用量が膨らむ理由と、バックグラウンド消費</h2>
+  <div class="cols cols-52">
+    <div class="panel red stack">
+      <h3>「作業量の割に減っている」ときの原因（公式リスト）</h3>
+      <table class="tight xs">
+        <tr><td style="white-space:nowrap"><b>長いコンテキスト</b></td><td>毎リクエストに全会話。一日開いていたセッションの 1 行質問も会話全体分を引く</td></tr>
+        <tr><td style="white-space:nowrap"><b>キャッシュミス</b></td><td>TTL より長い休憩後の最初のメッセージは全コンテキストを再処理</td></tr>
+        <tr><td style="white-space:nowrap"><b>スケジュールタスク</b></td><td><code>/loop</code> 等は idle 中も間隔ごとに全コンテキストを送る</td></tr>
+        <tr><td style="white-space:nowrap"><b>クロスセッション通知</b></td><td>他セッションからのメッセージが新ターンとして届く。<code>crossSessionInbound: hold</code> で保留可</td></tr>
+        <tr><td style="white-space:nowrap"><b>ゴールのチェックイン</b></td><td>idle 中に確認ターンを起こす（最大 3 回、<code>CLAUDE_CODE_GOAL_CHECKIN_MINUTES=0</code> で無効）</td></tr>
+        <tr><td style="white-space:nowrap"><b>チームメイト</b></td><td>終了するまで各自トークンを消費し続ける</td></tr>
+        <tr><td style="white-space:nowrap"><b>compact</b></td><td>要約対象の会話を読む＝それ自体が大きなリクエスト。継続性が不要なら <code>/clear</code> は無料</td></tr>
+      </table>
+      <p class="xs muted">サブスクでは、直近使用量の 10% 以上を占める行動を <code>/usage</code> がフラグし、ヒントを添える。</p>
+    </div>
+    <div class="stack">
+      <div class="panel amber">
+        <h3>バックグラウンドのトークン使用</h3>
+        <ul class="small">
+          <li><b>会話の要約</b>：<code>claude --resume</code> 用に過去会話を要約するバックグラウンドジョブ</li>
+          <li><b>コマンド処理</b>：<code>/usage</code> など状態確認のリクエスト</li>
+          <li>アイドル時でも発生するが、<b>1 セッションあたり通常 $0.04 未満</b></li>
+        </ul>
+      </div>
+      <div class="panel violet">
+        <h3>エージェントチーム</h3>
+        <ul class="small">
+          <li>チームメイトが計画モードで走ると<b>通常セッションの約 7 倍</b>のトークン。各自が独立した context window を持つ。</li>
+          <li>チームは小さく、spawn プロンプトは絞り、終わったら停止。既定では無効（<code>CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code>）。</li>
+        </ul>
+      </div>
+      <div class="panel ai">
+        <h3>1M コンテキスト</h3>
+        <p class="small">Claude 4.6 以降は 1M コンテキストが<b>標準価格</b>（900k のリクエストも 9k と同じ単価）。ただし context が大きいほど 1 リクエストの入力も大きくなるので、削減策の重要性は変わらない。</p>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs#why-usage-climbs-in-a-long-session">costs#why-usage-climbs-in-a-long-session</a>；<a href="https://code.claude.com/docs/en/costs#background-token-usage">costs#background-token-usage</a>；<a href="https://code.claude.com/docs/en/costs#agent-team-token-costs">costs#agent-team-token-costs</a>・<a href="https://code.claude.com/docs/en/costs#manage-agent-team-costs">#manage-agent-team-costs</a>；<a href="https://platform.claude.com/docs/en/about-claude/pricing#long-context-pricing">pricing#long-context-pricing</a></p>
+</section>
+
+<!-- 16 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Organization</p>
+  <h2>組織での管理：どこで見て、どこで上限を掛けるか</h2>
+  <div class="cols cols-52">
+    <div class="panel ac stack">
+      <table class="small">
+        <tr><th>環境</th><th>支出を見る</th><th>上限を掛ける</th><th>ユーザー別レポート</th></tr>
+        <tr><td><b>Claude for Teams / Enterprise</b></td><td>org analytics の支出レポート（日次更新・CSV）</td><td>管理設定の支出上限（org / グループ / 個人）。席の利用枠が既定の天井</td><td>Enterprise Analytics API（Enterprise）、支出レポート CSV（Teams）</td></tr>
+        <tr><td><b>Claude Console（API）</b></td><td>Console usage ページ</td><td>ワークスペース支出上限・レート制限（自動作成の "Claude Code" ワークスペース）</td><td>Console ダッシュボード、Claude Code Analytics API</td></tr>
+        <tr><td><b>Bedrock / Google Cloud / Foundry</b></td><td>クラウドの課金コンソール</td><td>クラウドの予算管理</td><td>OpenTelemetry、Claude apps gateway、LLM gateway（LiteLLM 等）</td></tr>
+      </table>
+      <p class="xs muted" style="margin-top:6px">OpenTelemetry はどの環境でも使え、ユーザー別 token / cost をほぼリアルタイムで自前の監視基盤に流せる唯一の手段。契約単価で表示したい場合は管理設定の <code>modelPricing</code>（v2.1.242〜）。</p>
+    </div>
+    <div class="stack">
+      <div class="panel ai">
+        <h3>チーム規模別のレート制限目安（Console）</h3>
+        <table class="tight xs">
+          <tr><th>チーム規模</th><th>TPM / ユーザー</th><th>RPM / ユーザー</th></tr>
+          <tr><td>1–5</td><td class="num">200k–300k</td><td class="num">5–7</td></tr>
+          <tr><td>5–20</td><td class="num">100k–150k</td><td class="num">2.5–3.5</td></tr>
+          <tr><td>20–50</td><td class="num">50k–75k</td><td class="num">1.25–1.75</td></tr>
+          <tr><td>50–100</td><td class="num">25k–35k</td><td class="num">0.62–0.87</td></tr>
+          <tr><td>100–500</td><td class="num">15k–20k</td><td class="num">0.37–0.47</td></tr>
+          <tr><td>500+</td><td class="num">10k–15k</td><td class="num">0.25–0.35</td></tr>
+        </table>
+        <p class="xs muted" style="margin-top:4px">大きな組織ほど同時利用率が下がるため 1 人あたりは減る。制限は組織単位で掛かる。</p>
+      </div>
+      <div class="panel green">
+        <h3>公式の助言</h3>
+        <p class="small">小さなパイロットグループから始め、上記の計測でベースラインを作ってから展開する。コーディング席はチャット席より多めに予算を取る（1 回のデバッグセッションがチャット 1 日分を超えることがある）。</p>
+      </div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> <a href="https://code.claude.com/docs/en/costs#manage-costs-for-your-organization">costs#manage-costs-for-your-organization</a>；<a href="https://code.claude.com/docs/en/costs#rate-limit-recommendations">costs#rate-limit-recommendations</a>；<a href="https://code.claude.com/docs/en/costs#report-spend-at-your-contracted-rates">costs#report-spend-at-your-contracted-rates</a></p>
+</section>
+
+<!-- 17 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Checklist</p>
+  <h2>まとめ：チェックリスト</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="big"><div class="no">1</div><div><div class="name">まず計測：<code>/usage</code>・<code>/context</code>・ステータスライン</div><p class="desc">キャッシュヒット率と、何が常駐しているかを把握する。</p></div></div>
+      <div class="big"><div class="no">2</div><div><div class="name">タスクの切れ目で <code>/clear</code>、区切りで <code>/compact</code>（指示付き）</div><p class="desc">長いセッションは 1 行の質問でも全会話分を引く。</p></div></div>
+      <div class="big"><div class="no">3</div><div><div class="name">モデルと effort は冒頭で決める</div><p class="desc">Sonnet を既定に、Opus は必要なときだけ。途中変更はキャッシュを捨てる。</p></div></div>
+      <div class="big"><div class="no">4</div><div><div class="name">常駐コンテキストを削る</div><p class="desc">CLAUDE.md は 200 行以内、詳細はスキルへ。未使用 MCP は無効化、CLI があれば CLI。</p></div></div>
+    </div>
+    <div class="stack">
+      <div class="big"><div class="no">5</div><div><div class="name">冗長な出力は Claude に見せない</div><p class="desc">フックで前処理、サブエージェントに隔離、コードインテリジェンスで読取を減らす。</p></div></div>
+      <div class="big"><div class="no">6</div><div><div class="name">具体的に頼み、計画モードと早期修正で手戻りを防ぐ</div><p class="desc">検証ターゲットを渡し、段階的にテスト。<code>/rewind</code> は compact より安い。</p></div></div>
+      <div class="big"><div class="no">7</div><div><div class="name">TTL を意識する</div><p class="desc">サブスク・プラン内は 1 時間、それ以外は 5 分。API 利用なら <code>promptCacheTtl: "1h"</code> を検討。</p></div></div>
+      <div class="big"><div class="no">8</div><div><div class="name">見えない消費を止める</div><p class="desc">スケジュールタスク、チームメイト、ゴールのチェックイン、クロスセッションメッセージ。</p></div></div>
+    </div>
+  </div>
+  <p class="src"><b>出典</b> 本デッキ各スライドの出典を参照。総論は <a href="https://code.claude.com/docs/en/costs#reduce-token-usage">costs#reduce-token-usage</a></p>
+</section>
+
+<!-- 18 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Sources</p>
+  <h2>出典一覧（すべて公式ドキュメント・2026-09-13 閲覧）</h2>
+  <div class="cols cols-2">
+    <div class="panel ac stack">
+      <h3>Claude Code ドキュメント（code.claude.com/docs/en/…）</h3>
+      <table class="tight small">
+        <tr><td><a href="https://code.claude.com/docs/en/costs">costs</a></td><td>Manage costs effectively — 計測、組織管理、削減策、バックグラウンド消費、長いセッションで使用量が増える理由</td></tr>
+        <tr><td><a href="https://code.claude.com/docs/en/prompt-caching">prompt-caching</a></td><td>How Claude Code uses prompt caching — 3 層構造、無効化 / 維持される操作、TTL、スコープ、サブエージェント</td></tr>
+        <tr><td><a href="https://code.claude.com/docs/en/context-window">context-window</a></td><td>Explore the context window — 起動時に載るものと目安トークン数のシミュレーション</td></tr>
+        <tr><td><a href="https://code.claude.com/docs/en/how-claude-code-works">how-claude-code-works</a></td><td>エージェントループ、コンテキストウィンドウ、コンパクト、スキル・サブエージェントによる管理</td></tr>
+        <tr><td><a href="https://code.claude.com/docs/en/features-overview">features-overview</a></td><td>Understand context costs — 機能別の読込タイミングとコスト</td></tr>
+        <tr><td><a href="https://code.claude.com/docs/en/model-config">model-config</a></td><td>effort レベル、extended thinking、1M コンテキスト、自動コンパクトの窓、モデルエイリアス</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="panel ai">
+        <h3>Claude Platform（platform.claude.com/docs/en/…）</h3>
+        <table class="tight small">
+          <tr><td><a href="https://platform.claude.com/docs/en/about-claude/pricing">about-claude/pricing</a></td><td>モデル別価格、プロンプトキャッシュ倍率、長いコンテキストの価格、ツール使用の価格</td></tr>
+          <tr><td><a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching">build-with-claude/prompt-caching</a></td><td>API レベルのキャッシュ機構（ブレークポイント、1 時間キャッシュ）</td></tr>
+        </table>
+      </div>
+      <div class="panel amber">
+        <h3>関連</h3>
+        <ul class="small">
+          <li><a href="https://claude.com/blog/lessons-from-building-claude-code-prompt-caching-is-everything">Lessons from building Claude Code: Prompt caching is everything</a> — 計画モード・deferred tool・compaction の設計理由（公式ブログ、prompt-caching ページから参照）</li>
+          <li>姉妹デッキ：<a href="../ai-usage-cache/index.html">すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）</a></li>
+        </ul>
+      </div>
+      <p class="xs muted">本デッキは公式ドキュメントの要約であり、バージョン依存の挙動（v2.1.2xx〜 と記載のもの）は将来変わりうる。<code>claude --version</code> で確認のこと。</p>
+    </div>
+  </div>
+</section>
+
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>
