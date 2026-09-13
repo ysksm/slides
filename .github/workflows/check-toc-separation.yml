@@ -1,0 +1,45 @@
+name: Check TOC separation
+
+# 目次（ルート README.md / index.html）とデッキ（<deck>/）を同じ PR で変更していないことを確認する。
+# 目次の更新は目次更新 Issue で単独に行う（CONTRIBUTING.md / Issue #23）。
+# さらに目次だけを変更する PR では、目次とデッキの整合（scripts/check-toc.sh）も確認する。
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  separation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files
+        id: changed
+        run: |
+          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed.txt
+          echo "--- changed files ---"; cat changed.txt
+          toc=$(grep -E '^(README\.md|index\.html)$' changed.txt || true)
+          deck=$(grep -E '^[^./][^/]*/' changed.txt | grep -vE '^(\.github|\.claude|\.agents|scripts)/' || true)
+          echo "toc<<EOF" >> "$GITHUB_OUTPUT"; echo "$toc" >> "$GITHUB_OUTPUT"; echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "deck<<EOF" >> "$GITHUB_OUTPUT"; echo "$deck" >> "$GITHUB_OUTPUT"; echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Fail if TOC and decks are changed together
+        if: steps.changed.outputs.toc != '' && steps.changed.outputs.deck != ''
+        run: |
+          echo "::error::目次（ルート README.md / index.html）とデッキを同じ PR で変更しています。"
+          echo "目次の更新はデッキの PR から外し、目次更新 Issue の PR で単独に行ってください（CONTRIBUTING.md）。"
+          echo "--- 目次 ---"; echo "${{ steps.changed.outputs.toc }}"
+          echo "--- デッキ ---"; echo "${{ steps.changed.outputs.deck }}"
+          exit 1
+
+      - name: Check TOC consistency (TOC-only PR)
+        if: steps.changed.outputs.toc != '' && steps.changed.outputs.deck == ''
+        run: scripts/check-toc.sh
