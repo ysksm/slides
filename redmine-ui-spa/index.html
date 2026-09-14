@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redmine の UI を SPA で作る</title>
+<meta name="description" content="Redmine の UI 置き換え、別 Web サーバー経由の構成、Electron・Tauri・PWA によるデスクトップアプリ化を解説">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F5F8F5;
+    --paper-2: #E9F0E9;
+    --ink: #14231A;
+    --ink-2: #45564A;
+    --ink-3: #7C8B80;
+    --rule: #CBD8CD;
+    --pw: #1E7F2C;          /* Playwright green */
+    --pw-soft: #D8EEDA;
+    --ai: #2F6FBF;          /* MCP / AI blue */
+    --ai-soft: #D9E7F8;
+    --amber: #B7791F;
+    --amber-soft: #FBEBC8;
+    --red: #B4432F;
+    --red-soft: #F6DAD5;
+    --term: #101B12;
+    --term-ink: #DCEEDF;
+    --term-dim: #7E9B85;
+    --term-key: #8FE09B;
+    --term-str: #9EC9E0;
+    --term-num: #F5C97A;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--term);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+  /* ---------- stage ---------- */
+  #stage {
+    position: fixed; inset: 0;
+    padding: 16px;
+  }
+  /* deck はレイアウト上 1280x720 のまま transform で縮小する。グリッド/フレックスの
+     中央寄せはコンテナより大きい要素だと start 寄せに落ちてスライドが画面外に出るため、
+     ビューポート中央に絶対配置し、fit() が縮小後サイズの半分だけ戻す。 */
+  .deck {
+    width: 1280px; height: 720px;
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: 0 0;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 52px 72px 60px;
+    display: none;
+    flex-direction: column;
+    gap: 20px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "Redmine の UI を SPA で作る";
+    position: absolute; left: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  /* ---------- type ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--pw); margin: 0;
+  }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 62px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 18px; margin: 0 0 6px; }
+  p { margin: 0; }
+  .lead { font-size: 19px; color: var(--ink-2); max-width: 48em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code, dd code {
+    background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: .92em;
+  }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--pw); }
+  b, strong { font-weight: 600; }
+  a { color: var(--pw); text-decoration: none; border-bottom: 1px solid var(--pw-soft); }
+
+  /* ---------- layout helpers ---------- */
+  .cols { display: grid; gap: 26px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.15fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.25fr; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel {
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px;
+  }
+  .panel.pw { border-top: 3px solid var(--pw); }
+  .panel.ai { border-top: 3px solid var(--ai); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 999px; background: var(--pw-soft); color: var(--pw); vertical-align: middle;
+  }
+  .tag.ai { background: var(--ai-soft); color: var(--ai); }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  .good::marker { content: "○ "; color: var(--pw); }
+  .bad::marker { content: "△ "; color: var(--red); }
+  ul.plusminus { list-style: none; padding-left: 1.4em; }
+  ul.plusminus li { text-indent: -1.4em; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--pw); font-weight: 700; }
+  ul.plusminus li.bad::before { content: "△ "; color: var(--red); font-weight: 700; }
+
+  /* ---------- terminal ---------- */
+  .term {
+    background: var(--term); color: var(--term-ink); border-radius: 8px;
+    padding: 14px 18px; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+    overflow: auto; white-space: pre; tab-size: 2;
+  }
+  .term .k { color: var(--term-key); }
+  .term .s { color: var(--term-str); }
+  .term .n { color: var(--term-num); }
+  .term .d { color: var(--term-dim); }
+  .term .c { color: var(--term-dim); font-style: italic; }
+  .term.sm { font-size: 12px; }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 5px 8px; }
+
+  /* ---------- diagram ---------- */
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 10px; }
+  .box { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+  .box .t { font-family: var(--display); font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+  .box.pw { border-color: var(--pw); background: var(--pw-soft); }
+  .box.ai { border-color: var(--ai); background: var(--ai-soft); }
+  .arrow { font-family: var(--mono); color: var(--ink-3); font-size: 12px; text-align: center; line-height: 1.3; align-self: center; }
+  .arrow b { display: block; font-size: 18px; color: var(--pw); }
+
+  /* ---------- step flow (確実性手順) ---------- */
+  .steps { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+  .step { display: grid; grid-template-columns: 46px 220px 1fr; gap: 14px; align-items: start;
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 10px 16px; }
+  .step .no { font-family: var(--display); font-weight: 900; font-size: 26px; color: var(--pw); line-height: 1.2; }
+  .step .name { font-family: var(--display); font-weight: 700; font-size: 16px; line-height: 1.4; }
+  .step .name .tag { margin-left: 0; margin-top: 2px; }
+  .step .desc { font-size: 13.5px; color: var(--ink-2); }
+
+  /* ---------- cover ---------- */
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 80px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; font-size: 72px; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 28px; }
+  .cover .frame {
+    position: absolute; right: 72px; top: 56px; width: 470px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--pw); padding-left: 16px;
+  }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); }
+
+  /* ---------- nav ---------- */
+  #hud {
+    position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7;
+  }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--pw); outline-offset: 2px; }
+
+  /* ---------- overview & print ---------- */
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+
+  .source { margin-top:auto; font-size:12px; line-height:1.5; color:var(--ink-2); }
+  .source a { margin-right:14px; }
+  .body-list { font-size:22px; line-height:1.8; }
+  .body-list li { margin:12px 0; }
+  .matrix { font-size:19px; line-height:1.6; }
+  .matrix th { font-size:15px; }
+  .matrix td,.matrix th { padding:13px 12px; }
+  .statement { font-size:29px; line-height:1.65; max-width:36em; }
+  .note { border-left:4px solid var(--pw); padding:12px 20px; background:var(--paper-2); font-size:20px; }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:36px; }
+  .split h3 { font-size:23px; margin-bottom:16px; }
+  .split p,.split li { font-size:20px; line-height:1.8; }
+  .path { font-family:var(--mono); font-size:23px; padding:22px 0; border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); }
+  .term.example { font-size:18px; line-height:1.65; margin:0; }
+  .refs { font-size:19px; line-height:1.9; }
+  @page { size:1280px 720px; margin:0; }
+  @media print { .slide { break-inside:avoid; } .slide:last-child { page-break-after:auto; } }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<section class="slide cover">
+<p class="eyebrow">Architecture study / Issue #26</p>
+<h1>Redmine の UI を<br>SPA で作る</h1>
+<p class="lead">UI の置き換え・別 Web サーバー経由の構成・デスクトップアプリ化</p>
+<p class="meta"><span>2026-09-14</span><span>ysksm/slides</span><span>設計者・実装者向け</span></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">01 / 方針</p><h2>既存 Redmine を残し、よく使う画面から置き換える</h2>
+<p class="statement">チケット一覧・詳細・更新を SPA にする。<br>データと権限判定は Redmine を利用する。</p><ul class="body-list"><li>Web 版の出発点は、同一オリジンで配信する <b>SPA + BFF</b>。</li><li>管理・プラグイン固有画面は、既存 UI へのリンクを用意する。</li><li>デスクトップ版は、同じ UI に Electron / Tauri の通信層を組み合わせる。</li></ul><p class="note">前提：既存 Redmine を運用中。バージョン・認証基盤・導入プラグインは未指定。</p>
+<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://v2.tauri.app/start/">Tauri overview</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">02 / UI 置き換え</p><h2>置き換える範囲で実装方式が変わる</h2>
+<table class="matrix"><thead><tr><th>方式</th><th>できること</th><th>保守上の論点</th></tr></thead><tbody><tr><td>テーマ</td><td>配色・余白・既存画面の外観調整</td><td>SPA 化のための API や画面遷移は別実装</td></tr><tr><td>Redmine プラグイン</td><td>独自ページ・メニュー・API を追加</td><td>本体・Rails・他プラグインとの互換性</td></tr><tr><td>独立 SPA + REST API</td><td>画面と配信を Redmine から分離</td><td>API にない操作の扱いを決める</td></tr><tr><td>本体ビュー改変 / fork</td><td>既存画面を広範囲に変更</td><td>アップグレード時に差分の追従が必要</td></tr></tbody></table><p class="note">本資料の提案：独立 SPA を基本にし、不足機能だけプラグインで補う。</p>
+<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Themes">Themes</a><a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a><a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">03 / API</p><h2>チケット画面と API の対応</h2>
+<table class="matrix"><thead><tr><th>画面・操作</th><th>API の例</th><th>UI 側の注意</th></tr></thead><tbody><tr><td>一覧・絞り込み</td><td><code>GET /issues.json</code></td><td>既定は未完了のみ。全状態は status_id=*</td></tr><tr><td>詳細・履歴</td><td><code>GET /issues/42.json</code></td><td>include=journals,attachments を指定</td></tr><tr><td>作成 / 更新</td><td><code>POST /issues.json</code><br><code>PUT /issues/42.json</code></td><td>必須項目・権限・ワークフローを確認</td></tr><tr><td>変更可能な状態</td><td><code>include=allowed_statuses</code></td><td>5.0.x 以降。利用者とチケットで変わる</td></tr></tbody></table><p class="note">全ステータス一覧と、今の利用者が遷移できる状態は区別する。</p>
+<p class="source">出典: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_Issues">Issues API</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">04 / フロントエンド</p><h2>UI と接続先を分ける</h2>
+<p class="path">画面 &nbsp; / &nbsp; 業務操作 &nbsp; / &nbsp; Redmine 接続アダプター</p><table class="matrix"><thead><tr><th>層</th><th>技術候補</th><th>担当</th></tr></thead><tbody><tr><td>画面</td><td>React または Vue + TypeScript</td><td>一覧・編集フォーム・キーボード操作</td></tr><tr><td>ルート・データ取得</td><td>Router + query cache</td><td>URL と絞り込み、読込・失敗・再取得</td></tr><tr><td>ビルド・配信</td><td>Vite など</td><td>静的ファイルを Web / Desktop 向けに生成</td></tr><tr><td>接続アダプター</td><td>Web は BFF、Desktop は IPC</td><td>DTO 変換、認証情報、エラー処理を分離</td></tr></tbody></table><p class="small">採用候補の設計例。チームの既存経験を優先し、UI ライブラリは 1 系統にそろえる。</p>
+<p class="source">設計提案。参考: <a href="https://vite.dev/guide/static-deploy.html">Vite static deploy</a><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">05 / 認証</p><h2>どの利用者の権限で API を呼ぶか</h2>
+<table class="matrix"><thead><tr><th>方式</th><th>認証情報の場所</th><th>適用条件</th></tr></thead><tbody><tr><td>利用者 API キーを直接送る</td><td>ブラウザの実行メモリ</td><td>小規模 PoC。再読込時の再入力を許容</td></tr><tr><td>BFF が利用者キーを保持</td><td>サーバーの秘密情報ストア</td><td>ブラウザには BFF のセッション Cookie</td></tr><tr><td>プラグイン + 既存セッション</td><td>Redmine のセッション</td><td>専用 API の認証・CSRF 対策を実装</td></tr><tr><td>管理者キー + 代理ユーザー</td><td>サーバーのみ</td><td>強い信頼境界。必要な場合に限定</td></tr></tbody></table><p class="note">SSO で BFF にログインしても、Redmine の権限は自動では引き継がれない。本人と Redmine アカウントの対応を検証する。</p>
+<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a><a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">06 / 別 Web サーバー</p><h2>リバースプロキシと BFF は役割が違う</h2>
+<p class="path">Browser &nbsp; → &nbsp; NGINX &nbsp; → &nbsp; BFF &nbsp; → &nbsp; Redmine</p><table class="matrix"><thead><tr><th>構成要素</th><th>役割</th><th>その要素だけでは解決しないこと</th></tr></thead><tbody><tr><td>NGINX</td><td>TLS 終端、静的 SPA 配信、パス振り分け</td><td>利用者ごとのキー管理・業務 API の合成</td></tr><tr><td>BFF（UI 専用のバックエンド）</td><td>セッション、利用者キー付与、応答整形</td><td>Redmine にない業務機能の自動生成</td></tr><tr><td>Redmine</td><td>データ保存、権限判定、業務ルール</td><td>新しい SPA のルーティングと表示</td></tr></tbody></table><p class="note">単純中継だけならプロキシでも構成可能。キー管理や SSO 連携が必要なら BFF を追加する。</p>
+<p class="source">設計提案。参考: <a href="https://nginx.org/en/docs/http/ngx_http_proxy_module.html">NGINX proxy module</a><a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">07 / 配信設定</p><h2>同じ公開オリジンで SPA と BFF を配信する</h2>
+<pre class="term example"># TLS server ブロック内の抜粋。BFF は /api/* を受け付ける。
+root /srv/redmine-spa/dist;
+location /api/ {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+location / {
+    try_files $uri $uri/ /index.html;
+}</pre><p class="lead"><code>/issues/42</code> の直リンクは SPA に戻し、<code>/api/...</code> は BFF に送る。</p><p class="small">proxy_pass に URI 部分がないので /api/ を保持。既存 Redmine UI は別ホストで併用する設計例。TLS 設定などは research.md を参照。</p>
+<p class="source">設計提案。参考: <a href="https://nginx.org/en/docs/http/ngx_http_proxy_module.html">NGINX proxy module</a><a href="https://vite.dev/guide/static-deploy.html">Vite static deploy</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">08 / CORS</p><h2>サーバーの設置場所より、ブラウザから見た URL が重要</h2>
+<table class="matrix"><thead><tr><th>ブラウザからの呼び出し</th><th>CORS</th><th>必要な設計</th></tr></thead><tbody><tr><td>https://tasks.example → 同じ /api/</td><td>クロスオリジンではない</td><td>Cookie・CSRF・BFF の認証は別途必要</td></tr><tr><td>https://tasks.example → https://redmine.example</td><td>クロスオリジン</td><td>許可 Origin・メソッド・ヘッダーを設定</td></tr><tr><td>BFF → Redmine</td><td>ブラウザの CORS 対象外</td><td>TLS・接続先制限・タイムアウトを設定</td></tr></tbody></table><p class="note">API キーヘッダーや JSON 更新では preflight が発生し得る。Cookie を使う場合、許可 Origin に <code>*</code> は使えない。</p><p class="small">別ホスト・別ポートは別オリジン。CORS は API の認証・認可を代替しない。</p>
+<p class="source">出典: <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS">MDN CORS</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">09 / API の不足</p><h2>プラグインで不足部分を小さく補う</h2>
+<div class="split"><div><h3>Redmine 内で追加するもの</h3><ul><li>SPA の入口とメニュー</li><li>標準 API にない操作の専用エンドポイント</li><li>画面で必要な入力候補の取得</li></ul></div><div><h3>実装時に維持するもの</h3><ul><li>プロジェクトと利用者の認可</li><li>既存の検証・履歴・通知処理</li><li>セッション認証時の CSRF 防御</li></ul></div></div><p class="note">DB への直接書き込みは避ける。Redmine 内のモデル操作でも、権限・履歴・通知が成立する経路を明示してテストする。</p><p class="small">既存 HTML の DOM 置換は、マークアップ変更への追従が必要。長期運用では専用ページを優先する。</p>
+<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">10 / 書き込み</p><h2>更新・添付は成功以外の経路も設計する</h2>
+<div class="split"><div><h3>チケット更新</h3><pre class="term example">PUT /issues/42.json
+Content-Type: application/json
+
+{&quot;issue&quot;:{&quot;notes&quot;:&quot;確認しました&quot;}}</pre></div><div><h3>添付は 2 段階</h3><ol><li><code>POST /uploads.json</code> にファイル本体を送信</li><li>返却された token をチケットの uploads に指定</li></ol></div></div><ul class="body-list"><li>入力不備の <b>422</b> をフォームに表示し、権限不足・再認証と分ける。</li><li>送信結果が不明なときは再取得して確認する。作成・コメントの自動再送は重複に注意。</li></ul><p class="small">同時編集の扱いは実機で確認し、変更通知・再読込・競合表示を設計する。</p>
+<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a><a href="https://www.redmine.org/projects/redmine/wiki/Rest_Issues">Issues API</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">11 / デスクトップ</p><h2>PWA・Electron・Tauri の比較</h2>
+<table class="matrix"><thead><tr><th>方式</th><th>適した条件</th><th>実装・運用の負担</th></tr></thead><tbody><tr><td>PWA</td><td>Web 配信中心、アプリ風の起動で足りる</td><td>manifest・HTTPS。OS / ブラウザ差を確認</td></tr><tr><td>Electron</td><td>Node.js 資産や統一した描画環境を使いたい</td><td>Chromium を同梱。更新と IPC の管理</td></tr><tr><td>Tauri 2</td><td>OS の WebView と Rust 側処理を使いたい</td><td>Rust のビルド環境、OS ごとの表示検証</td></tr></tbody></table><p class="note">アプリ化だけではオフライン更新や同期は増えない。必要ならキャッシュ・更新キュー・競合解決を別途実装する。</p>
+<p class="source">設計提案。参考: <a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable">MDN PWA installability</a><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://v2.tauri.app/start/">Tauri overview</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">12 / Electron</p><h2>Renderer に API キーを渡さない構成</h2>
+<p class="path">SPA Renderer &nbsp; → &nbsp; preload / IPC &nbsp; → &nbsp; main &nbsp; → &nbsp; Redmine</p><ul class="body-list"><li>同梱した UI を表示し、preload で <code>listIssues()</code> などの操作だけ公開する。</li><li>main 側でキーを取り出し、接続先・引数・IPC の送信元を検証する。</li><li><code>nodeIntegration: false</code>、<code>contextIsolation: true</code>、sandbox を維持する。</li><li>キー保存には safeStorage 等を検討。Linux の <code>basic_text</code> では永続保存を避ける。</li></ul><p class="small">任意 URL を受け取る汎用 fetch の公開は避け、許可した Redmine への業務操作に限定する。</p>
+<p class="source">設計提案。参考: <a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://www.electronjs.org/docs/latest/tutorial/security">Electron security</a><a href="https://www.electronjs.org/docs/latest/api/safe-storage">Electron safeStorage</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">13 / Tauri</p><h2>Rust 側に通信と秘密情報をまとめる</h2>
+<p class="path">SPA WebView &nbsp; → &nbsp; invoke &nbsp; → &nbsp; Rust command &nbsp; → &nbsp; Redmine</p><ul class="body-list"><li>WebView は画面を担当し、Rust command が利用者キーを付けて API を呼ぶ。</li><li>capabilities / permissions で呼び出せる機能を制限する。独自 command の引数も検証する。</li><li>HTTP plugin を使う場合は接続先スコープを限定する。キーを JS に返さない。</li><li>Stronghold などの保管先と、解除用パスワード・鍵の管理を設計する。</li></ul><p class="note">ネイティブ側の HTTP はブラウザ CORS の制約外。通信をネイティブへ移しても、認証や接続先検証は必要。</p>
+<p class="source">設計提案。参考: <a href="https://v2.tauri.app/start/">Tauri overview</a><a href="https://v2.tauri.app/security/capabilities/">Tauri capabilities</a><a href="https://v2.tauri.app/plugin/http-client/">Tauri HTTP client</a><a href="https://v2.tauri.app/plugin/stronghold/">Tauri Stronghold</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">14 / 配布</p><h2>Web と Desktop で共通化する範囲</h2>
+<table class="matrix"><thead><tr><th>共通化するもの</th><th>環境ごとに実装するもの</th></tr></thead><tbody><tr><td>一覧・詳細・編集 UI、入力検証</td><td>Web：BFF セッション / Desktop：ネイティブ通信</td></tr><tr><td>業務操作と DTO、表示エラー</td><td>Web：URL ルート / Desktop：deep link の受け口</td></tr><tr><td>画面・API 契約のテスト</td><td>Desktop：OS ごとのビルド・署名・更新配布</td></tr></tbody></table><p class="note">Web UI をウィンドウで開く方式は着手しやすい。同梱 SPA は版を固定できるが、配布と更新の仕組みが必要になる。</p><p class="lead">PWA では manifest と HTTPS を用意し、対象環境のインストール条件を確認する。</p>
+<p class="source">設計提案。参考: <a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://www.electronjs.org/docs/latest/tutorial/security">Electron security</a><a href="https://v2.tauri.app/start/">Tauri overview</a><a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable">MDN PWA installability</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">15 / 導入手順</p><h2>PoC で確認してから、書き込み範囲を広げる</h2>
+<table class="matrix"><thead><tr><th>段階</th><th>実施すること</th><th>完了条件</th></tr></thead><tbody><tr><td>1. 環境確認</td><td>バージョン、認証、プラグイン、API 有効化</td><td>必要操作と未対応操作の一覧がある</td></tr><tr><td>2. 読み取り</td><td>一覧・検索・詳細を SPA で表示</td><td>異なる権限の利用者で可視性が一致</td></tr><tr><td>3. 書き込み</td><td>コメント・状態変更・添付</td><td>履歴・通知・入力エラー・重複を確認</td></tr><tr><td>4. 展開</td><td>BFF 配信、必要なら Desktop を追加</td><td>直リンク・再認証・更新・復旧を確認</td></tr></tbody></table><p class="note">既存 UI への導線を残し、問題時は SPA の利用を止められる構成にする。</p>
+
+</section>
+
+<section class="slide">
+<p class="eyebrow">16 / 選択条件</p><h2>最初の構成を決めるための判断表</h2>
+<table class="matrix"><thead><tr><th>要件・制約</th><th>第一候補</th><th>事前に確認すること</th></tr></thead><tbody><tr><td>Redmine 本体を変更したくない</td><td>独立 SPA + REST API</td><td>必要な操作を標準 API がカバーするか</td></tr><tr><td>社内 Web と SSO を統合したい</td><td>同一オリジン SPA + BFF</td><td>本人の対応付けと利用者キーの管理</td></tr><tr><td>既存ログインと独自機能を使いたい</td><td>Redmine プラグイン</td><td>専用 API の認可・互換性</td></tr><tr><td>OS 連携・端末内処理が必要</td><td>Electron または Tauri</td><td>配布対象 OS と鍵・更新の運用</td></tr><tr><td>Web と同じ機能をアプリ風に起動</td><td>PWA</td><td>対象ブラウザの対応条件</td></tr></tbody></table>
+<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a><a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://v2.tauri.app/start/">Tauri overview</a><a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable">MDN PWA installability</a></p>
+</section>
+
+<section class="slide">
+<p class="eyebrow">参考資料</p><h2>Web / Redmine の参考資料</h2>
+<ul class="refs"><li><a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a></li><li><a href="https://www.redmine.org/projects/redmine/wiki/Rest_Issues">Issues API</a></li><li><a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a></li><li><a href="https://www.redmine.org/projects/redmine/wiki/Themes">Themes</a></li><li><a href="https://nginx.org/en/docs/http/ngx_http_proxy_module.html">NGINX proxy module</a></li><li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS">MDN CORS</a></li><li><a href="https://vite.dev/guide/static-deploy.html">Vite static deploy</a></li></ul><p class="small">調査日：2026-09-14。仕様は公式資料、構成の推奨は本資料の設計提案。対象 Redmine での接続検証は未実施。詳細と確認項目は同梱 research.md を参照。</p>
+
+</section>
+
+<section class="slide">
+<p class="eyebrow">参考資料</p><h2>Desktop の参考資料</h2>
+<ul class="refs"><li><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a></li><li><a href="https://www.electronjs.org/docs/latest/tutorial/security">Electron security</a></li><li><a href="https://www.electronjs.org/docs/latest/api/safe-storage">Electron safeStorage</a></li><li><a href="https://v2.tauri.app/start/">Tauri overview</a></li><li><a href="https://v2.tauri.app/security/capabilities/">Tauri capabilities</a></li><li><a href="https://v2.tauri.app/plugin/http-client/">Tauri HTTP client</a></li><li><a href="https://v2.tauri.app/plugin/stronghold/">Tauri Stronghold</a></li><li><a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable">MDN PWA installability</a></li></ul><p class="small">調査日：2026-09-14。仕様は公式資料、構成の推奨は本資料の設計提案。対象 Redmine での接続検証は未実施。詳細と確認項目は同梱 research.md を参照。</p>
+
+</section>
+
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷/PDF</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>
