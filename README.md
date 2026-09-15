@@ -6,6 +6,10 @@
 
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
+| [Playwright 活用方法 — 画面遷移図・デグレ防止・ローカライズ資料](playwright-practices/index.html) | 18 | 手書き HTML | [#34](https://github.com/ysksm/slides/issues/34) |
+| [Oxlint で独自の Lint ルールを作る — JS プラグイン実践](oxlint-custom-rules/index.html) | 21 | 手書き HTML | [#33](https://github.com/ysksm/slides/issues/33) |
+| [Yocto 入門 — macOS/VM で作る Raspberry Pi・ルーター・x86_64 の Linux イメージ](yocto-intro/index.html) | 20 | 手書き HTML | [#32](https://github.com/ysksm/slides/issues/32) |
+| [Redmine の UI を SPA で作る（構成・導入編）](redmine-ui-spa-2/index.html) | 19 | 手書き HTML + 調査メモ | [#26](https://github.com/ysksm/slides/issues/26) |
 | [tgrep 解説 — トライグラム索引・AI エージェント連携・プラグイン化](tgrep-overview/index.html) | 21 | 手書き HTML | [#29](https://github.com/ysksm/slides/issues/29) |
 | [Redmine の UI を SPA で作るための技術](redmine-ui-spa/index.html) | 16 | 手書き HTML | [#26](https://github.com/ysksm/slides/issues/26) |
 | [npm ライブラリの不具合・脆弱性の時系列集計](npm-vulnerability-trends/index.html) | 14 | 手書き HTML + 設計資料 | [#18](https://github.com/ysksm/slides/issues/18) |
@@ -18,6 +22,39 @@
 | [Claude Code コマンド一覧](claude-code-commands/index.html) | 201（6 デッキ） | Marp（`src/*.md` から生成） | [#2](https://github.com/ysksm/slides/issues/2) |
 | [tsc --lsp 徹底調査](antigravity-tsc-lsp-research/index.html) | 20 | 手書き HTML + 実証コード | [#1](https://github.com/ysksm/slides/issues/1) |
 | [tsc --lsp 調査報告（初版）](tsc-lsp/index.html) | 16 | 手書き HTML | [#1](https://github.com/ysksm/slides/issues/1) |
+
+### [Playwright 活用方法 — 画面遷移図・デグレ防止・ローカライズ資料](playwright-practices/index.html)
+
+Playwright を「テストを書く道具」ではなく「実物のブラウザから資料と安全網を作る道具」として使う手順をまとめた解説資料（全 18 枚）。React アプリの画面一覧の作り方、実キャプチャ付きの画面遷移図（メイン＝ツリー／補助線＝横断リンク）の生成、遷移パラメータの洗い出し、リファクタのデグレを止めるスポット UI テスト、ヘッドレス実行、ローカライズ時の UI 資料づくりまでを、1 本の探索コードから 4 つの成果物を作る流れとして扱っている。
+
+- `playwright-practices/index.html` を開き、← → / Space で移動、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#9` など）でスライド番号を直接指定可能
+- 詳細: [playwright-practices/README.md](playwright-practices/README.md)
+
+### [Oxlint で独自の Lint ルールを作る — JS プラグイン実践](oxlint-custom-rules/index.html)
+
+Rust 製リンタ Oxlint で独自の Lint ルールを作る方法を、ESLint 互換の JS プラグイン API を軸に整理した解説スライド（全 21 枚）。最小構成・AST とセレクタ・context API・オプションと自動修正・高速版 `createOnce` API・RuleTester・設定（`jsPlugins`）・制限事項・性能を押さえたうえで、既存 ESLint 資産の再利用、ルールの設計指針と運用、参考として Rust ネイティブルールの書き方までを収録。
+
+- `oxlint-custom-rules/index.html` を開き、← → / Space で移動、Home / End で最初・最後、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#9` など）でスライド番号を直接指定可能
+- 詳細: [oxlint-custom-rules/README.md](oxlint-custom-rules/README.md)
+
+### [Yocto 入門 — macOS/VM で作る Raspberry Pi・ルーター・x86_64 の Linux イメージ](yocto-intro/index.html)
+
+Yocto Project で組み込み Linux ディストリビューションを「自分で作る」ための仕組みを整理した解説スライド（全 20 枚）。Poky / BitBake / OpenEmbedded とレイヤーの関係、macOS (Apple Silicon) + VMware Fusion でのビルド環境づくりから、GUI あり/なしのイメージ、Raspberry Pi、ルーター用 Linux、Intel NUC (x86_64) 向けイメージの作り分け、1 つの作業ツリーで 4 機種を回す方法、カスタムレイヤーと `devtool` / SDK による開発ループまでを扱う。
+
+- `yocto-intro/index.html` を開き、← → / Space で移動、Home / End で最初・最後、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#9` など）でスライド番号を直接指定可能
+- 詳細: [yocto-intro/README.md](yocto-intro/README.md)
+
+### [Redmine の UI を SPA で作る（構成・導入編）](redmine-ui-spa-2/index.html)
+
+同じ Issue #26 を構成の選択と導入手順の側から検討した技術検討資料（全 19 枚）。UI の置き換え、別 Web サーバー（リバースプロキシ / BFF）経由の配信と認証、Electron・Tauri・PWA によるデスクトップアプリ化を整理している。API の仕様と置き換え方式の整理は [redmine-ui-spa](redmine-ui-spa/index.html) にあり、本デッキはその続きにあたる。稼働バージョン・認証基盤・導入プラグインは未指定のため、推奨構成は設計案。
+
+- `redmine-ui-spa-2/index.html` を開き、← → / Space で移動、Home / End で最初・最後、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#9` など）でスライド番号を直接指定可能
+- 同梱物: [research.md](redmine-ui-spa-2/research.md)（構成案、NGINX 設定例、認証・API の確認項目、公式出典）
+- 詳細: [redmine-ui-spa-2/README.md](redmine-ui-spa-2/README.md)
 
 ### [tgrep 解説 — トライグラム索引・AI エージェント連携・プラグイン化](tgrep-overview/index.html)
 
@@ -131,6 +168,11 @@ TypeScript 7 の Go ネイティブ言語サーバー `tsc --lsp` のアーキ�
 
 ```
 slides/
+├── playwright-practices/          # Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）
+├── oxlint-custom-rules/           # Oxlint で独自の Lint ルールを作る（JS プラグイン実践）
+├── yocto-intro/                   # Yocto 入門（macOS/VM で作る Raspberry Pi・ルーター・x86_64 イメージ）
+├── redmine-ui-spa-2/              # Redmine の UI を SPA で作る（構成・導入編）
+│   └── research.md                #   構成案・NGINX 設定例・認証と API の確認項目
 ├── tgrep-overview/                # tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）
 ├── redmine-ui-spa/                # Redmine の UI を SPA で作るための技術（REST API / BFF / デスクトップ化）
 ├── npm-vulnerability-trends/       # npm 不具合・脆弱性の時系列集計（設計提案）
@@ -168,13 +210,13 @@ slides/
 | 一覧表示 | `O` | Marp 製以外 |
 | 発表者ノート | `N` | `antigravity-tsc-lsp-research` |
 | 全画面 | `F` | すべて |
-| 印刷 / PDF | `P` | `tgrep-overview`、`redmine-ui-spa`、`playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
+| 印刷 / PDF | `P` | `playwright-practices`、`oxlint-custom-rules`、`yocto-intro`、`redmine-ui-spa-2`、`tgrep-overview`、`redmine-ui-spa`、`playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
 
 ※ Marp 製の `claude-code-commands` では `P` はプレゼンターモードです。`tsc-lsp`（初版）は `P` に未対応のため、ブラウザの印刷機能を使ってください。
 
 ## ビルド
 
-手書き HTML のスライド（`tgrep-overview` / `redmine-ui-spa` / `npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
+手書き HTML のスライド（`playwright-practices` / `oxlint-custom-rules` / `yocto-intro` / `redmine-ui-spa-2` / `tgrep-overview` / `redmine-ui-spa` / `npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
 
 Marp 製の `claude-code-commands` のみ、ソース（`src/*.md`）を編集したら再生成が必要です。
 
