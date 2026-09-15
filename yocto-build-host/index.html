@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yocto ビルドホストの構築手順 — Linux ディストリビューションの選択とインストール</title>
+<meta name="description" content="Yocto Project のビルドホストを 1 台立ち上げるまでの手順。サポート対象 Linux ディストリビューションの選び方、ベアメタル / VM / WSL2 / コンテナの選択、ディスクとファイルシステムの設計、インストール直後の初期設定、ホスト依存パッケージ、最初のビルドでの動作確認まで（Yocto 入門の付録）">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F7F5F1;
+    --paper-2: #EDE9E1;
+    --ink: #1E1A15;
+    --ink-2: #4D463C;
+    --ink-3: #857C6F;
+    --rule: #D9D3C7;
+    --yo: #B4501A;          /* embedded orange */
+    --yo-soft: #F7E3D5;
+    --blue: #2B5FA8;        /* host / VM */
+    --blue-soft: #DCE6F5;
+    --green: #2E7D4F;       /* target / ok */
+    --green-soft: #D9EDE1;
+    --amber: #96700F;
+    --amber-soft: #F7E9C6;
+    --red: #A93B2C;
+    --red-soft: #F5DCD7;
+    --term: #17140F;
+    --term-ink: #E7E0D4;
+    --term-dim: #968C7B;
+    --term-key: #E8A15C;
+    --term-str: #9FC4E8;
+    --term-num: #E3C96B;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--term);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+  /* ---------- stage ---------- */
+  #stage { position: fixed; inset: 0; padding: 16px; }
+  /* deck はレイアウト上 1280x720 のまま transform で縮小する。グリッド/フレックスの
+     中央寄せはコンテナより大きい要素だと start 寄せに落ちてスライドが画面外に出るため、
+     ビューポート中央に絶対配置し、fit() が縮小後サイズの半分だけ戻す。 */
+  .deck {
+    width: 1280px; height: 720px;
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: 0 0;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 46px 64px 56px;
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 64px; bottom: 22px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "Yocto ビルドホスト構築 — ディストロ選択とインストール手順（Yocto 入門 付録）";
+    position: absolute; left: 64px; bottom: 22px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  /* ---------- type ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--yo); margin: 0;
+  }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 60px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 17px; margin: 0 0 5px; }
+  p { margin: 0; }
+  .lead { font-size: 18px; color: var(--ink-2); max-width: 50em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code, dd code {
+    background: var(--paper-2); padding: 1px 5px; border-radius: 4px; font-size: .9em;
+  }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 3px 0; }
+  li::marker { color: var(--yo); }
+  b, strong { font-weight: 600; }
+  a { color: var(--yo); text-decoration: none; border-bottom: 1px solid var(--yo-soft); }
+
+  /* ---------- layout helpers ---------- */
+  .cols { display: grid; gap: 22px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.15fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.25fr; }
+  .stack { display: flex; flex-direction: column; gap: 11px; min-height: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 13px 16px; }
+  .panel.yo { border-top: 3px solid var(--yo); }
+  .panel.blue { border-top: 3px solid var(--blue); }
+  .panel.green { border-top: 3px solid var(--green); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 999px; background: var(--yo-soft); color: var(--yo); vertical-align: middle;
+  }
+  .tag.blue { background: var(--blue-soft); color: var(--blue); }
+  .tag.green { background: var(--green-soft); color: var(--green); }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  ul.plusminus { list-style: none; padding-left: 1.4em; }
+  ul.plusminus li { text-indent: -1.4em; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--green); font-weight: 700; }
+  ul.plusminus li.bad::before { content: "△ "; color: var(--red); font-weight: 700; }
+
+  /* ---------- terminal ---------- */
+  .term {
+    background: var(--term); color: var(--term-ink); border-radius: 8px;
+    padding: 13px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
+    overflow: hidden; white-space: pre; tab-size: 2;
+  }
+  .term .k { color: var(--term-key); }
+  .term .s { color: var(--term-str); }
+  .term .n { color: var(--term-num); }
+  .term .d { color: var(--term-dim); }
+  .term .c { color: var(--term-dim); font-style: italic; }
+  .term.sm { font-size: 11.5px; line-height: 1.45; }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 4px 7px; }
+  .nw { white-space: nowrap; }
+
+  /* ---------- diagram ---------- */
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 9px; }
+  .box { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 11px 13px; font-size: 13.5px; }
+  .box .t { font-family: var(--display); font-weight: 700; font-size: 15px; margin-bottom: 3px; }
+  .box.yo { border-color: var(--yo); background: var(--yo-soft); }
+  .box.blue { border-color: var(--blue); background: var(--blue-soft); }
+  .box.green { border-color: var(--green); background: var(--green-soft); }
+  .arrow { font-family: var(--mono); color: var(--ink-3); font-size: 11.5px; text-align: center; line-height: 1.3; align-self: center; }
+  .arrow b { display: block; font-size: 17px; color: var(--yo); }
+
+  /* ---------- step flow ---------- */
+  .steps { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+  .step { display: grid; grid-template-columns: 40px 210px 1fr; gap: 12px; align-items: start;
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 8px 14px; }
+  .step .no { font-family: var(--display); font-weight: 900; font-size: 23px; color: var(--yo); line-height: 1.25; }
+  .step .name { font-family: var(--display); font-weight: 700; font-size: 15px; line-height: 1.4; }
+  .step .desc { font-size: 13px; color: var(--ink-2); }
+
+  /* ---------- layer stack ---------- */
+  .layers { display: flex; flex-direction: column; gap: 5px; }
+  .layer { border: 1px solid var(--rule); border-radius: 6px; padding: 7px 12px; background: #fff; font-size: 13.5px; display: flex; gap: 10px; align-items: baseline; }
+  .layer .nm { font-family: var(--mono); font-weight: 500; font-size: 13px; white-space: nowrap; }
+  .layer.core { background: var(--yo-soft); border-color: var(--yo); }
+  .layer.bsp { background: var(--blue-soft); border-color: var(--blue); }
+  .layer.app { background: var(--green-soft); border-color: var(--green); }
+
+  /* ---------- cover ---------- */
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 72px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; font-size: 66px; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 26px; }
+  .cover .frame {
+    position: absolute; right: 64px; top: 50px; width: 470px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--yo); padding-left: 16px;
+  }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); }
+
+  /* ---------- nav ---------- */
+  #hud {
+    position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7;
+  }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--yo); outline-offset: 2px; }
+
+  /* ---------- overview & print ---------- */
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────── -->
+<section class="slide cover">
+  <div class="frame"><span class="c"># 目指すゴール：この 3 行が通るホストを 1 台作る</span>
+<span class="k">$</span> lsb_release -ds
+Ubuntu <span class="n">24.04</span>.3 LTS
+<span class="k">$</span> <span class="k">source</span> poky/oe-init-build-env
+<span class="k">$</span> bitbake core-image-minimal
+
+<span class="d">NOTE: Your conf/bblayers.conf …</span>
+<span class="d">Initialising tasks: 100% |#########| Time: 0:00:09</span>
+<span class="d">NOTE: Tasks Summary: Attempted </span><span class="n">2841</span><span class="d"> tasks …</span>
+
+<span class="c"># 失敗の大半は「ディストロ選び」と「置き場所」で決まる</span>
+<span class="k">$</span> df -hT /home
+Filesystem  Type  Size  Used Avail Use%
+/dev/vg0-lv <span class="n">ext4</span>  <span class="n">400G</span>   18G  <span class="n">362G</span>   5%</div>
+  <p class="eyebrow">Appendix · Yocto 入門 (Issue #32)</p>
+  <h1>Yocto ビルドホストの構築手順</h1>
+  <p class="lead">ビルドホストに使う Linux ディストリビューションの選び方と、インストールからビルド開始までの手順。サポート対象ディストロの選定、ベアメタル / VM / WSL2 の選択、ディスクとファイルシステムの設計、初期設定、ホスト依存パッケージ、最初のビルドでの動作確認まで。</p>
+  <p class="meta"><span>2026-09-15</span><span>Yocto Project / Poky / BitBake</span><span>Issue #40</span></p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Summary</p>
+  <h2>結論を先に：迷ったらこの構成</h2>
+  <div class="cols cols-3">
+    <div class="panel yo stack">
+      <h3>① ディストロは「サポート対象」から選ぶ <span class="tag">選択</span></h3>
+      <p class="small">Yocto は動作確認済みのディストロを<b>リリースごとに明示</b>している（Ubuntu / Debian / Fedora / AlmaLinux / openSUSE Leap の特定バージョン）。<b>迷ったら Ubuntu の LTS 版</b>：情報量が多く、公式ドキュメントとメーリングリストの例もほぼ Ubuntu 基準。</p>
+      <p class="xs muted">デスクトップ用途と兼ねないなら <b>Server 版の最小構成</b> で十分。GUI は <code>runqemu</code> を使うときだけ要る。</p>
+    </div>
+    <div class="panel blue stack">
+      <h3>② 勝負はディスクと置き場所 <span class="tag blue">設計</span></h3>
+      <p class="small">公式要件は<b>空き 90 GB 以上</b>だが、実務では <b>200〜400 GB</b> を見ておく。ファイルシステムは <b>ext4</b>、置き場所は<b>ローカルディスク</b>。ネットワーク共有・VM の共有フォルダ・NTFS/exFAT の上にビルドディレクトリを置くと必ず壊れる。</p>
+      <p class="xs muted">大文字小文字を区別し、拡張属性とハードリンクが効くこと。この 3 つが満たせない場所は失格。</p>
+    </div>
+    <div class="panel green stack">
+      <h3>③ インストール直後にやることは 5 つ <span class="tag green">手順</span></h3>
+      <p class="small"><b>(1)</b> UTF-8 ロケール生成 <b>(2)</b> 一般ユーザーで作業（root でのビルドは拒否される）<b>(3)</b> ホスト依存パッケージの導入 <b>(4)</b> 時刻同期とネットワーク／プロキシ <b>(5)</b> <code>core-image-minimal</code> を 1 回通して環境を検証。</p>
+      <p class="xs muted">この 5 つを済ませてから本題のレイヤー作業に入る。順番を飛ばすと数時間後に落ちる。</p>
+    </div>
+  </div>
+  <p class="small muted">流れ：<b>要件（3）→ ディストロ選定（4–7）→ 設置形態とディスク設計（8–9）→ インストール手順（10–12）→ 依存パッケージと救済策（13–14）→ 検証と運用（15–17）</b>。本資料は <a href="https://ysksm.github.io/slides/yocto-intro/index.html#1">Yocto 入門</a> の 6–7 枚目を単独で詳しくしたもの。</p>
+</section>
+
+<!-- 3 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Requirements</p>
+  <h2>ビルドホストに求められる要件</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <table class="tight">
+        <tr><th>項目</th><th>公式の要件</th><th>実務での目安</th></tr>
+        <tr><td class="nw"><b>OS</b></td><td>サポート対象の Linux ディストリビューション</td><td>Ubuntu LTS（Server）</td></tr>
+        <tr><td class="nw"><b>ディスク空き</b></td><td>90 GB 以上（<code>core-image-sato</code> のビルドを想定）</td><td>200〜400 GB</td></tr>
+        <tr><td class="nw"><b>メモリ</b></td><td>8 GB 以上を推奨</td><td>16〜32 GB（コア数 × 2 GB 目安）</td></tr>
+        <tr><td class="nw"><b>CPU</b></td><td>規定なし（並列数がそのまま時間に効く）</td><td>物理 8 コア以上</td></tr>
+        <tr><td class="nw"><b>ネットワーク</b></td><td>ソース取得のため外部へ出られること</td><td>プロキシ配下なら別途設定</td></tr>
+        <tr><td class="nw"><b>ロケール</b></td><td>UTF-8 ロケールが必要</td><td><code>en_US.UTF-8</code> を生成</td></tr>
+        <tr><td class="nw"><b>実行ユーザー</b></td><td>root では実行しない（BitBake が拒否）</td><td>専用の一般ユーザー</td></tr>
+      </table>
+      <div class="panel amber">
+        <h3>ホストツールの最低バージョンも決まっている</h3>
+        <p class="small">Git・tar・Python 3・GNU make・gcc には<b>最低バージョン</b>が規定されている（リリースごとに更新される）。サポート対象ディストロを選べば自動的に満たされるが、古い企業内ディストロを使う場合はここが引っかかる。救済策は 14 枚目の <code>buildtools-tarball</code>。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel red">
+        <h3>ファイルシステムの必須条件</h3>
+        <ul class="small">
+          <li><b>大文字小文字を区別する</b>：<code>Makefile</code> と <code>makefile</code>、<code>linux/String.h</code> のようなパスが共存する。</li>
+          <li><b>拡張属性（xattr）が使える</b>：<code>pseudo</code> が rootfs の所有者・パーミッションを記録するのに使う。</li>
+          <li><b>ハードリンクとシンボリックリンクが効く</b>：sstate の展開と <code>DL_DIR</code> の共有に必須。</li>
+          <li><b>UNIX パーミッションを保持する</b>：実行ビットが落ちる共有はビルド途中で不可解に失敗する。</li>
+        </ul>
+        <p class="xs muted">NTFS・exFAT・FAT32・VM の共有フォルダ（HGFS 等）・CIFS/SMB はいずれかを満たさない。NFS は条件付きだが遅く、トラブルの元。</p>
+      </div>
+      <div class="panel">
+        <h3>パス名の制約</h3>
+        <p class="small">ビルドディレクトリのパスに<b>空白・日本語・記号</b>を含めない。<code>/home/yocto/build</code> のような短い ASCII パスにする。パスが長すぎると、一部のレシピでシバン行や引数長の上限に当たる。</p>
+      </div>
+      <p class="xs muted">出典：<a href="https://docs.yoctoproject.org/ref-manual/system-requirements.html">Yocto Project Reference Manual — System Requirements</a>。数値・対応バージョンはリリースごとに変わるため、使うリリースのドキュメントを正とする。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Choosing · ①</p>
+  <h2>ディストリビューションの選択基準</h2>
+  <div class="cols cols-25">
+    <div class="stack">
+      <div class="steps">
+        <div class="step"><div class="no">1</div><div class="name">サポート対象か<br><span class="tag">最優先</span></div><div class="desc">使う Yocto リリースの <b>System Requirements</b> に載っているか。載っていないと、ホスト依存の不具合を踏んだときに切り分けができない。</div></div>
+        <div class="step"><div class="no">2</div><div class="name">サポート期間<br><span class="tag blue">運用</span></div><div class="desc">Yocto の LTS は約 4 年。ホスト OS の寿命が先に切れると途中で移行が要る。<b>LTS 同士を合わせる</b>。</div></div>
+        <div class="step"><div class="no">3</div><div class="name">CI と同じか<br><span class="tag blue">再現性</span></div><div class="desc">手元と CI でディストロが違うと、ホストツール差で再現しない差分に悩む。<b>CI のイメージに合わせる</b>のが安全。</div></div>
+        <div class="step"><div class="no">4</div><div class="name">情報量<br><span class="tag green">実利</span></div><div class="desc">エラーで検索したときの事例の多さ。Ubuntu &gt; Debian / Fedora &gt; その他、という現実がある。</div></div>
+        <div class="step"><div class="no">5</div><div class="name">組織の制約<br><span class="tag amber">政治</span></div><div class="desc">社内標準やサポート契約で RHEL 系しか使えない場合は AlmaLinux / Rocky で合わせる。</div></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel yo">
+        <h3>推奨：Ubuntu の LTS（Server）</h3>
+        <p class="small">上の 5 基準をまとめて満たす。<b>デスクトップ環境は不要</b>（<code>runqemu</code> のグラフィカル確認をするときだけ、あとから軽量 WM を入れれば足りる）。新しすぎる非 LTS 版は、サポート対象から外れていることが多いので避ける。</p>
+      </div>
+      <div class="panel blue">
+        <h3>「サポート対象」はどこで確認するか</h3>
+        <ul class="small">
+          <li>公式マニュアルの <b>Supported Linux Distributions</b> の節（リリースごとにページがある）。</li>
+          <li>Poky の中の <code>meta-poky/conf/distro/poky.conf</code> にある <b><code>SANITY_TESTED_DISTROS</code></b> 変数。実際に sanity チェックが参照する一覧なので、これが実質の正本。</li>
+        </ul>
+      </div>
+      <div class="term sm"><span class="c"># 対象外だと最初のビルドでこう警告される</span>
+WARNING: Host distribution <span class="s">"ubuntu-25.10"</span> has not
+been validated with this version of the build system;
+you may possibly experience unexpected failures.
+It is recommended that you use a tested distribution.</div>
+      <p class="xs muted">警告であってエラーではないため<b>ビルドは進む</b>。だからこそ、数時間後に見慣れないエラーで落ちたときに原因の切り分けが難しくなる。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 5 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Choosing · ②</p>
+  <h2>サポート対象ディストロの例と、リリースとの対応</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <h3>5.0 LTS（scarthgap）系での対象例</h3>
+      <table class="tight small">
+        <tr><th>ディストロ</th><th>対象バージョンの例</th><th>備考</th></tr>
+        <tr><td class="nw"><b>Ubuntu</b></td><td class="nw">22.04 LTS / 24.04 LTS</td><td>事例が最も多い。既定の選択</td></tr>
+        <tr><td class="nw"><b>Debian</b></td><td class="nw">11 / 12</td><td>安定志向。Ubuntu とほぼ同じ手順</td></tr>
+        <tr><td class="nw"><b>Fedora</b></td><td class="nw">38 / 39 / 40</td><td>新しいツールチェーン。寿命が約 13 か月と短い</td></tr>
+        <tr><td class="nw"><b>AlmaLinux</b></td><td class="nw">8.x / 9.x</td><td>RHEL 互換。EPEL の追加が要る</td></tr>
+        <tr><td class="nw"><b>openSUSE Leap</b></td><td class="nw">15.4 / 15.5</td><td>パッケージ名がやや異なる</td></tr>
+      </table>
+      <p class="xs muted">この表は<b>あくまで例</b>。対象バージョンはリリースごとに増減する（新しい Yocto では古いディストロが外れ、新しいディストロが入る）。<b>必ず使うリリースのドキュメントか <code>SANITY_TESTED_DISTROS</code> を見る。</b></p>
+    </div>
+    <div class="stack">
+      <div class="panel amber">
+        <h3>Yocto のリリースとホスト OS の寿命を合わせる</h3>
+        <p class="small">Yocto は年 2 回（4 月・10 月）リリースし、<b>2 年に一度が LTS</b>（例：5.0 “scarthgap”、2024-04）。LTS のサポートは約 4 年。ホストに Fedora のような短命ディストロを選ぶと、<b>製品の寿命の途中でホストだけ先に EOL</b> になる。</p>
+        <ul class="small">
+          <li>製品開発・長期保守 → <b>Yocto LTS × ディストロ LTS</b>（Ubuntu LTS / Debian / AlmaLinux）</li>
+          <li>調査・検証・最新追随 → 最新リリース × Fedora でも可</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>アーキテクチャ（x86_64 / aarch64）</h3>
+        <p class="small">ホストの CPU アーキテクチャは <b>x86_64 が主流</b>だが、<b>aarch64 ホストも公式に使える</b>（Apple Silicon の Linux VM、Ampere などの ARM サーバー）。Yocto は元々クロスコンパイルなので、aarch64 ホストから x86_64 向けイメージも作れる。</p>
+        <p class="xs muted">ただし aarch64 ホストは事例が少なく、prebuilt のホストツールや一部レイヤーが x86_64 前提のことがある。また、作った x86_64 バイナリをホスト上でそのまま実行できないため、<code>runqemu</code> などでの動作確認方法が変わる。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Choosing · ③</p>
+  <h2>候補の比較 — どれを選んでも動くが、性格が違う</h2>
+  <table class="tight">
+    <tr><th class="nw">ディストロ</th><th>向いている場面</th><th>利点</th><th>注意点</th></tr>
+    <tr>
+      <td class="nw"><b>Ubuntu LTS</b> <span class="tag green">既定</span></td>
+      <td>ほぼすべての用途。個人の学習から製品開発まで</td>
+      <td>事例・記事・公式例が最も多い。5 年サポート。VM イメージやクラウド AMI も豊富</td>
+      <td>Server 版を使う。非 LTS 版と最新すぎる LTS は対象外の期間がある</td>
+    </tr>
+    <tr>
+      <td class="nw"><b>Debian</b></td>
+      <td>長期安定・サーバー運用に寄せたい場合</td>
+      <td>枯れている。パッケージ名は Ubuntu とほぼ同じで手順を流用できる</td>
+      <td>ツールが古めで、新しい Yocto では最低バージョンに届かないことがある</td>
+    </tr>
+    <tr>
+      <td class="nw"><b>Fedora</b></td>
+      <td>最新のツールチェーンで検証したい場合</td>
+      <td>gcc・Python が新しい。上流の変化を先に踏める</td>
+      <td>サポート約 13 か月。頻繁な OS 更新でホスト差分が出やすい</td>
+    </tr>
+    <tr>
+      <td class="nw"><b>AlmaLinux / Rocky</b><br><span class="xs muted">（RHEL 互換）</span></td>
+      <td>社内標準が RHEL 系、サポート契約がある場合</td>
+      <td>10 年級の長期サポート。企業環境との親和性</td>
+      <td>EPEL の追加が必要。パッケージ名が Debian 系と大きく違う。事例が少ない</td>
+    </tr>
+    <tr>
+      <td class="nw"><b>openSUSE Leap</b></td>
+      <td>既に SUSE を使っている組織</td>
+      <td>サポート対象に入っている。YaST での管理</td>
+      <td>依存パッケージ名が独特。日本語の事例が少ない</td>
+    </tr>
+  </table>
+  <div class="cols cols-2">
+    <div class="panel yo">
+      <h3>比較の結論</h3>
+      <p class="small">「どれが速いか」はほぼ差がつかない（実体はクロスコンパイラを自前で作るため、<b>ホストのパッケージはほとんど成果物に影響しない</b>）。差が出るのは <b>トラブル時の情報量</b> と <b>サポート期間</b>。だから既定は Ubuntu LTS、制約があれば RHEL 系、という順で選ぶ。</p>
+    </div>
+    <div class="panel blue">
+      <h3>デスクトップ環境は入れるべきか</h3>
+      <p class="small">基本は不要。SSH 経由で使う Server 構成が軽くて速い。<code>runqemu</code> でグラフィカルに動作確認したくなったら、後から軽量デスクトップを足すか、<code>runqemu nographic</code> でシリアルコンソールだけ使う。GUI は<b>メモリとディスクを食う側</b>であることを忘れない。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 7 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Choosing · ④</p>
+  <h2>サポート対象外の環境をどう扱うか</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <table class="tight small">
+        <tr><th class="nw">環境</th><th>判定</th><th>扱い</th></tr>
+        <tr><td class="nw"><b>Arch / Gentoo</b></td><td><span class="tag amber">動くが対象外</span></td><td>ローリングリリースのため上流より新しいツールが入り、想定外の失敗が出やすい。本番のビルドホストには選ばない</td></tr>
+        <tr><td class="nw"><b>古い RHEL / CentOS 7</b></td><td><span class="tag red">要救済</span></td><td>git・Python が古く最低バージョンに届かない。<code>buildtools-extended-tarball</code> で補う（14 枚目）</td></tr>
+        <tr><td class="nw"><b>macOS</b></td><td><span class="tag red">不可</span></td><td>大文字小文字を区別しない既定 FS、BSD ツール、<code>pseudo</code> 未対応。Linux VM を立てる</td></tr>
+        <tr><td class="nw"><b>Windows 単体</b></td><td><span class="tag red">不可</span></td><td>WSL 2 に Ubuntu を入れて、その中で作業する（16 枚目）</td></tr>
+        <tr><td class="nw"><b>Docker / Podman</b></td><td><span class="tag blue">条件付き可</span></td><td>CROPS などのコンテナは公式にも案内されている。ただし<b>ビルドディレクトリを bind mount に置かない</b></td></tr>
+        <tr><td class="nw"><b>NAS / 共有ストレージ</b></td><td><span class="tag red">不可</span></td><td>拡張属性・ハードリンク・速度のいずれかで破綻する。<code>DL_DIR</code> の共有のみ、条件を確認したうえで検討</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="panel red">
+        <h3>「動いた」と「サポートされる」は別</h3>
+        <p class="small">対象外の環境でも最初のビルドは通ることが多い。問題は<b>数時間走ったあとに、レシピ側ではなくホスト側の理由で落ちたとき</b>。原因の切り分けにサポート対象ホストでの再現が必要になり、結局そこで環境を作り直すことになる。最初から対象環境で始めるほうが速い。</p>
+      </div>
+      <div class="panel green">
+        <h3>どうしても手元の環境を変えられないとき</h3>
+        <ul class="small">
+          <li><b>VM を立てる</b>：もっとも確実。スナップショットで失敗から戻せる（8 枚目）。</li>
+          <li><b>コンテナを使う</b>：ホストを汚さない。ただしビルド領域は名前付きボリュームかコンテナ内のパスに置く。</li>
+          <li><b>クラウドに 1 台立てる</b>：ディスクとコアを金で買える。CI と同じイメージを使えば再現性も上がる。</li>
+        </ul>
+      </div>
+      <p class="xs muted">いずれの場合も「サポート対象ディストロが動く Linux カーネル上の、ローカルの ext4」という条件に帰着させるのが目的。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 8 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Form factor</p>
+  <h2>設置形態を選ぶ — ベアメタル / VM / クラウド / コンテナ</h2>
+  <table class="tight">
+    <tr><th class="nw">形態</th><th>速度</th><th>向いている人</th><th>利点</th><th>注意点</th></tr>
+    <tr><td class="nw"><b>ベアメタル</b><br><span class="xs muted">PC に直接インストール</span></td><td class="nw"><span class="tag green">最速</span></td><td>専用機を用意できる。毎日ビルドする</td><td>I/O・CPU をフルに使える。余計な層がない</td><td>機材が要る。環境を壊すと作り直しが重い</td></tr>
+    <tr><td class="nw"><b>VM</b><br><span class="xs muted">VMware / UTM / VirtualBox / KVM</span></td><td class="nw"><span class="tag">やや遅い</span></td><td>普段は macOS / Windows。学習・検証</td><td><b>スナップショット</b>で失敗から戻せる。ホストを汚さない</td><td>仮想ディスクを大きく取る。<b>共有フォルダ上でビルドしない</b></td></tr>
+    <tr><td class="nw"><b>クラウド</b><br><span class="xs muted">EC2 等の大きめインスタンス</span></td><td class="nw"><span class="tag green">速い</span></td><td>たまに大量に回す。チームで共有する</td><td>コアとディスクを必要なときだけ買える。CI と揃えやすい</td><td>費用。<code>DL_DIR</code>/sstate を消すと毎回取り直しになる</td></tr>
+    <tr><td class="nw"><b>コンテナ</b><br><span class="xs muted">CROPS / 自作イメージ</span></td><td class="nw"><span class="tag">条件付き</span></td><td>CI。ホスト OS を固定したい</td><td>ホスト環境の差をなくせる。再現性が高い</td><td><b>bind mount 上にビルドしない</b>（遅い・xattr の問題）</td></tr>
+    <tr><td class="nw"><b>WSL 2</b><br><span class="xs muted">Windows 上の Linux</span></td><td class="nw"><span class="tag amber">遅め</span></td><td>Windows しか使えない</td><td>Windows のまま Linux 環境が持てる</td><td><code>/mnt/c</code> では絶対にビルドしない。ディスク拡張に手当てが要る</td></tr>
+  </table>
+  <div class="cols cols-3">
+    <div class="panel yo"><h3>学習・個人</h3><p class="small"><b>VM が第一候補。</b>ディスク 200 GB 以上の仮想ディスクを切り、Ubuntu Server LTS を入れる。うまくいった時点でスナップショットを取っておくと、実験で壊しても数十秒で戻せる。</p></div>
+    <div class="panel blue"><h3>チーム・製品開発</h3><p class="small"><b>ベアメタルかクラウドの共有ビルドマシン。</b><code>DL_DIR</code> と <code>SSTATE_DIR</code> を共有し、CI と同じディストロ・同じ Yocto リリースで揃える。個人機はそこから sstate を引く構成にすると速い。</p></div>
+    <div class="panel green"><h3>CI</h3><p class="small"><b>コンテナ。</b>ディストロとホストツールをイメージに固定し、sstate と downloads は永続ボリュームで外に出す。ビルド作業ディレクトリはコンテナ内（またはボリューム）に置く。</p></div>
+  </div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Sizing</p>
+  <h2>ディスクとパーティションの設計 — ここが一番はまる</h2>
+  <div class="cols cols-25">
+    <div class="stack">
+      <h3>容量の内訳（目安）</h3>
+      <table class="tight small">
+        <tr><th>ディレクトリ</th><th class="nw">目安</th><th>性質</th></tr>
+        <tr><td class="nw"><code>build/tmp</code></td><td class="nw">50〜150 GB</td><td>作業領域。機種・イメージごとに増える。消せる</td></tr>
+        <tr><td class="nw"><code>downloads</code><br><span class="xs muted">DL_DIR</span></td><td class="nw">10〜30 GB</td><td>取得したソース。<b>全ビルドで共有する</b>。消すと再取得</td></tr>
+        <tr><td class="nw"><code>sstate-cache</code><br><span class="xs muted">SSTATE_DIR</span></td><td class="nw">20〜80 GB</td><td>タスク成果物のキャッシュ。<b>共有すると劇的に速い</b></td></tr>
+        <tr><td class="nw">poky 等の git</td><td class="nw">2〜5 GB</td><td>レイヤーのソースツリー</td></tr>
+      </table>
+      <p class="xs muted">1 機種 1 イメージなら 100 GB 前後で収まるが、機種を増やす・GUI 付きイメージを作る・複数ブランチを並行させると簡単に 300 GB を超える。<b>ディスクは後から足すより最初に多く取るほうが安い。</b></p>
+      <div class="panel red">
+        <h3>ビルド中にディスクが尽きると</h3>
+        <p class="small">数時間分のタスクがまとめて失敗し、中途半端な <code>tmp</code> が残る。BitBake には <code>BB_DISKMON_DIRS</code> で<b>空き容量が減ったら一時停止・中断する</b>仕組みがあるので、共有マシンでは設定しておく。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <h3>パーティション方針</h3>
+      <div class="panel green">
+        <ul class="small">
+          <li><b>ファイルシステムは ext4</b>。既定でよい。<code>/home</code> を大きく取り、その下で作業する。</li>
+          <li><b>LVM にしておく</b>と、あとからディスクを足して論理ボリュームを拡張できる（VM でもクラウドでも効く）。</li>
+          <li><b>スワップ 8〜16 GB</b>。リンク時に数 GB 使うレシピがあり、OOM でビルドが飛ぶのを防ぐ。</li>
+          <li><b>SSD / NVMe</b> を使う。Yocto のビルドは小さなファイルの大量 I/O で、HDD では桁で遅くなる。</li>
+          <li><code>/tmp</code> が tmpfs でメモリを圧迫する構成なら、<code>TMPDIR</code> は作業ディスク側に置く。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>btrfs / ZFS を使う場合</h3>
+        <p class="small">動作はするが、<b>COW とスナップショットで実使用量が読みにくくなる</b>。圧縮が効くぶん得に見えて、削除しても空きが戻らず苦しむことがある。素直に ext4 を勧める。</p>
+      </div>
+      <div class="term sm"><span class="c"># 作業ツリーはローカルの ext4 の上に置く</span>
+<span class="k">$</span> df -hT /home/yocto
+/dev/mapper/vg0-home <span class="n">ext4</span> 400G 18G 362G 5% /home
+<span class="c"># 共有フォルダ・ネットワークドライブは失格</span>
+<span class="k">$</span> df -T /mnt/hgfs/work
+/mnt/hgfs/work  <span class="s">fuse.vmhgfs</span>  <span class="d">← ここでビルドしない</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Install · ①</p>
+  <h2>インストール手順 ① — メディア作成からインストーラまで</h2>
+  <div class="cols cols-52">
+    <div class="steps">
+      <div class="step"><div class="no">1</div><div class="name">ISO を取得して検証<br><span class="tag">10 分</span></div><div class="desc">Ubuntu Server LTS の ISO を公式サイトから取得し、<b>SHA256 と署名を確認</b>する。ビルドホストは成果物の信頼の起点になる。</div></div>
+      <div class="step"><div class="no">2</div><div class="name">起動メディアを作る<br><span class="tag">5 分</span></div><div class="desc">USB メモリに書き込む（<code>dd</code> 等）。VM ならこの手順は不要で、ISO を仮想 CD に接続する。</div></div>
+      <div class="step"><div class="no">3</div><div class="name">インストーラを起動<br><span class="tag blue">選択</span></div><div class="desc">言語は <b>English</b>、キーボードは実機に合わせる。日本語にするとログが日本語化され検索しづらい。</div></div>
+      <div class="step"><div class="no">4</div><div class="name">ネットワーク設定<br><span class="tag blue">選択</span></div><div class="desc">DHCP でよい。固定 IP にするなら SSH 用のホスト名・IP をここで決める。<b>プロキシがあるならここで入力</b>。</div></div>
+      <div class="step"><div class="no">5</div><div class="name">ストレージ<br><span class="tag amber">重要</span></div><div class="desc"><b>LVM あり・ext4</b>。既定では論理ボリュームがディスク全量にならないことがあるので<b>最大まで広げる</b>。暗号化は必要なときだけ。</div></div>
+      <div class="step"><div class="no">6</div><div class="name">ユーザーと SSH<br><span class="tag green">必須</span></div><div class="desc">作業用の<b>一般ユーザー</b>を作る（root で作業しない）。<b>OpenSSH を有効</b>にすれば以後は手元の端末から使える。追加パッケージは選ばない。</div></div>
+    </div>
+    <div class="stack">
+      <div class="panel yo">
+        <h3>最小構成で入れる</h3>
+        <p class="small">Ubuntu Server のインストーラには「minimized install」に相当する選択肢がある。ビルドホストに要るのは <b>ビルドツールとディスク</b> だけなので、デスクトップ環境・オフィス系・不要なサービスは入れない。速く、壊れにくく、更新も軽い。</p>
+      </div>
+      <div class="panel blue">
+        <h3>VM の場合の設定値</h3>
+        <table class="tight small">
+          <tr><td class="nw"><b>vCPU</b></td><td>物理コアの 1/2〜3/4（Yocto は全コアを使い切る）</td></tr>
+          <tr><td class="nw"><b>メモリ</b></td><td>最低 8 GB、16 GB 以上推奨</td></tr>
+          <tr><td class="nw"><b>ディスク</b></td><td>200 GB 以上。<b>事前割り当て</b>にすると断片化が減る</td></tr>
+          <tr><td class="nw"><b>共有フォルダ</b></td><td>使ってもよいが、<b>ビルドディレクトリは置かない</b></td></tr>
+        </table>
+      </div>
+      <p class="xs muted">Apple Silicon の Mac では VM は aarch64 になる。Ubuntu Server の <b>arm64 版 ISO</b> を使うこと（x86_64 の ISO は起動しない）。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Install · ②</p>
+  <h2>インストール手順 ② — 初回起動後の初期設定</h2>
+  <div class="cols cols-2">
+    <div class="term"><span class="c"># 1. まず更新して再起動</span>
+<span class="k">$</span> sudo apt update &amp;&amp; sudo apt full-upgrade -y
+<span class="k">$</span> sudo reboot
+
+<span class="c"># 2. ロケール（UTF-8 は Yocto の前提条件）</span>
+<span class="k">$</span> sudo locale-gen en_US.UTF-8
+<span class="k">$</span> sudo update-locale LANG=en_US.UTF-8
+<span class="k">$</span> locale | head -2
+LANG=en_US.UTF-8
+LANGUAGE=
+
+<span class="c"># 3. ホスト名・時刻（時刻ずれは sstate の事故のもと）</span>
+<span class="k">$</span> sudo hostnamectl set-hostname yocto-build
+<span class="k">$</span> sudo timedatectl set-timezone Asia/Tokyo
+<span class="k">$</span> timedatectl | grep -E <span class="s">'synchronized|Time zone'</span>
+
+<span class="c"># 4. git の最低限の設定（devtool / patch で使う）</span>
+<span class="k">$</span> git config --global user.name <span class="s">"Your Name"</span>
+<span class="k">$</span> git config --global user.email <span class="s">"you@example.com"</span>
+
+<span class="c"># 5. 作業ディレクトリ（短い ASCII パス・ローカル FS）</span>
+<span class="k">$</span> mkdir -p ~/yocto &amp;&amp; cd ~/yocto</div>
+    <div class="stack">
+      <div class="panel green">
+        <h3>忘れやすい設定</h3>
+        <ul class="small">
+          <li><b>スリープ・サスペンドを止める</b>：長時間ビルド中にホストが寝ると SSH が切れてビルドが死ぬ。<code>systemctl mask sleep.target suspend.target</code> など。ノート PC では蓋を閉じたときの挙動も変える。</li>
+          <li><b>自動更新の扱いを決める</b>：<code>unattended-upgrades</code> がビルド中に走ると I/O を持っていかれ、再起動要求も出る。共有ビルドマシンでは<b>更新の時間帯を管理する</b>。</li>
+          <li><b>SSH 公開鍵を置く</b>：パスワード認証は切る。以後の作業は手元の端末からで済む。</li>
+          <li><b>スワップの確認</b>：<code>free -h</code>。足りなければスワップファイルを追加する。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>プロキシ配下の場合</h3>
+        <p class="small">社内プロキシがあるなら <b>3 か所</b>に設定が要る。① シェル環境変数（<code>http_proxy</code> / <code>https_proxy</code> / <code>no_proxy</code>）② <code>apt</code> の設定 ③ <b>git・npm など取得ツール個別の設定</b>。Yocto はレシピごとに違うツールでソースを取りに行くため、環境変数だけでは通らないことがある。</p>
+        <p class="xs muted">どうしても通らない取得元は、先に <code>DL_DIR</code> へ手動で置いてしまう回避策もある。</p>
+      </div>
+      <p class="xs muted">ここまでが「OS として整える」段階。次の 12 枚目でビルドに必要なパッケージを入れる。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 12 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Install · ③</p>
+  <h2>ホスト依存パッケージを入れる</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="term sm"><span class="c"># Ubuntu / Debian（scarthgap 系での例）</span>
+<span class="k">$</span> sudo apt install \
+    gawk wget git diffstat unzip texinfo gcc \
+    build-essential chrpath socat cpio python3 \
+    python3-pip python3-pexpect xz-utils \
+    debianutils iputils-ping python3-git \
+    python3-jinja2 python3-subunit zstd \
+    liblz4-tool file locales libacl1
+
+<span class="c"># 動作確認（最低バージョンを満たしているか）</span>
+<span class="k">$</span> git --version; python3 --version; gcc --version | head -1
+git version <span class="n">2.43</span>.0
+Python <span class="n">3.12</span>.3
+gcc (Ubuntu <span class="n">13.3</span>.0-…) <span class="n">13.3</span>.0</div>
+      <p class="xs muted"><b>この一覧は例であり、正本は公式マニュアルの “Required Packages for the Build Host”。</b>Yocto のリリースごとに増減し、ディストロによって名前も変わる。使うリリースのページをそのままコピーして実行するのが確実。</p>
+    </div>
+    <div class="stack">
+      <h3>ディストロ別の要点</h3>
+      <table class="tight small">
+        <tr><th class="nw">ディストロ</th><th>コマンド</th><th>注意点</th></tr>
+        <tr><td class="nw"><b>Ubuntu / Debian</b></td><td class="nw"><code>apt install</code></td><td>上の一覧。Debian では <code>dpkg-reconfigure locales</code> でロケール生成</td></tr>
+        <tr><td class="nw"><b>Fedora</b></td><td class="nw"><code>dnf install</code></td><td>パッケージ名が別系統（<code>gcc-c++</code>、<code>perl-*</code>、<code>glibc-langpack-en</code> など）。一覧はマニュアル参照</td></tr>
+        <tr><td class="nw"><b>AlmaLinux / Rocky</b></td><td class="nw"><code>dnf install</code></td><td><b>先に EPEL を有効化</b>する。バージョン 8 系と 9 系で必要なパッケージが違う</td></tr>
+        <tr><td class="nw"><b>openSUSE Leap</b></td><td class="nw"><code>zypper install</code></td><td>独自のパッケージ名（<code>python3-Jinja2</code> など）</td></tr>
+      </table>
+      <div class="panel blue">
+        <h3>用途で追加が要るもの</h3>
+        <ul class="small">
+          <li><b>グラフィカルな <code>runqemu</code></b>：SDL / Mesa 系の開発パッケージ。</li>
+          <li><b>ドキュメント生成</b>や <b>SDK のテスト</b>：追加の Python パッケージ。</li>
+          <li><b>NFS ブート</b>・<b>TFTP</b> で実機を動かすなら、それぞれのサーバー。</li>
+        </ul>
+        <p class="xs muted">必要になってから足せばよい。まずは最小一覧で <code>core-image-minimal</code> を通す。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Rescue</p>
+  <h2>ホストのツールが古いとき — buildtools-tarball</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel yo">
+        <h3>何を解決するものか</h3>
+        <p class="small">Yocto は git・tar・Python 3・make・gcc に<b>最低バージョン</b>を要求する。社内標準の古い RHEL 系ディストロなどでは、これらが要求を満たさず最初のビルドで止まる。OS を入れ替えられないとき、<b>Yocto が用意した新しいホストツール一式を、ホストを汚さずに被せる</b>のが buildtools。</p>
+        <ul class="small">
+          <li><b><code>buildtools-tarball</code></b> — git・Python・tar などの基本ツール一式。</li>
+          <li><b><code>buildtools-extended-tarball</code></b> — 上記に加えて<b>新しい gcc</b> を含む。ホストのコンパイラが古すぎる場合はこちら。</li>
+        </ul>
+      </div>
+      <div class="panel blue">
+        <h3>使い方の形</h3>
+        <p class="small">インストーラを実行して展開し、<b>シェルごとに環境設定スクリプトを <code>source</code></b> する。<code>PATH</code> の先頭に新しいツールが入るので、以後の <code>bitbake</code> はそちらを使う。ターミナルを開き直すたびに <code>source</code> が要る点に注意（<code>oe-init-build-env</code> の前に実行する）。</p>
+      </div>
+      <p class="xs muted">あくまで<b>ホストツールの下駄</b>であり、「サポート対象外ディストロをサポート対象にする」ものではない。可能なら素直に対象ディストロを使う。</p>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># poky 同梱のスクリプトで取得・導入できる</span>
+<span class="k">$</span> cd ~/yocto/poky
+<span class="k">$</span> scripts/install-buildtools --help
+<span class="k">$</span> scripts/install-buildtools \
+      --base-url <span class="s">https://downloads.yoctoproject.org/releases/yocto</span> \
+      --release yocto-5.0 -d ~/yocto/buildtools
+
+<span class="c"># 使うときは毎回 source する</span>
+<span class="k">$</span> <span class="k">source</span> ~/yocto/buildtools/environment-setup-*
+<span class="k">$</span> git --version   <span class="c"># 新しい git が先に見える</span>
+git version <span class="n">2.44</span>.0
+
+<span class="c"># そのうえで通常どおり</span>
+<span class="k">$</span> <span class="k">source</span> ~/yocto/poky/oe-init-build-env
+<span class="k">$</span> bitbake core-image-minimal</div>
+      <p class="xs muted">オプション名・URL・利用できるリリースはバージョンで変わる。<code>--help</code> と公式マニュアルの “Required Git, tar, Python, make and gcc Versions” の節を確認する。tarball は公式のダウンロードサイトから直接取得することもでき、自分で <code>bitbake buildtools-tarball</code> して作ることもできる。</p>
+      <div class="panel green">
+        <h3>判断の目安</h3>
+        <p class="small">最初のビルドで <b>「git/Python/gcc のバージョンが古い」と明示的に言われた</b>ときだけ使う。それ以外のエラーを buildtools で直そうとしないこと（原因が別のところにある）。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Per-environment · ①</p>
+  <h2>VM に作る場合の追加手順</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel yo">
+        <h3>VM ならではの利点を活かす</h3>
+        <ul class="small">
+          <li><b>スナップショット</b>を段階ごとに取る：「OS 入れ終わり」「依存パッケージ導入済み」「最初のビルド成功」。実験で壊しても即戻せる。</li>
+          <li><b>テンプレート化</b>：完成した VM を複製すれば、チームの他メンバーに同じ環境を配れる。</li>
+          <li><b>ホストを汚さない</b>：macOS / Windows 側の環境はそのまま。</li>
+        </ul>
+      </div>
+      <div class="panel red">
+        <h3>VM で必ず踏む落とし穴</h3>
+        <ul class="small">
+          <li><b>共有フォルダの上でビルドしない。</b>大文字小文字を区別せず、拡張属性も怪しく、そして遅い。作業ツリーは必ず<b>仮想ディスクの中</b>に置く。</li>
+          <li><b>ディスクが足りなくなる。</b>仮想ディスクを広げても<b>ゲスト側のパーティションと LV と FS を順に広げる</b>必要がある（<code>growpart</code> → <code>lvextend</code> → <code>resize2fs</code>）。最初から大きく取るほうが楽。</li>
+          <li><b>ホストがスリープする。</b>長時間ビルド中に母艦が寝ると VM も止まる。macOS なら <code>caffeinate -i</code>、Windows なら電源プランを変更する。</li>
+          <li><b>サスペンド復帰後の時刻ずれ。</b>ゲストの時刻が飛ぶとビルドの整合性チェックが荒れる。ゲスト用ツール（VMware Tools 等）を入れて時刻同期させる。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># 仮想ディスク拡張後、ゲスト側で広げる（LVM の例）</span>
+<span class="k">$</span> lsblk
+<span class="k">$</span> sudo growpart /dev/sda 3
+<span class="k">$</span> sudo pvresize /dev/sda3
+<span class="k">$</span> sudo lvextend -l +100%FREE /dev/vg0/home
+<span class="k">$</span> sudo resize2fs /dev/vg0/home
+<span class="k">$</span> df -h /home
+/dev/mapper/vg0-home  <span class="n">400G</span>  18G  <span class="n">362G</span>   5% /home</div>
+      <table class="tight small">
+        <tr><th>製品</th><th>備考</th></tr>
+        <tr><td class="nw"><b>VMware Fusion</b></td><td>Apple Silicon では arm64 ゲストのみ。Yocto はクロスコンパイルなので x86_64 向けイメージは作れる</td></tr>
+        <tr><td class="nw"><b>UTM</b></td><td>macOS 向け。QEMU ベース。arm64 ゲストなら実用速度</td></tr>
+        <tr><td class="nw"><b>VirtualBox</b></td><td>x86_64 ホスト向け。I/O が遅めなので仮想ディスクの設定に注意</td></tr>
+        <tr><td class="nw"><b>KVM / libvirt</b></td><td>Linux ホスト上なら最速。ビルドサーバーの分割に向く</td></tr>
+      </table>
+      <p class="xs muted">要は「arm64 でも x86_64 でもよいので、サポート対象の Linux が動き、大きなローカル ext4 を持てる VM」であればよい。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 15 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Per-environment · ②</p>
+  <h2>WSL 2 とコンテナに作る場合</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <h3>WSL 2（Windows しか使えないとき）</h3>
+      <div class="panel blue">
+        <ul class="small">
+          <li><code>wsl --install -d Ubuntu-24.04</code> のようにサポート対象のディストロを入れる。<b>WSL 1 ではなく 2</b> であることを確認する（<code>wsl -l -v</code>）。</li>
+          <li><b>作業ツリーは Linux 側のファイルシステム（<code>~/</code>）に置く。</b><code>/mnt/c</code> 以下は Windows の NTFS で、大文字小文字と速度の両方で破綻する。</li>
+          <li><code>%UserProfile%\.wslconfig</code> で <b>メモリ・CPU 数・スワップ</b>を割り当てる。既定のままだとメモリ不足でリンクが失敗しやすい。</li>
+          <li>仮想ディスク（<code>ext4.vhdx</code>）は<b>自動で伸びるが上限がある</b>。大きなビルドをするなら上限と空き容量を事前に確認する（拡張手順は WSL のバージョンで異なる）。</li>
+          <li>ファイルを消しても Windows 側の空き容量はすぐには戻らない。定期的な整理が要る。</li>
+          <li><code>/etc/wsl.conf</code> で systemd を有効にすると、サービス前提の手順がそのまま使える。</li>
+        </ul>
+      </div>
+      <p class="xs muted">WSL 2 は実体が軽量 VM。ここまでの VM 向けの注意（ディスク・共有先・スリープ）はそのまま当てはまる。</p>
+    </div>
+    <div class="stack">
+      <h3>コンテナ（CI・ホストを固定したいとき）</h3>
+      <div class="panel green">
+        <ul class="small">
+          <li>Yocto Project は <b>CROPS</b>（<code>crops/poky</code>）というコンテナイメージを公開しており、公式ドキュメントでも Windows / macOS からの利用手段として案内されている。</li>
+          <li><b>ビルドディレクトリを bind mount に置かない。</b>ホスト側 FS の性質（xattr・大文字小文字）とオーバーヘッドがそのまま効く。<b>名前付きボリューム</b>かコンテナ内のパスを使う。</li>
+          <li><code>DL_DIR</code> と <code>SSTATE_DIR</code> は永続ボリュームにして、コンテナを作り直しても失わないようにする。</li>
+          <li><b>root で走らせない。</b>ホストと UID を合わせた一般ユーザーで実行する。</li>
+          <li>自作イメージにするなら、ディストロのバージョンとホスト依存パッケージを Dockerfile に固定する。これが再現性の要になる。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>特権の要否</h3>
+        <p class="small">通常のビルドに特権は不要（<code>pseudo</code> が root 権限なしで rootfs の所有者情報を扱う）。特権が要るのは、ビルド後に <code>runqemu</code> でネットワークを張るなど<b>周辺の作業</b>。「とりあえず <code>--privileged</code>」は避ける。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 16 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Verify</p>
+  <h2>動作確認 — <code>core-image-minimal</code> を 1 回通す</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm"><span class="c"># 一般ユーザーで実行する（root では拒否される）</span>
+<span class="k">$</span> cd ~/yocto
+<span class="k">$</span> git clone -b scarthgap git://git.yoctoproject.org/poky
+<span class="k">$</span> <span class="k">source</span> poky/oe-init-build-env
+<span class="c"># → build/ が作られ、そこへ移動した状態になる</span>
+
+<span class="k">$</span> bitbake core-image-minimal
+Loading cache: 100% |####################|
+Parsing recipes: 100% |##################|
+<span class="d">Build Configuration:</span>
+<span class="d">BB_VERSION  = "2.8.0"</span>
+<span class="d">BUILD_SYS   = "x86_64-linux"</span>
+<span class="d">MACHINE     = "qemux86-64"</span>
+<span class="d">DISTRO      = "poky"</span>
+Initialising tasks: 100% |###############|
+<span class="d">NOTE: Tasks Summary: Attempted </span><span class="n">2841</span><span class="d"> tasks …</span>
+
+<span class="c"># 動かしてみる（GUI 不要ならシリアルだけ）</span>
+<span class="k">$</span> runqemu qemux86-64 nographic</div>
+      <p class="xs muted">初回は<b>1〜4 時間</b>かかる（ツールチェーンを一から作るため）。ここが通れば、ホストとしての要件はほぼ満たせている。2 回目以降は sstate が効いて劇的に速い。</p>
+    </div>
+    <div class="stack">
+      <h3>よく出るエラーと原因</h3>
+      <table class="tight small">
+        <tr><th>症状</th><th>原因と対処</th></tr>
+        <tr><td class="nw">root で実行するなと言われる</td><td>一般ユーザーで実行する。<code>sudo bitbake</code> は誤り</td></tr>
+        <tr><td class="nw">missing utilities として<br>コマンド名が並ぶ</td><td>ホスト依存パッケージの入れ忘れ。12 枚目の一覧を再確認</td></tr>
+        <tr><td class="nw">ロケール／エンコーディングの<br>エラー</td><td>UTF-8 ロケール未生成。<code>locale-gen</code> をやり直す</td></tr>
+        <tr><td class="nw"><code>No space left on device</code></td><td>ディスク不足。<code>tmp</code> は消して作り直せる。根本は容量設計</td></tr>
+        <tr><td class="nw"><code>do_fetch</code> の失敗</td><td>ネットワーク・プロキシ・DNS。<code>git://</code> が塞がれている社内網もある</td></tr>
+        <tr><td class="nw"><code>pseudo</code> 関連の異常終了</td><td>置き場所が不適切（共有フォルダ・NTFS・ネットワーク FS）。ローカル ext4 へ移す</td></tr>
+        <tr><td class="nw">ホストディストロが未検証<br>という警告</td><td>対象外ディストロ。動きはするが、以後の切り分けが難しくなる</td></tr>
+      </table>
+      <p class="xs muted">BitBake は起動時に <b>sanity チェック</b>でホスト環境を検証する（必要なコマンドの有無、ディストロ、ロケール、パス、<code>TMPDIR</code> の移動など）。<b>最初のエラーメッセージを最後まで読む</b>のが最短路で、たいていそこに対処がそのまま書いてある。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 17 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Operations</p>
+  <h2>ビルドホストの運用とチューニング</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="term sm"><span class="c"># build/conf/local.conf の要点</span>
+<span class="c"># 並列度（既定はコア数。メモリが足りなければ下げる）</span>
+BB_NUMBER_THREADS ?= <span class="s">"8"</span>
+PARALLEL_MAKE     ?= <span class="s">"-j 8"</span>
+
+<span class="c"># 取得物とキャッシュはビルドディレクトリの外へ出して共有</span>
+DL_DIR     ?= <span class="s">"${HOME}/yocto/downloads"</span>
+SSTATE_DIR ?= <span class="s">"${HOME}/yocto/sstate-cache"</span>
+
+<span class="c"># ディスクが厳しいなら作業ディレクトリを都度削除</span>
+INHERIT += <span class="s">"rm_work"</span>
+
+<span class="c"># 空きが減ったら停止させる（事故防止）</span>
+BB_DISKMON_DIRS ??= <span class="s">"\
+    STOPTASKS,${TMPDIR},1G,100K \
+    HALT,${TMPDIR},100M,1K"</span></div>
+      <p class="xs muted"><code>HALT</code> は新しめのリリースでの指定。古いリリースでは <code>ABORT</code> という名前だった。変数名・既定値はリリースで変わるので Variables Glossary を確認する。</p>
+    </div>
+    <div class="stack">
+      <div class="panel green">
+        <h3>消してよいもの・だめなもの</h3>
+        <table class="tight small">
+          <tr><td class="nw"><code>build/tmp</code></td><td><span class="tag green">消せる</span> 作り直せる。容量の大半はここ</td></tr>
+          <tr><td class="nw"><code>sstate-cache</code></td><td><span class="tag amber">消せる</span> ただし次が遅くなる。古い物だけ整理する</td></tr>
+          <tr><td class="nw"><code>downloads</code></td><td><span class="tag amber">消さない</span> 上流が消えたソースは二度と取れないことがある</td></tr>
+          <tr><td class="nw">レイヤーの git</td><td><span class="tag red">消さない</span> 自作レイヤーは<b>バックアップ対象</b></td></tr>
+        </table>
+      </div>
+      <div class="panel blue">
+        <h3>速くするための順番</h3>
+        <ol class="small">
+          <li><b>SSD にする</b>（HDD なら他の何よりこれが効く）</li>
+          <li><b><code>DL_DIR</code> と <code>SSTATE_DIR</code> を共有する</b>（複数ブランチ・複数機種で再利用）</li>
+          <li><b>メモリを足す</b>（並列度を上げてもスワップしない）</li>
+          <li><b>コアを増やす</b>（並列タスク数がそのまま効く）</li>
+        </ol>
+        <p class="xs muted">チームで使うなら、共有 sstate をネットワーク越しに配る仕組み（HTTP 公開など）を用意すると、各自の初回ビルドが大幅に短くなる。</p>
+      </div>
+      <p class="xs muted">ホストの OS 更新は<b>ビルドしていない時間帯に計画的に</b>。ツールチェーンの前提が変わると、再現ビルドの結果が変わり得る。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 18 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Wrap-up</p>
+  <h2>まとめ — 構築チェックリストと参考資料</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel yo">
+        <h3>構築チェックリスト</h3>
+        <ul class="small">
+          <li>使う Yocto リリースを決め、その<b>サポート対象ディストロ</b>から選んだ（既定：Ubuntu LTS）</li>
+          <li>ディスクは <b>200 GB 以上</b>、<b>ローカルの ext4</b>、LVM で後から拡張できる</li>
+          <li>メモリ 16 GB 以上＋スワップ、SSD、コア数に見合った並列度</li>
+          <li>作業パスは短い ASCII（<code>~/yocto</code>）。共有フォルダ・ネットワーク FS 上ではない</li>
+          <li><b>UTF-8 ロケール</b>を生成した／<b>一般ユーザー</b>で作業する</li>
+          <li>ホスト依存パッケージを公式一覧どおりに導入した</li>
+          <li>時刻同期・スリープ抑止・プロキシ設定を済ませた</li>
+          <li><code>core-image-minimal</code> が通り、<code>runqemu</code> で起動を確認した</li>
+          <li><code>DL_DIR</code> / <code>SSTATE_DIR</code> をビルドディレクトリの外に出した</li>
+          <li>（VM なら）ここまでの状態で<b>スナップショット</b>を取った</li>
+        </ul>
+      </div>
+      <p class="xs muted">この 10 項目が埋まっていれば、以後の失敗は「ホストのせい」ではなくレシピとレイヤーの問題として切り分けられる。それが、ビルドホストを丁寧に作る目的。</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><a href="https://docs.yoctoproject.org/ref-manual/system-requirements.html">Reference Manual — System Requirements</a> — サポート対象ディストロ、必要ディスク容量、<b>Required Packages for the Build Host</b>、ホストツールの最低バージョン。本資料の正本</li>
+        <li><a href="https://docs.yoctoproject.org/brief-yoctoprojectqs/index.html">Yocto Project Quick Build</a> — 最短の導入手順。まずこれを 1 回通す</li>
+        <li><a href="https://docs.yoctoproject.org/ref-manual/variables.html">Variables Glossary</a> — <code>DL_DIR</code> / <code>SSTATE_DIR</code> / <code>BB_NUMBER_THREADS</code> / <code>BB_DISKMON_DIRS</code> の定義</li>
+        <li><a href="https://wiki.yoctoproject.org/wiki/Releases">Yocto Project Releases</a> — リリースとコードネーム、LTS のサポート期限。ホスト OS の寿命と突き合わせる</li>
+        <li><a href="https://docs.yoctoproject.org/dev-manual/start.html">Development Tasks Manual — Setting Up to Use ...</a> — WSL 2 / CROPS コンテナなど環境別の手順</li>
+        <li><a href="https://downloads.yoctoproject.org/releases/yocto/">downloads.yoctoproject.org</a> — 各リリースの成果物と <code>buildtools</code> の配布元</li>
+        <li><a href="https://ysksm.github.io/slides/yocto-intro/index.html#1">Yocto 入門（Issue #32）</a> — 本資料の本編。仕組み・イメージの作り分け・実務の型</li>
+      </ul>
+      <p class="xs muted">本スライドは 2026-09-15 時点の情報に基づく整理。対象ディストロ・必要パッケージ・容量の要件は<b>リリースごとに変わる</b>ため、実際に使うリリースの System Requirements を必ず確認すること。容量・時間の数値は環境依存の目安。</p>
+    </div>
+  </div>
+</section>
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷/PDF</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>
