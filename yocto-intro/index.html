@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yocto 入門 — macOS/VM で作る Raspberry Pi・ルーター・x86_64 の Linux イメージ</title>
+<meta name="description" content="Yocto Project で組み込み Linux ディストリビューションを作る入門スライド。macOS (Apple Silicon) + VMware Fusion のビルド環境づくりから、GUI あり/なしイメージ、Raspberry Pi、ルーター用、Intel NUC (x86_64) 向けイメージの作り分けまで">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F7F5F1;
+    --paper-2: #EDE9E1;
+    --ink: #1E1A15;
+    --ink-2: #4D463C;
+    --ink-3: #857C6F;
+    --rule: #D9D3C7;
+    --yo: #B4501A;          /* embedded orange */
+    --yo-soft: #F7E3D5;
+    --blue: #2B5FA8;        /* host / VM */
+    --blue-soft: #DCE6F5;
+    --green: #2E7D4F;       /* target / ok */
+    --green-soft: #D9EDE1;
+    --amber: #96700F;
+    --amber-soft: #F7E9C6;
+    --red: #A93B2C;
+    --red-soft: #F5DCD7;
+    --term: #17140F;
+    --term-ink: #E7E0D4;
+    --term-dim: #968C7B;
+    --term-key: #E8A15C;
+    --term-str: #9FC4E8;
+    --term-num: #E3C96B;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--term);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+  /* ---------- stage ---------- */
+  #stage { position: fixed; inset: 0; padding: 16px; }
+  /* deck はレイアウト上 1280x720 のまま transform で縮小する。グリッド/フレックスの
+     中央寄せはコンテナより大きい要素だと start 寄せに落ちてスライドが画面外に出るため、
+     ビューポート中央に絶対配置し、fit() が縮小後サイズの半分だけ戻す。 */
+  .deck {
+    width: 1280px; height: 720px;
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: 0 0;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 46px 64px 56px;
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 64px; bottom: 22px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "Yocto 入門 — 組み込み Linux ディストリビューションを自分で作る";
+    position: absolute; left: 64px; bottom: 22px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  /* ---------- type ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--yo); margin: 0;
+  }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 60px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 17px; margin: 0 0 5px; }
+  p { margin: 0; }
+  .lead { font-size: 18px; color: var(--ink-2); max-width: 50em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code, dd code {
+    background: var(--paper-2); padding: 1px 5px; border-radius: 4px; font-size: .9em;
+  }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 3px 0; }
+  li::marker { color: var(--yo); }
+  b, strong { font-weight: 600; }
+  a { color: var(--yo); text-decoration: none; border-bottom: 1px solid var(--yo-soft); }
+
+  /* ---------- layout helpers ---------- */
+  .cols { display: grid; gap: 22px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.15fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.25fr; }
+  .stack { display: flex; flex-direction: column; gap: 11px; min-height: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 13px 16px; }
+  .panel.yo { border-top: 3px solid var(--yo); }
+  .panel.blue { border-top: 3px solid var(--blue); }
+  .panel.green { border-top: 3px solid var(--green); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 999px; background: var(--yo-soft); color: var(--yo); vertical-align: middle;
+  }
+  .tag.blue { background: var(--blue-soft); color: var(--blue); }
+  .tag.green { background: var(--green-soft); color: var(--green); }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  ul.plusminus { list-style: none; padding-left: 1.4em; }
+  ul.plusminus li { text-indent: -1.4em; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--green); font-weight: 700; }
+  ul.plusminus li.bad::before { content: "△ "; color: var(--red); font-weight: 700; }
+
+  /* ---------- terminal ---------- */
+  .term {
+    background: var(--term); color: var(--term-ink); border-radius: 8px;
+    padding: 13px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
+    overflow: hidden; white-space: pre; tab-size: 2;
+  }
+  .term .k { color: var(--term-key); }
+  .term .s { color: var(--term-str); }
+  .term .n { color: var(--term-num); }
+  .term .d { color: var(--term-dim); }
+  .term .c { color: var(--term-dim); font-style: italic; }
+  .term.sm { font-size: 11.5px; line-height: 1.45; }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 4px 7px; }
+  .nw { white-space: nowrap; }
+
+  /* ---------- diagram ---------- */
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 9px; }
+  .box { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 11px 13px; font-size: 13.5px; }
+  .box .t { font-family: var(--display); font-weight: 700; font-size: 15px; margin-bottom: 3px; }
+  .box.yo { border-color: var(--yo); background: var(--yo-soft); }
+  .box.blue { border-color: var(--blue); background: var(--blue-soft); }
+  .box.green { border-color: var(--green); background: var(--green-soft); }
+  .arrow { font-family: var(--mono); color: var(--ink-3); font-size: 11.5px; text-align: center; line-height: 1.3; align-self: center; }
+  .arrow b { display: block; font-size: 17px; color: var(--yo); }
+
+  /* ---------- step flow ---------- */
+  .steps { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+  .step { display: grid; grid-template-columns: 40px 210px 1fr; gap: 12px; align-items: start;
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 8px 14px; }
+  .step .no { font-family: var(--display); font-weight: 900; font-size: 23px; color: var(--yo); line-height: 1.25; }
+  .step .name { font-family: var(--display); font-weight: 700; font-size: 15px; line-height: 1.4; }
+  .step .desc { font-size: 13px; color: var(--ink-2); }
+
+  /* ---------- layer stack ---------- */
+  .layers { display: flex; flex-direction: column; gap: 5px; }
+  .layer { border: 1px solid var(--rule); border-radius: 6px; padding: 7px 12px; background: #fff; font-size: 13.5px; display: flex; gap: 10px; align-items: baseline; }
+  .layer .nm { font-family: var(--mono); font-weight: 500; font-size: 13px; white-space: nowrap; }
+  .layer.core { background: var(--yo-soft); border-color: var(--yo); }
+  .layer.bsp { background: var(--blue-soft); border-color: var(--blue); }
+  .layer.app { background: var(--green-soft); border-color: var(--green); }
+
+  /* ---------- cover ---------- */
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 72px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; font-size: 66px; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 26px; }
+  .cover .frame {
+    position: absolute; right: 64px; top: 50px; width: 470px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--yo); padding-left: 16px;
+  }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); }
+
+  /* ---------- nav ---------- */
+  #hud {
+    position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7;
+  }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--yo); outline-offset: 2px; }
+
+  /* ---------- overview & print ---------- */
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────── -->
+<section class="slide cover">
+  <div class="frame"><span class="c"># Linux VM（Ubuntu / aarch64）の中で</span>
+<span class="k">$</span> git clone -b scarthgap git://git.yoctoproject.org/poky
+<span class="k">$</span> <span class="k">source</span> poky/oe-init-build-env
+<span class="k">$</span> <span class="k">echo</span> <span class="s">'MACHINE = "raspberrypi5"'</span> &gt;&gt; conf/local.conf
+<span class="k">$</span> bitbake core-image-base
+
+<span class="d">Initialising tasks: 100% |#########| Time: 0:00:12</span>
+<span class="d">NOTE: Executing Tasks</span>
+<span class="d">NOTE: Tasks Summary: Attempted </span><span class="n">4238</span><span class="d"> tasks of which …</span>
+
+<span class="c"># 成果物（そのまま SD カードへ書ける）</span>
+tmp/deploy/images/raspberrypi5/
+  core-image-base-raspberrypi5.rootfs.<span class="n">wic</span>.bz2</div>
+  <p class="eyebrow">Getting started · ysksm/slides</p>
+  <h1>Yocto 入門</h1>
+  <p class="lead">組み込み Linux ディストリビューションを「自分で作る」ための仕組みと、最初の一歩。macOS (Apple Silicon) + VMware Fusion でのビルド環境づくりから、GUI あり/なし・Raspberry Pi・ルーター用・Intel NUC (x86_64) の作り分けまで。</p>
+  <p class="meta"><span>2026-09-15</span><span>Yocto Project / Poky / BitBake / OpenEmbedded</span><span>Issue #32</span></p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Summary</p>
+  <h2>結論を先に：押さえるのは 3 つだけ</h2>
+  <div class="cols cols-3">
+    <div class="panel yo stack">
+      <h3>① Yocto は「ディストロを作る工場」 <span class="tag">考え方</span></h3>
+      <p class="small">Yocto は OS イメージそのものではなく、<b>ソースから OS を組み立てるビルドシステム</b>。<code>bitbake</code> が <b>レシピ</b>（何をどう作るか）を <b>レイヤー</b> 単位で読み、クロスコンパイルして root filesystem とブートイメージを出力する。</p>
+      <p class="xs muted">Raspberry Pi OS のような「配られた OS」を使うのではなく、必要な物だけを載せた OS を毎回生成する。</p>
+    </div>
+    <div class="panel blue stack">
+      <h3>② ビルドホストは Linux 必須 <span class="tag blue">環境</span></h3>
+      <p class="small">macOS では直接ビルドできない（大文字小文字を区別しないファイルシステム・GNU ツール前提）。<b>M4 Mac 上の VMware Fusion に Ubuntu を立てて、その中でビルドする</b>のが現実解。Fusion on Apple Silicon の VM は <b>arm64</b> だが、Yocto はクロスコンパイルなので x86_64 向けイメージも作れる。</p>
+      <p class="xs muted">要るのは CPU コア・メモリ・そして何より <b>ディスク（100〜250 GB）</b>。</p>
+    </div>
+    <div class="panel green stack">
+      <h3>③ 作り分けは 2 変数 + レイヤー <span class="tag green">応用</span></h3>
+      <p class="small">ターゲットの違いは <code>MACHINE</code>（Raspberry Pi / x86_64 …）、見た目と機能の違いは <b>イメージレシピ</b>（GUI なし / Weston / ルーター用）。BSP や機能はレイヤーを <code>bblayers.conf</code> に足すだけで増える。</p>
+      <p class="xs muted"><code>MACHINE</code> を変えても <b>sstate-cache と DL_DIR は共有</b> できるので、2 台目以降は劇的に速い。</p>
+    </div>
+  </div>
+  <p class="small muted">本スライドの流れ：<b>仕組み（3–5）→ M4 Mac + Fusion の環境構築（6–9）→ イメージの作り分け（10–14）→ 実務の型（15–19）</b>。</p>
+</section>
+
+<!-- 3 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">What it is</p>
+  <h2>Yocto Project とは何か — Poky・BitBake・OpenEmbedded</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <ul>
+        <li><b>Yocto Project</b>：Linux Foundation 傘下の、組み込み向け Linux ディストリビューションを<b>作るための</b>ツール・メタデータ・ドキュメントの集合体。2010 年開始。</li>
+        <li><b>BitBake</b>：タスク実行エンジン。<code>.bb</code> / <code>.bbappend</code> / <code>.bbclass</code> / <code>.conf</code> に書かれた依存関係を解決し、数千タスクを並列実行する。</li>
+        <li><b>OpenEmbedded-Core (oe-core)</b>：BitBake が読む<b>基礎レシピ群</b>。Yocto と OpenEmbedded が共同保守している共有レイヤー。</li>
+        <li><b>Poky</b>：上記をまとめた<b>リファレンス実装</b>。<code>bitbake</code> + <code>oe-core</code> + <code>meta-poky</code>（参照ディストロ）+ <code>meta-yocto-bsp</code>（参照 BSP）。入門はここから始める。</li>
+        <li>リリースは年 2 回（4 月・10 月）。長期利用には <b>LTS</b>（例：5.0 “Scarthgap”、2024-04 リリース）を選ぶ。コードネームでブランチを切るのが慣習。</li>
+      </ul>
+      <div class="panel amber">
+        <h3>「ディストロを作る」とは？</h3>
+        <p class="small">Debian / Raspberry Pi OS は<b>できあがった OS</b>を配る。Yocto は「<b>どの CPU 向けに、どのパッケージを、どの設定で、どのライセンスで</b>」を宣言すると、その通りの OS を毎回再現可能に生成する。だから<b>不要な物が入らない</b>し、<b>製品ごとに違う OS</b> を量産できる。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="layers">
+        <div class="layer app"><span class="nm">meta-myproduct</span><span>自作レイヤー：製品固有の設定・アプリ・イメージレシピ</span></div>
+        <div class="layer app"><span class="nm">meta-networking</span><span>ルーター機能（nftables / hostapd / dnsmasq …）</span></div>
+        <div class="layer app"><span class="nm">meta-oe, meta-python …</span><span>OpenEmbedded の追加パッケージ群</span></div>
+        <div class="layer bsp"><span class="nm">meta-raspberrypi</span><span>BSP：カーネル・ブートローダー・<code>MACHINE</code> 定義</span></div>
+        <div class="layer bsp"><span class="nm">meta-intel</span><span>BSP：x86_64（NUC 等）向け</span></div>
+        <div class="layer core"><span class="nm">meta-poky</span><span>参照ディストロ定義（<code>DISTRO = "poky"</code>）</span></div>
+        <div class="layer core"><span class="nm">meta (oe-core)</span><span>基礎レシピ・クラス・ツールチェーン</span></div>
+        <div class="layer core"><span class="nm">bitbake</span><span>タスク実行エンジン本体</span></div>
+      </div>
+      <p class="xs muted">レイヤーは<b>上書き可能な積み木</b>。上の層が <code>.bbappend</code> で下の層のレシピを部分的に書き換えられるので、上流を fork せずに製品差分を足せる。これが Yocto の最大の設計思想。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Vocabulary</p>
+  <h2>最初に覚える 8 語と、ディレクトリの地図</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <table class="tight">
+        <tr><td class="nw"><b>レシピ</b> <code>.bb</code></td><td>1 パッケージの作り方。取得元（<code>SRC_URI</code>）・ライセンス・依存・ビルド手順を書く</td></tr>
+        <tr><td class="nw"><b>append</b> <code>.bbappend</code></td><td>既存レシピへの差分。別レイヤーから上書き・追記する</td></tr>
+        <tr><td class="nw"><b>クラス</b> <code>.bbclass</code></td><td>共通手順の部品。<code>inherit cmake</code> のように継承して使う</td></tr>
+        <tr><td class="nw"><b>レイヤー</b> <code>meta-*</code></td><td>レシピ・設定のまとまり。<code>conf/bblayers.conf</code> に登録して有効化</td></tr>
+        <tr><td class="nw"><b>MACHINE</b></td><td>ターゲット機器。CPU・カーネル・ブートローダー・デバイスツリーを決める</td></tr>
+        <tr><td class="nw"><b>DISTRO</b></td><td>ディストロ方針。init システム・libc・機能フラグ（<code>DISTRO_FEATURES</code>）を決める</td></tr>
+        <tr><td class="nw"><b>イメージ</b></td><td>最終成果物のレシピ。<code>core-image-minimal</code> など。何を入れるかの一覧</td></tr>
+        <tr><td class="nw"><b>sstate</b></td><td>共有ステートキャッシュ。タスク単位の成果物を再利用し再ビルドを省く</td></tr>
+      </table>
+    </div>
+    <div class="term sm"><span class="c"># 典型的な作業ツリー</span>
+~/yocto/
+├── poky/                 <span class="c"># Poky（git clone したもの）</span>
+│   ├── bitbake/
+│   ├── meta/             <span class="c"># = oe-core</span>
+│   ├── meta-poky/
+│   └── oe-init-build-env <span class="c"># source して環境を作る</span>
+├── meta-openembedded/    <span class="c"># 追加レイヤー</span>
+├── meta-raspberrypi/
+├── meta-intel/
+├── downloads/            <span class="c"># DL_DIR：全ビルドで共有</span>
+├── sstate-cache/         <span class="c"># SSTATE_DIR：全ビルドで共有</span>
+└── build-rpi/            <span class="c"># ビルドディレクトリ（MACHINE ごとに分けてもよい）</span>
+    ├── conf/
+    │   ├── local.conf    <span class="c"># MACHINE / 並列度 / 追加パッケージ</span>
+    │   └── bblayers.conf <span class="c"># 使うレイヤーの一覧</span>
+    └── tmp/
+        ├── work/         <span class="c"># 各レシピの作業ディレクトリ</span>
+        └── deploy/
+            ├── images/&lt;MACHINE&gt;/  <span class="c"># ★ 焼くイメージはここ</span>
+            └── <span class="k">rpm</span>|deb|ipk/         <span class="c"># 生成パッケージ</span></div>
+  </div>
+</section>
+
+<!-- 5 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">How it works</p>
+  <h2>ビルドの流れ：ソース取得から焼けるイメージまで</h2>
+  <div class="flow">
+    <div class="box"><div class="t">メタデータ</div>local.conf / bblayers.conf / 各レイヤーのレシピ<br><span class="xs muted">MACHINE・DISTRO・IMAGE_INSTALL を解釈</span></div>
+    <div class="arrow"><b>→</b>依存解決<br>タスクグラフ生成</div>
+    <div class="box yo"><div class="t">BitBake</div>レシピごとに標準タスクを順に実行<br><span class="xs muted">数千タスクを並列実行。1 タスク = 1 ハッシュ</span></div>
+    <div class="arrow"><b>→</b>パッケージ化<br>rootfs 組み立て</div>
+    <div class="box green"><div class="t">deploy/images/</div>カーネル・DTB・rootfs・<code>.wic</code><br><span class="xs muted">SD カード / USB にそのまま書ける形式</span></div>
+  </div>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel">
+        <h3>1 レシピあたりの標準タスク（抜粋）</h3>
+        <p class="small mono xs">do_fetch → do_unpack → do_patch → do_configure → do_compile → do_install → do_package → do_package_write_rpm → (image 側で) do_rootfs → do_image_wic</p>
+        <p class="small">各タスクの入力（ソース・変数・依存の署名）から<b>ハッシュ</b>を計算し、同じハッシュの成果物が <code>sstate-cache</code> にあれば<b>実行せず展開するだけ</b>で済ませる。これが 2 回目以降の速さの正体。</p>
+      </div>
+      <div class="panel amber">
+        <h3>覚えておくと便利なコマンド</h3>
+        <table class="tight xs">
+          <tr><td class="nw mono">bitbake &lt;image&gt;</td><td>イメージをビルド</td></tr>
+          <tr><td class="nw mono">bitbake -c listtasks &lt;r&gt;</td><td>そのレシピのタスク一覧</td></tr>
+          <tr><td class="nw mono">bitbake -c devshell &lt;r&gt;</td><td>作業ディレクトリでシェルを開く</td></tr>
+          <tr><td class="nw mono">bitbake -e &lt;r&gt; | grep ^VAR=</td><td>変数の最終値と、誰が設定したかを追う</td></tr>
+          <tr><td class="nw mono">bitbake-layers show-layers</td><td>有効なレイヤーの確認</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="panel blue stack">
+      <h3>成果物の例（<code>tmp/deploy/images/&lt;MACHINE&gt;/</code>）</h3>
+      <table class="tight small">
+        <tr><td class="nw"><code>*.wic</code> / <code>*.wic.bz2</code></td><td>パーティションテーブル込みの<b>ディスクイメージ</b>。これを書き込む</td></tr>
+        <tr><td class="nw"><code>*.wic.bmap</code></td><td>使用ブロック地図。<code>bmaptool</code> が空き領域を飛ばして高速に書く</td></tr>
+        <tr><td class="nw"><code>*.tar.bz2</code> 等</td><td>rootfs アーカイブ（NFS ブートや手動展開用）</td></tr>
+        <tr><td class="nw"><code>Image</code> / <code>bzImage</code></td><td>カーネル本体（arm64 / x86_64）</td></tr>
+        <tr><td class="nw"><code>*.dtb</code></td><td>デバイスツリー（ARM 系）</td></tr>
+        <tr><td class="nw"><code>*.manifest</code></td><td>入っているパッケージとバージョンの一覧</td></tr>
+        <tr><td class="nw"><code>licenses/</code></td><td>同梱物のライセンス収集結果（製品では必ず確認）</td></tr>
+      </table>
+      <p class="xs muted"><code>IMAGE_FSTYPES</code> で出力形式を選ぶ。<code>wic</code> の中身は <code>.wks</code>（kickstart）ファイルで定義される。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Build host · ①</p>
+  <h2>なぜ macOS では直接ビルドできないのか</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel red">
+        <h3>macOS が落ちる主な理由</h3>
+        <ul class="small">
+          <li><b>ファイルシステムが大文字小文字を区別しない</b>（APFS の既定）。<code>Makefile</code> と <code>makefile</code>、<code>linux/String.h</code> 等が衝突してソース展開の時点で壊れる。</li>
+          <li><b>GNU ツール前提</b>：<code>sed</code>・<code>tar</code>・<code>find</code>・<code>readlink</code> などが BSD 版で挙動が違う。ホストツールのビルドも glibc/Linux ヘッダを前提にしている。</li>
+          <li><b>pseudo</b>（fakeroot 相当）が Linux 固有の仕組みで root 権限なしに rootfs の所有者・パーミッションを再現している。macOS には移植されていない。</li>
+          <li>公式の<b>サポート対象ホストは Linux ディストリビューションのみ</b>（Ubuntu / Debian / Fedora / AlmaLinux / openSUSE など）。それ以外は「動いたらラッキー」の世界。</li>
+        </ul>
+      </div>
+      <p class="xs muted">大文字小文字を区別する APFS ボリュームを切っても、上の 2 番目・3 番目が残るため実用にならない。素直に Linux を用意する。</p>
+    </div>
+    <div class="stack">
+      <div class="panel blue">
+        <h3>M4 Mac での選択肢</h3>
+        <table class="tight small">
+          <tr><th>方法</th><th>評価</th></tr>
+          <tr><td class="nw"><b>VMware Fusion + Ubuntu</b></td><td><b>本命</b>。仮想ディスクを大きく取れ、スナップショットで失敗から戻せる。GUI も使えるので <code>runqemu</code> の画面確認が楽</td></tr>
+          <tr><td class="nw">UTM / Parallels</td><td>同等。要は「arm64 Linux VM が立てば何でもよい」</td></tr>
+          <tr><td class="nw">Docker (CROPS 等)</td><td>手軽だが macOS の Docker も結局 Linux VM。<b>bind mount 上にビルドすると致命的に遅い</b>ので VM 内ボリュームに置く必要があり、結局 VM 管理が要る</td></tr>
+          <tr><td class="nw">Linux マシン / クラウド</td><td>最速。CI や共有 sstate を置くなら結局ここに行き着く</td></tr>
+        </table>
+      </div>
+      <div class="panel amber">
+        <h3>Apple Silicon ならではの前提</h3>
+        <p class="small">Fusion on Apple Silicon の VM は <b>aarch64 のみ</b>（x86 は動かせない）。しかし Yocto は元々<b>クロスコンパイル</b>なので、<b>aarch64 ホストから x86_64 のイメージを作ることは普通にできる</b>。影響するのは「作った x86_64 バイナリをその場で実行できない」点だけ（後述）。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Build host · ②</p>
+  <h2>VMware Fusion に Ubuntu を立てる — スペックと落とし穴</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel blue">
+        <h3>VM の推奨スペック</h3>
+        <table class="tight small">
+          <tr><td class="nw"><b>OS</b></td><td>Ubuntu <b>arm64</b> LTS（24.04 / 22.04）</td></tr>
+          <tr><td class="nw"><b>CPU</b></td><td>物理コアの 1/2〜3/4（M4 なら 6〜8 vCPU）。Yocto は全コアを使い切る</td></tr>
+          <tr><td class="nw"><b>メモリ</b></td><td>最低 8 GB、<b>16 GB 以上推奨</b>。リンク時に数 GB 食うことがある</td></tr>
+          <tr><td class="nw"><b>ディスク</b></td><td><b>200 GB 以上</b>を強く推奨（最小構成でも 100 GB 弱は消える）</td></tr>
+          <tr><td class="nw"><b>スワップ</b></td><td>8 GB 程度。OOM で数時間のビルドが飛ぶのを防ぐ</td></tr>
+        </table>
+      </div>
+      <div class="panel red">
+        <h3>踏みやすい落とし穴</h3>
+        <ul class="small">
+          <li><b>共有フォルダ（HGFS）の上でビルドしない。</b> macOS 側は大文字小文字を区別せず、しかも遅い。<code>~/yocto</code> は必ず<b>VM の仮想ディスク内</b>へ。</li>
+          <li>ソース取得のため <b>VM からインターネットに出られる</b>こと（NAT で可）。プロキシがあるなら <code>~/.bashrc</code> と <code>local.conf</code> の両方に設定。</li>
+          <li>ディスクは後から拡張できるが<b>ゲスト側の LV 拡張</b>も要る。最初から大きく取る。長時間ビルド中は <code>caffeinate -i</code> で Mac のスリープを抑止。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term"><span class="c"># ホスト依存パッケージ（Ubuntu 22.04/24.04 の例）</span>
+<span class="k">$</span> sudo apt update &amp;&amp; sudo apt install <span class="d">\</span>
+    gawk wget git diffstat unzip texinfo gcc <span class="d">\</span>
+    build-essential chrpath socat cpio python3 <span class="d">\</span>
+    python3-pip python3-pexpect xz-utils <span class="d">\</span>
+    debianutils iputils-ping python3-git <span class="d">\</span>
+    python3-jinja2 python3-subunit zstd liblz4-tool <span class="d">\</span>
+    file locales libacl1 lz4
+
+<span class="c"># ロケールは UTF-8 必須（Yocto の前提条件）</span>
+<span class="k">$</span> sudo locale-gen en_US.UTF-8
+
+<span class="c"># 作業ツリー</span>
+<span class="k">$</span> mkdir -p ~/yocto &amp;&amp; <span class="k">cd</span> ~/yocto
+<span class="k">$</span> git clone -b scarthgap <span class="d">\</span>
+    git://git.yoctoproject.org/poky
+
+<span class="c"># ディスクの余裕を先に確認（df -h）</span>
+<span class="k">$</span> df -h ~/yocto
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/…           <span class="n">196G</span>   12G  <span class="n">175G</span>   7% /home</div>
+  </div>
+  <p class="xs muted">依存パッケージの正確な一覧は Yocto 公式マニュアルの “Required Packages for the Build Host” が正。ディストロとリリースで変わるため、必ず使用するリリースのドキュメントを参照する。</p>
+</section>
+
+<!-- 8 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">First build</p>
+  <h2>最初のビルド：Poky だけで qemu 上まで動かす</h2>
+  <div class="cols cols-25">
+    <div class="steps">
+      <div class="step"><div class="no">1</div><div class="name">環境を作る<br><span class="tag">source</span></div><div class="desc"><code>source poky/oe-init-build-env build-qemu</code>。<code>build-qemu/conf/</code> に雛形ができ、シェルに <code>bitbake</code> が通る。<b>新しい端末を開くたびに実行が必要</b>。</div></div>
+      <div class="step"><div class="no">2</div><div class="name">local.conf を編集<br><span class="tag">MACHINE</span></div><div class="desc"><code>MACHINE ?= "qemuarm64"</code>。あわせて <code>DL_DIR</code> / <code>SSTATE_DIR</code> を作業ツリー直下の共有パスに向けておく（次スライド）。</div></div>
+      <div class="step"><div class="no">3</div><div class="name">ビルドする<br><span class="tag">bitbake</span></div><div class="desc"><code>bitbake core-image-minimal</code>。初回は全部ソースから作るので <b>1〜3 時間</b>（8 コア・回線次第）。2 回目以降は sstate が効いて数分。</div></div>
+      <div class="step"><div class="no">4</div><div class="name">動かす<br><span class="tag green">runqemu</span></div><div class="desc"><code>runqemu qemuarm64 nographic</code> で QEMU 起動。ログインは <code>root</code>（パスワードなし）。<b>実機の前に、ここで手順に慣れておくのが近道</b>。</div></div>
+      <div class="step"><div class="no">5</div><div class="name">中身を確かめる<br><span class="tag">manifest</span></div><div class="desc"><code>tmp/deploy/images/qemuarm64/*.manifest</code> で入っているパッケージを確認。<code>core-image-minimal</code> がいかに小さいかを見ておく。</div></div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="k">$</span> <span class="k">cd</span> ~/yocto
+<span class="k">$</span> <span class="k">source</span> poky/oe-init-build-env build-qemu
+
+<span class="d">### Shell environment set up for builds. ###</span>
+<span class="d">You can now run 'bitbake &lt;target&gt;'</span>
+<span class="d">Common targets are:</span>
+<span class="d">    core-image-minimal</span>
+<span class="d">    core-image-full-cmdline</span>
+<span class="d">    core-image-weston</span>
+<span class="d">    meta-toolchain</span>
+
+<span class="k">$</span> bitbake core-image-minimal
+<span class="d">Build Configuration:</span>
+<span class="d">MACHINE      = "qemuarm64"</span>
+<span class="d">DISTRO       = "poky"</span>
+<span class="d">TUNE_FEATURES = "aarch64 crc"</span>
+…
+<span class="d">NOTE: Tasks Summary: Attempted 2871 tasks of</span>
+<span class="d">which 0 didn't need to be rerun and all</span>
+<span class="d">succeeded.</span>
+
+<span class="k">$</span> runqemu qemuarm64 nographic
+Poky (Yocto Project Reference Distro) 5.0
+qemuarm64 login: <span class="k">root</span>
+root@qemuarm64:~#</div>
+      <p class="xs muted"><b>aarch64 VM での注意：</b><code>runqemu qemuarm64</code> は KVM で高速に動くが、<code>qemux86-64</code> は命令エミュレーションになり非常に遅い。x86_64 の動作確認は実機（NUC）で行うのが現実的。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Configuration</p>
+  <h2><code>local.conf</code> と <code>bblayers.conf</code> — 最初に触る 2 ファイル</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm"><span class="c"># build/conf/local.conf</span>
+MACHINE <span class="k">?=</span> <span class="s">"raspberrypi5"</span>
+
+<span class="c"># ★ 全ビルドで共有 = 2 台目以降が速い</span>
+DL_DIR <span class="k">?=</span> <span class="s">"${TOPDIR}/../downloads"</span>
+SSTATE_DIR <span class="k">?=</span> <span class="s">"${TOPDIR}/../sstate-cache"</span>
+
+<span class="c"># 並列度：コア数に合わせる</span>
+BB_NUMBER_THREADS <span class="k">?=</span> <span class="s">"8"</span>
+PARALLEL_MAKE <span class="k">?=</span> <span class="s">"-j 8"</span>
+
+<span class="c"># ディスク節約：成功したレシピの work/ を消す</span>
+INHERIT += <span class="s">"rm_work"</span>
+
+<span class="c"># 開発用の追加（本番イメージでは外す）</span>
+EXTRA_IMAGE_FEATURES <span class="k">?=</span> <span class="s">"debug-tweaks ssh-server-openssh"</span>
+
+<span class="c"># パッケージを足す（先頭の空白が必須）</span>
+IMAGE_INSTALL:append = <span class="s">" vim htop nano"</span>
+
+<span class="c"># 出力形式</span>
+IMAGE_FSTYPES <span class="k">?=</span> <span class="s">"wic wic.bz2 wic.bmap tar.bz2"</span></div>
+      <div class="term sm"><span class="c"># build/conf/bblayers.conf（編集はコマンドで）</span>
+<span class="k">$</span> bitbake-layers add-layer ../meta-raspberrypi
+<span class="k">$</span> bitbake-layers show-layers</div>
+    </div>
+    <div class="stack">
+      <div class="panel yo">
+        <h3>覚えておきたい変数の作法</h3>
+        <table class="tight small">
+          <tr><td class="nw mono">VAR = "x"</td><td>即時代入。強制的に上書き</td></tr>
+          <tr><td class="nw mono">VAR ?= "x"</td><td>未設定なら設定（デフォルト値）</td></tr>
+          <tr><td class="nw mono">VAR ??= "x"</td><td>より弱いデフォルト。最後に評価される</td></tr>
+          <tr><td class="nw mono">VAR:append = " x"</td><td>末尾に追記。<b>先頭に空白が要る</b></td></tr>
+          <tr><td class="nw mono">VAR:remove = "x"</td><td>要素を取り除く</td></tr>
+          <tr><td class="nw mono">VAR:rpi = "x"</td><td><code>OVERRIDES</code> による条件分岐（MACHINE 名など）</td></tr>
+        </table>
+        <p class="xs muted">旧記法 <code>VAR_append</code> は 3.4 以降 <code>VAR:append</code> に変更済み。古い記事のコピペは要注意。</p>
+      </div>
+      <div class="panel red">
+        <h3><code>local.conf</code> に書いてよいもの・いけないもの</h3>
+        <ul class="small plusminus">
+          <li class="good"><b>その人・そのマシン固有の設定</b>：並列度、キャッシュのパス、一時的な実験</li>
+          <li class="bad"><b>製品の構成</b>：入れるパッケージ、<code>DISTRO_FEATURES</code>、イメージの中身。これらは<b>自作レイヤーのイメージレシピと distro conf に書く</b>。<code>local.conf</code> は git 管理外になりがちで、再現性が失われる</li>
+        </ul>
+        <p class="xs muted">目安：「他人の環境でも同じ物ができてほしい」設定はレイヤーへ。<code>kas</code> のような設定管理ツールを使うと、この分離が自然に守られる。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Images · ① CUI</p>
+  <h2>GUI なしの Linux — 標準イメージの選び方</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <table class="tight">
+        <tr><th>イメージレシピ</th><th>中身</th><th class="nw">目安</th></tr>
+        <tr><td class="nw"><code>core-image-minimal</code></td><td>起動してシェルが出るだけの最小構成。BusyBox + 必要最低限</td><td class="nw">〜十数 MB</td></tr>
+        <tr><td class="nw"><code>core-image-base</code></td><td>minimal + ハードウェアサポート一式（<code>MACHINE_ESSENTIAL_*</code>、無線・USB 等）。<b>実機の入門はここから</b></td><td class="nw">数十 MB</td></tr>
+        <tr><td class="nw"><code>core-image-full-cmdline</code></td><td>BusyBox ではなくフル機能の CUI ユーティリティ群。使い慣れたコマンドが揃う</td><td class="nw">百数十 MB</td></tr>
+        <tr><td class="nw"><code>core-image-tiny-initramfs</code></td><td>RAM 上で完結する超小型 initramfs</td><td class="nw">数 MB</td></tr>
+      </table>
+      <div class="panel yo">
+        <h3>どれを選ぶか</h3>
+        <ul class="small">
+          <li><b>まず動かす</b>なら <code>core-image-base</code>、<b>製品の土台</b>なら <code>core-image-minimal</code> から足していく。</li>
+          <li>「デバッグしやすさ」は <code>EXTRA_IMAGE_FEATURES</code> で足す：<code>ssh-server-openssh</code>（SSH）、<code>debug-tweaks</code>（root パスワードなし＝<b>開発専用</b>）、<code>tools-debug</code>（gdb 等）、<code>package-management</code>（実機で <code>dnf</code> / <code>opkg</code> を使う）。</li>
+          <li>製品では <code>debug-tweaks</code> を必ず外し、<code>read-only-rootfs</code> や <code>IMAGE_FEATURES</code> を明示する。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># 自作イメージレシピ（推奨）</span>
+<span class="c"># meta-myproduct/recipes-core/images/</span>
+<span class="c">#   my-image-cui.bb</span>
+
+SUMMARY = <span class="s">"CUI base image for my product"</span>
+LICENSE = <span class="s">"MIT"</span>
+
+<span class="k">require</span> recipes-core/images/core-image-minimal.bb
+
+IMAGE_FEATURES += <span class="s">"ssh-server-openssh"</span>
+
+IMAGE_INSTALL:append = <span class="s">" \
+    openssh-sftp-server \
+    systemd-analyze \
+    curl \
+    tzdata \
+    my-app \
+"</span>
+
+<span class="c"># root パスワードを設定（debug-tweaks の代わり）</span>
+<span class="k">inherit</span> extrausers
+EXTRA_USERS_PARAMS = <span class="s">"usermod -P secret root;"</span>
+
+<span class="k">$</span> bitbake my-image-cui</div>
+      <p class="xs muted"><code>require</code> で既存イメージを取り込み差分だけ書くのが定石。<code>IMAGE_INSTALL:append</code> の各行末の <code>\</code> と、閉じ引用符の前の空白に注意（よくある構文エラー源）。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Images · ② GUI</p>
+  <h2>GUI ありの Linux — Wayland / X11 / Qt</h2>
+  <div class="cols cols-3">
+    <div class="panel green stack">
+      <h3><code>core-image-weston</code> <span class="tag green">既定はこれ</span></h3>
+      <p class="small"><b>Wayland</b> コンポジタ Weston を載せた最小デスクトップ。現在の組み込み GUI の主流。X サーバーを持たないぶん軽く、GPU のダイレクトスキャンアウトと相性がよい。</p>
+      <ul class="xs">
+        <li>必要 <code>DISTRO_FEATURES</code>：<code>wayland</code>（poky では既定で有効）</li>
+        <li>GPU ドライバ（Raspberry Pi なら VC4/V3D の DRM ドライバ）が要る</li>
+        <li>キオスク端末・計器パネルの土台に向く</li>
+      </ul>
+    </div>
+    <div class="panel blue stack">
+      <h3><code>core-image-sato</code> <span class="tag blue">X11 の参照</span></h3>
+      <p class="small">Matchbox ウィンドウマネージャによる<b>モバイル風 X11 デスクトップ</b>。Yocto の伝統的なデモイメージで、ドキュメントの例に頻出。</p>
+      <ul class="xs">
+        <li>必要 <code>DISTRO_FEATURES</code>：<code>x11</code></li>
+        <li>ビルドは重く時間もかかる（初回は数時間規模）</li>
+        <li>新規案件で X11 を選ぶ理由は減っている。動作確認・学習用と割り切る</li>
+      </ul>
+    </div>
+    <div class="panel amber stack">
+      <h3>アプリ用フレームワーク <span class="tag amber">実務</span></h3>
+      <p class="small">実際の製品 UI は「デスクトップ」ではなく<b>単一アプリのフルスクリーン表示</b>にすることが多い。</p>
+      <ul class="xs">
+        <li><b>meta-qt6</b>：Qt 6 / QML。組み込み GUI の定番。<code>qtbase</code> を Weston 上や <code>eglfs</code> で直接描画</li>
+        <li><b>meta-browser / Chromium</b>：Web 技術で UI を作りキオスク起動</li>
+        <li><b>LVGL・GTK</b>：軽量 GUI やフレームバッファ直描き</li>
+        <li>デスクトップ環境（GNOME 等）を載せる選択肢もあるが、Yocto の利点（小ささ・再現性）とは方向が逆</li>
+      </ul>
+    </div>
+  </div>
+  <div class="cols cols-2" style="flex:0 0 auto">
+    <div class="term sm"><span class="c"># GUI ありイメージをビルドする</span>
+<span class="k">$</span> bitbake core-image-weston
+<span class="c"># local.conf で機能を明示したい場合</span>
+DISTRO_FEATURES:append = <span class="s">" wayland opengl"</span>
+<span class="c"># Raspberry Pi で VC4 グラフィックスを有効化（meta-raspberrypi）</span>
+MACHINE_FEATURES:append = <span class="s">" vc4graphics"</span></div>
+    <div class="panel">
+      <h3>GUI を足す前に考えること</h3>
+      <p class="small">GUI は<b>ビルド時間・イメージサイズ・依存の複雑さ</b>を一段跳ね上げる（グラフィックススタック、フォント、入力、フレームワーク）。まず CUI イメージで実機が安定して起動することを確認し、そのうえで GUI を重ねるのが事故が少ない。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 12 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Target · ① Raspberry Pi</p>
+  <h2>Raspberry Pi 向けイメージを作って焼く</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm"><span class="c"># 1. BSP レイヤーと依存レイヤーを取得（同じブランチで揃える）</span>
+<span class="k">$</span> <span class="k">cd</span> ~/yocto
+<span class="k">$</span> git clone -b scarthgap <span class="d">\</span>
+    https://github.com/agherzan/meta-raspberrypi.git
+<span class="k">$</span> git clone -b scarthgap <span class="d">\</span>
+    https://github.com/openembedded/meta-openembedded.git
+
+<span class="c"># 2. ビルドディレクトリを用意してレイヤーを登録</span>
+<span class="k">$</span> <span class="k">source</span> poky/oe-init-build-env build-rpi
+<span class="k">$</span> bitbake-layers add-layer <span class="d">\</span>
+    ../meta-openembedded/meta-oe <span class="d">\</span>
+    ../meta-openembedded/meta-python <span class="d">\</span>
+    ../meta-openembedded/meta-networking <span class="d">\</span>
+    ../meta-openembedded/meta-multimedia <span class="d">\</span>
+    ../meta-raspberrypi
+
+<span class="c"># 3. MACHINE を設定してビルド</span>
+<span class="k">$</span> <span class="k">echo</span> <span class="s">'MACHINE = "raspberrypi5"'</span> &gt;&gt; conf/local.conf
+<span class="k">$</span> bitbake core-image-base
+
+<span class="c"># 4. SD カードへ書き込む（bmaptool は空きを飛ばすので速い）</span>
+<span class="k">$</span> <span class="k">cd</span> tmp/deploy/images/raspberrypi5
+<span class="k">$</span> sudo bmaptool copy <span class="d">\</span>
+    core-image-base-raspberrypi5.rootfs.wic.bz2 /dev/sdX
+<span class="c">#   （bmaptool が無ければ）</span>
+<span class="k">$</span> bzcat …wic.bz2 | sudo dd of=/dev/sdX bs=4M <span class="k">status</span>=progress conv=fsync</div>
+      <p class="xs muted">カードリーダーは Fusion の「USB デバイスをゲストに接続」で VM に渡す。<b><code>/dev/sdX</code> の取り違えはディスクを破壊する</b>ので <code>lsblk</code> で必ず確認する。</p>
+    </div>
+    <div class="stack">
+      <div class="panel blue">
+        <h3>主な <code>MACHINE</code>（meta-raspberrypi）</h3>
+        <table class="tight small">
+          <tr><td class="nw"><code>raspberrypi5</code></td><td>Pi 5（64bit）</td></tr>
+          <tr><td class="nw"><code>raspberrypi4-64</code></td><td>Pi 4 / CM4 の 64bit</td></tr>
+          <tr><td class="nw"><code>raspberrypi4</code></td><td>Pi 4 の 32bit</td></tr>
+          <tr><td class="nw"><code>raspberrypi3-64</code> / <code>raspberrypi3</code></td><td>Pi 3</td></tr>
+          <tr><td class="nw"><code>raspberrypi0-2w-64</code></td><td>Zero 2 W</td></tr>
+        </table>
+        <p class="xs muted">対応機種はレイヤーの README が正。Yocto リリースと<b>同名のブランチ</b>を使う。</p>
+      </div>
+      <div class="panel amber">
+        <h3>Raspberry Pi 固有の設定（<code>local.conf</code>）</h3>
+        <table class="tight xs">
+          <tr><td class="nw mono">ENABLE_UART = "1"</td><td>シリアルコンソールを有効化。<b>初回の起動確認に必須級</b></td></tr>
+          <tr><td class="nw mono">RPI_USE_U_BOOT = "1"</td><td>U-Boot 経由で起動（A/B 更新などで使う）</td></tr>
+          <tr><td class="nw mono">MACHINE_FEATURES:append<br>&nbsp;= " vc4graphics"</td><td>VC4/V3D の DRM ドライバを使う（Wayland/Weston 用）</td></tr>
+        </table>
+        <p class="xs muted"><code>config.txt</code> への追記は <code>RPI_EXTRA_CONFIG</code> や <code>.bbappend</code> 経由で行い、焼いた後の手編集に頼らない（再現性のため）。</p>
+      </div>
+      <p class="xs muted">ブートの流れ：Pi のファーム（EEPROM）→ <code>config.txt</code> → カーネル + DTB → rootfs。<code>.wic</code> は FAT のブート領域と ext4 の rootfs を 1 ファイルに収めたもの。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 13 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Target · ② x86_64</p>
+  <h2>Intel NUC など x86_64 向けイメージ</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel blue">
+        <h3>2 つの選択肢</h3>
+        <table class="tight small">
+          <tr><th>MACHINE</th><th>提供レイヤー</th><th>用途</th></tr>
+          <tr><td class="nw"><code>genericx86-64</code></td><td class="nw">meta-yocto-bsp<br>(Poky 同梱)</td><td>汎用 PC / NUC 向け。<b>追加レイヤー不要で試せる</b>ので最初はこれ</td></tr>
+          <tr><td class="nw"><code>intel-corei7-64</code></td><td class="nw">meta-intel</td><td>Intel 公式 BSP。世代別の最適化、グラフィックス・メディア系のファームやドライバ（<code>linux-intel</code> カーネル）が揃う</td></tr>
+        </table>
+        <p class="xs muted">meta-intel には <code>intel-skylake-64</code> など世代別の MACHINE もあるが、汎用性のある <code>intel-corei7-64</code> が事実上の標準。対応一覧はレイヤーの README を参照。</p>
+      </div>
+      <div class="panel amber">
+        <h3>ARM ホストから x86_64 を作るときの注意</h3>
+        <ul class="small">
+          <li><b>ビルドは問題なくできる。</b> Yocto は常にクロスコンパイルで、ツールチェーンも自前で作るため。</li>
+          <li><b><code>runqemu qemux86-64</code> は KVM が使えず遅い。</b> aarch64 ホストでは命令エミュレーションになる。動作確認は実機で行う。</li>
+          <li><code>uninative</code>（ホスト glibc 差を吸収する仕組み）や sstate ミラーは<b>ホストアーキ別</b>。x86_64 の共有 sstate を aarch64 VM では使えない＝毎回フルビルドになりやすい。</li>
+          <li>x86_64 ホスト（Linux マシン / クラウド）を用意できるなら、x86_64 ターゲットはそちらで回すほうが総合的に速い。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># genericx86-64 で作る（Poky だけで完結）</span>
+<span class="k">$</span> <span class="k">source</span> poky/oe-init-build-env build-x86
+<span class="k">$</span> <span class="k">echo</span> <span class="s">'MACHINE = "genericx86-64"'</span> &gt;&gt; conf/local.conf
+<span class="k">$</span> bitbake core-image-base
+<span class="c"># meta-intel を使う場合</span>
+<span class="k">$</span> git clone -b scarthgap git://git.yoctoproject.org/meta-intel
+<span class="k">$</span> bitbake-layers add-layer ../meta-intel
+<span class="k">$</span> <span class="k">echo</span> <span class="s">'MACHINE = "intel-corei7-64"'</span> &gt;&gt; conf/local.conf
+<span class="k">$</span> bitbake core-image-base
+
+<span class="c"># USB メモリに書いて NUC で起動（UEFI）</span>
+<span class="k">$</span> sudo bmaptool copy core-image-base-*.wic /dev/sdX</div>
+      <div class="panel green">
+        <h3>x86_64 ならではの点</h3>
+        <ul class="small">
+          <li>起動は <b>UEFI + GRUB（または systemd-boot）</b>。<code>.wic</code> に EFI システムパーティションが含まれる。NUC の BIOS で Secure Boot を切るか、署名の仕組みを用意する。</li>
+          <li>デバイスツリーは使わず <b>ACPI</b> でハードを認識するため、ARM 系より「挿せば動く」寄り。</li>
+          <li>ディスク・NIC・Wi-Fi のファームウェア（<code>linux-firmware-*</code>）の追加が必要になりがち。</li>
+          <li>実機で試す前に、同じイメージを <b>Fusion の x86 VM</b>… は Apple Silicon では不可。Intel Mac や別 PC がある場合のみ有効な手。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Target · ③ Router</p>
+  <h2>ルーター用 Linux を作る</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel yo">
+        <h3>必要な部品はほぼ <code>meta-networking</code> にある</h3>
+        <table class="tight small">
+          <tr><th>役割</th><th>代表パッケージ</th></tr>
+          <tr><td class="nw">フィルタ / NAT</td><td><code>nftables</code>（現行）/ <code>iptables</code></td></tr>
+          <tr><td class="nw">DHCP・DNS</td><td><code>dnsmasq</code>、<code>kea</code>、<code>unbound</code></td></tr>
+          <tr><td class="nw">無線 AP</td><td><code>hostapd</code>、<code>wpa-supplicant</code>、<code>iw</code></td></tr>
+          <tr><td class="nw">VPN / ルーティング</td><td><code>wireguard-tools</code>、<code>openvpn</code>、<code>frr</code></td></tr>
+          <tr><td class="nw">PPPoE / 監視</td><td><code>ppp</code>、<code>rp-pppoe</code>、<code>tcpdump</code>、<code>ethtool</code>、<code>iperf3</code></td></tr>
+        </table>
+        <p class="xs muted"><code>meta-networking</code> は <code>meta-openembedded</code> の一部。<code>meta-oe</code> / <code>meta-python</code> も併せて登録する。</p>
+      </div>
+      <div class="panel red">
+        <h3>ルーターだからこそ効く設定</h3>
+        <ul class="small">
+          <li><b><code>IMAGE_FEATURES += "read-only-rootfs"</code></b>：rootfs を読み取り専用にし、設定は別パーティションや overlayfs へ逃がす。停電での破損に強い。</li>
+          <li><b>攻撃面を削る</b>：<code>debug-tweaks</code> を外し、パッケージマネージャを入れず、不要なサービスを止める。</li>
+          <li><b>更新の仕組みを先に決める</b>：A/B 二面更新（RAUC / SWUpdate / Mender）。ネットワーク機器は文鎮化＝現地復旧になる。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># meta-myrouter/recipes-core/images/router-image.bb</span>
+SUMMARY = <span class="s">"Minimal router image"</span>
+LICENSE = <span class="s">"MIT"</span>
+<span class="k">require</span> recipes-core/images/core-image-minimal.bb
+
+IMAGE_FEATURES += <span class="s">"read-only-rootfs"</span>
+
+IMAGE_INSTALL:append = <span class="s">" \
+    kernel-modules \
+    nftables dnsmasq hostapd wpa-supplicant \
+    iproute2 iw ethtool tcpdump \
+    wireguard-tools openssh-sshd \
+    my-router-config \
+"</span>
+
+<span class="c"># カーネルに netfilter/bridge/VLAN を確実に入れる</span>
+<span class="c"># → meta-myrouter/recipes-kernel/linux/linux-yocto_%.bbappend</span>
+<span class="c">#    SRC_URI += "file://router.cfg"（fragment で config 追加）</span></div>
+      <p class="xs muted"><b>ハード面：</b>Raspberry Pi は NIC が 1 本なので USB Ethernet か VLAN 対応スイッチを併用する。NIC を 2 本以上持てる <b>x86_64 の小型機（NUC 等）</b>のほうがルーター用途には素直。</p>
+      <p class="xs muted"><b>既製品との比較：</b>家庭用ルーターが欲しいだけなら OpenWrt が近道。Yocto を選ぶのは「同じ基盤で自社製品を複数機種ぶん作りたい」ときの判断。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 15 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Multi-target</p>
+  <h2>1 つの作業ツリーで 4 機種を回す</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel yo">
+        <h3>原則：<code>DL_DIR</code> と <code>SSTATE_DIR</code> は共有、<code>TMPDIR</code> は分ける</h3>
+        <p class="small"><b>ダウンロード済みソース</b>と<b>sstate キャッシュ</b>は機種をまたいで再利用できる（アーキ非依存のタスクや、同じ aarch64 同士の成果物が効く）。一方 <code>tmp/</code> は <code>MACHINE</code> ごとに作り直されるため、ビルドディレクトリを機種別に分けると切り替えが一瞬で済む。</p>
+      </div>
+      <div class="term sm"><span class="c"># 機種ごとにビルドディレクトリを分ける</span>
+<span class="k">$</span> <span class="k">source</span> poky/oe-init-build-env build-rpi   <span class="c"># raspberrypi5</span>
+<span class="k">$</span> <span class="k">source</span> poky/oe-init-build-env build-x86   <span class="c"># genericx86-64</span>
+<span class="k">$</span> <span class="k">source</span> poky/oe-init-build-env build-router<span class="c"># router-image</span>
+
+<span class="c"># それぞれの conf/local.conf で共通行を site.conf に括り出す</span>
+<span class="c"># build-*/conf/site.conf（または BB_ENV で共有）</span>
+DL_DIR = <span class="s">"/home/user/yocto/downloads"</span>
+SSTATE_DIR = <span class="s">"/home/user/yocto/sstate-cache"</span>
+
+<span class="c"># 1 つのビルドディレクトリで切り替えることも可能</span>
+<span class="k">$</span> MACHINE=genericx86-64 bitbake core-image-base</div>
+      <p class="xs muted">後者は <code>tmp/</code> が上書きされるため、直前の成果物が消える点に注意。CI や複数機種の日常開発では<b>ビルドディレクトリ分割</b>が扱いやすい。</p>
+    </div>
+    <div class="stack">
+      <div class="panel blue">
+        <h3>Issue #32 の 4 パターンの対応表</h3>
+        <table class="tight small">
+          <tr><th>やりたいこと</th><th>MACHINE</th><th>イメージ</th></tr>
+          <tr><td>Raspberry Pi・GUI なし</td><td class="nw"><code>raspberrypi5</code></td><td class="nw"><code>core-image-base</code></td></tr>
+          <tr><td>Raspberry Pi・GUI あり</td><td class="nw"><code>raspberrypi5</code><br><span class="xs">+ <code>vc4graphics</code></span></td><td class="nw"><code>core-image-weston</code></td></tr>
+          <tr><td>ルーター</td><td class="nw"><code>genericx86-64</code><br><span class="xs">（NIC 2 本以上の機器）</span></td><td class="nw"><code>router-image</code><br><span class="xs">（自作）</span></td></tr>
+          <tr><td>Intel NUC (x86_64)</td><td class="nw"><code>genericx86-64</code><br>または <code>intel-corei7-64</code></td><td class="nw"><code>core-image-base</code></td></tr>
+        </table>
+        <p class="xs muted">違いは<b>レイヤー・<code>MACHINE</code>・イメージレシピの 3 点だけ</b>。手順そのものは 4 つとも同じ、というのが Yocto を使う価値。</p>
+      </div>
+      <div class="panel green">
+        <h3>構成をコード化する — <code>kas</code></h3>
+        <p class="small">「どのレイヤーをどのリビジョンで、どの <code>local.conf</code> で」を YAML 1 枚に固定するツール。新しいマシンでも <code>kas build rpi5.yml</code> だけで同じ物が作れる。手順書と <code>local.conf</code> の口伝から卒業できる。</p>
+        <p class="xs muted">同種のものに Google の <code>repo</code> ツールや、各社独自の init スクリプトがある。チーム開発では早めに導入したい。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 16 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Customize · ①</p>
+  <h2>自作レイヤーとレシピを作る</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm"><span class="c"># レイヤーの雛形を作って登録する</span>
+<span class="k">$</span> bitbake-layers create-layer ../meta-myproduct
+<span class="k">$</span> bitbake-layers add-layer ../meta-myproduct
+
+../meta-myproduct/
+├── conf/layer.conf          <span class="c"># 優先度・対象リリース</span>
+├── COPYING.MIT / README
+└── recipes-example/example/example_0.1.bb
+
+<span class="c"># 既存レシピに差分を当てる（.bbappend）</span>
+<span class="c"># meta-myproduct/recipes-kernel/linux/linux-yocto_%.bbappend</span>
+FILESEXTRAPATHS:prepend := <span class="s">"${THISDIR}/${PN}:"</span>
+SRC_URI += <span class="s">"file://my-feature.cfg file://0001-fix.patch"</span>
+
+<span class="c"># 自作アプリのレシピを自動生成する</span>
+<span class="k">$</span> recipetool create -o myapp_1.0.bb https://example.com/myapp-1.0.tar.gz
+<span class="k">$</span> devtool add myapp https://github.com/me/myapp.git</div>
+      <p class="xs muted"><code>layer.conf</code> の <code>LAYERSERIES_COMPAT_*</code> に対象リリース名（<code>scarthgap</code> 等）が入っていないと、そのリリースで警告・エラーになる。他人のレイヤーを新リリースで使うときの定番の詰まりどころ。</p>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># 最小のレシピ（CMake のアプリ）</span>
+SUMMARY = <span class="s">"My application"</span>
+LICENSE = <span class="s">"MIT"</span>
+LIC_FILES_CHKSUM = <span class="s">"file://LICENSE;md5=xxxxxxxx…"</span>
+
+SRC_URI = <span class="s">"git://github.com/me/myapp.git;branch=main;protocol=https"</span>
+SRCREV = <span class="s">"a1b2c3d4…"</span>            <span class="c"># ★ 固定する（再現性）</span>
+S = <span class="s">"${WORKDIR}/git"</span>
+
+DEPENDS = <span class="s">"zlib openssl"</span>    <span class="c"># ビルド時の依存</span>
+RDEPENDS:${PN} = <span class="s">"bash"</span>     <span class="c"># 実行時の依存</span>
+
+<span class="k">inherit</span> cmake systemd
+SYSTEMD_SERVICE:${PN} = <span class="s">"myapp.service"</span></div>
+      <div class="panel amber">
+        <h3>レシピを書くときの原則</h3>
+        <ul class="small">
+          <li><b><code>SRCREV</code> は必ず固定</b>。<code>${AUTOREV}</code> は再現性を壊す（開発中の一時利用に留める）。</li>
+          <li><b><code>LICENSE</code> と <code>LIC_FILES_CHKSUM</code> は必須</b>。ライセンス文が変わると検査で落ちるが、これは「上流のライセンスが変わった」検知機構でもある。</li>
+          <li><b><code>DEPENDS</code>（ビルド時）と <code>RDEPENDS</code>（実行時）は別物</b>。実機で「コマンドはあるのにライブラリが無い」の多くは <code>RDEPENDS</code> 漏れ。</li>
+          <li>上流をいじりたくなったら fork ではなく <b><code>.bbappend</code> + パッチ</b>。更新時の差分が追える。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 17 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Customize · ②</p>
+  <h2>日々の開発ループ — <code>devtool</code> と SDK</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel yo">
+        <h3>アプリを 1 行直すたびに <code>bitbake image</code> は重すぎる</h3>
+        <p class="small"><code>devtool</code> は「レシピの外の作業ツリー」を作り、<b>普通の git リポジトリとして編集 → 差分ビルド → 実機へ配置</b>のループを回せるようにする。変更は最後にパッチとしてレイヤーへ書き戻す。</p>
+      </div>
+      <div class="term sm"><span class="k">$</span> devtool modify myapp        <span class="c"># workspace/sources/myapp を作る</span>
+<span class="k">$</span> vim workspace/sources/myapp/src/main.c
+<span class="k">$</span> devtool build myapp         <span class="c"># そのレシピだけ再ビルド</span>
+
+<span class="c"># 動いている実機へ直接配置（SSH）</span>
+<span class="k">$</span> devtool deploy-target myapp root@192.168.1.50
+<span class="k">$</span> devtool undeploy-target myapp root@192.168.1.50
+
+<span class="c"># 変更をレイヤーに書き戻す（パッチとして生成される）</span>
+<span class="k">$</span> devtool finish myapp ../meta-myproduct
+
+<span class="c"># 上流の新バージョンへ追従する</span>
+<span class="k">$</span> devtool upgrade myapp -V 1.2.0</div>
+    </div>
+    <div class="stack">
+      <div class="panel blue">
+        <h3>SDK：アプリ開発者に Yocto を触らせない</h3>
+        <p class="small">SDK を配れば、アプリ担当は<b>クロスツールチェーンとターゲットのヘッダ・ライブラリ一式</b>だけで開発できる。Yocto の知識もビルドマシンも要らない。</p>
+        <div class="term sm" style="margin-top:8px"><span class="c"># SDK を作る</span>
+<span class="k">$</span> bitbake core-image-base -c populate_sdk
+<span class="c"># 配布先で（Yocto 不要）</span>
+<span class="k">$</span> ./poky-…-toolchain-5.0.sh
+<span class="k">$</span> <span class="k">source</span> /opt/poky/5.0/environment-setup-…
+<span class="k">$</span> $CC main.c -o myapp</div>
+        <p class="xs muted"><code>-c populate_sdk_ext</code> は <code>devtool</code> 込みの拡張 SDK。</p>
+      </div>
+      <div class="panel green">
+        <h3>デバッグに効く小技</h3>
+        <ul class="xs">
+          <li><code>bitbake -e &lt;recipe&gt; | less</code> — 変数の最終値と設定元が全部見える。迷ったらまずこれ</li>
+          <li><code>bitbake -c devshell &lt;recipe&gt;</code> — ビルド環境のシェルに入って手で <code>make</code> を試す</li>
+          <li><code>oe-pkgdata-util find-path /usr/bin/foo</code> — ファイルの出自パッケージを逆引き</li>
+          <li><code>buildhistory</code> を有効化 — イメージ間の差分を git で追える</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 18 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Reality check</p>
+  <h2>時間とディスクの現実解</h2>
+  <div class="cols cols-3">
+    <div class="panel red stack">
+      <h3>覚悟すべき数字 <span class="tag red">初回</span></h3>
+      <table class="tight small">
+        <tr><td class="nw">初回ビルド</td><td><code>core-image-minimal</code> で 1〜2 時間、<code>core-image-weston</code> / <code>sato</code> なら数時間（8 コア級）</td></tr>
+        <tr><td class="nw">ダウンロード</td><td>数 GB〜十数 GB。回線が細いと律速になる</td></tr>
+        <tr><td class="nw">ディスク</td><td>1 ビルドツリーで <b>50〜120 GB</b>。<code>tmp/work</code> が大半</td></tr>
+        <tr><td class="nw">2 回目以降</td><td>sstate が効けば<b>数分</b>。変更した 1 レシピとその依存だけが再実行される</td></tr>
+      </table>
+      <p class="xs muted">数字は構成・ホスト性能で大きく変わる目安。「初回は寝ている間に回す」前提で計画する。</p>
+    </div>
+    <div class="panel green stack">
+      <h3>速くする <span class="tag green">効く順</span></h3>
+      <ul class="small">
+        <li><b><code>SSTATE_DIR</code> / <code>DL_DIR</code> の共有</b>（機種間・チーム間・CI 間）。最も効く。</li>
+        <li><b>コアとメモリ</b>：<code>BB_NUMBER_THREADS</code>（同時タスク数）と <code>PARALLEL_MAKE</code>（1 タスク内の <code>make -j</code>）。掛け算になるので上げすぎると OOM。</li>
+        <li><b>不要なものを作らない</b>：GUI・SDK・不要な <code>IMAGE_FSTYPES</code> を外す。<code>core-image-sato</code> の常用をやめるだけで大きい。</li>
+        <li><b>ハッシュ等価性</b>（<code>BB_HASHSERVE</code>）：無関係な変更による再ビルドの連鎖を抑える。</li>
+        <li><b>ビルド専用マシン</b>：最終的にはこれが一番効く。VM は開発・実験、重いビルドは Linux 実機 / クラウドへ。</li>
+      </ul>
+    </div>
+    <div class="panel blue stack">
+      <h3>ディスクを守る <span class="tag blue">VM 必須</span></h3>
+      <ul class="small">
+        <li><b><code>INHERIT += "rm_work"</code></b>：成功したレシピの <code>tmp/work</code> を都度削除。数十 GB 単位で効く。代わりにそのレシピのデバッグはしづらくなる。</li>
+        <li><code>sstate-cache-management.sh</code> で古い sstate を整理。</li>
+        <li><code>tmp/</code> は<b>消してよい</b>（sstate があれば復元できる）。空き容量が尽きたらまずここ。</li>
+        <li>VM の仮想ディスクは「ゲストで消してもホストのファイルは縮まない」。定期的に <code>fstrim</code> + Fusion のディスク圧縮を。</li>
+        <li><b>ビルド中にディスクが尽きると中途半端な状態で失敗する。</b> <code>BB_DISKMON_DIRS</code> で閾値を切って停止させると安全。</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small muted">実務の落としどころ：<b>M4 Mac + Fusion の VM は「学習と構成の試行錯誤」、CI か Linux 実機を「正のビルド」</b>にして sstate を共有する。ローカルで全部やろうとすると、ディスクと待ち時間の戦いになる。</p>
+</section>
+
+<!-- 19 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Pitfalls</p>
+  <h2>初心者が必ず踏むところ</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <table class="tight">
+        <tr><th>症状</th><th>原因と対処</th></tr>
+        <tr><td class="nw"><b>レイヤーのブランチ不一致</b></td><td>Poky が <code>scarthgap</code> なのに BSP が <code>master</code> 等。<code>LAYERSERIES_COMPAT</code> の警告を無視しない。<b>全レイヤーを同じコードネームのブランチで揃える</b></td></tr>
+        <tr><td class="nw"><b><code>:append</code> の空白忘れ</b></td><td><code>IMAGE_INSTALL:append = "vim"</code> は直前の語と連結して壊れる。<b>必ず <code>" vim"</code></b></td></tr>
+        <tr><td class="nw"><b>古い記法のコピペ</b></td><td><code>VAR_append</code> / <code>do_install_append()</code> は 3.4 以降 <code>:</code> 記法。ネット記事は年代を確認</td></tr>
+        <tr><td class="nw"><b>ディスク枯渇で謎の失敗</b></td><td>途中で空きが尽きるとエラーが原因不明に見える。<code>df -h</code> を先に疑う</td></tr>
+        <tr><td class="nw"><b>共有フォルダ上でビルド</b></td><td>大文字小文字を区別しない／遅い。VM の内蔵ディスクへ移す</td></tr>
+        <tr><td class="nw"><b><code>do_fetch</code> が失敗し続ける</b></td><td>上流の消滅・プロキシ。<code>DL_DIR</code> を共有し、製品では<b>ソースミラー（<code>SOURCE_MIRROR_URL</code> / <code>PREMIRRORS</code>）</b>を自前で持つ</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="panel amber">
+        <h3>考え方でハマるところ</h3>
+        <ul class="small">
+          <li><b>実機に SSH して直したものは、次のビルドで消える。</b> 変更は必ずレシピ・レイヤーに戻す。「イメージが唯一の真実」に慣れるまでが山。</li>
+          <li><b><code>local.conf</code> に何でも書いてしまう。</b> 動くが再現しない。製品構成は自作レイヤーへ。</li>
+          <li><b>エラーメッセージが長い。</b> 実際に読むのは <code>ERROR:</code> の行と、示された <code>log.do_compile</code> のファイルだけ。まずそこを開く。</li>
+          <li><b>何でも自作しようとする。</b> 目的のパッケージは大抵 <code>meta-openembedded</code> にある。<code>bitbake-layers show-recipes</code> や <a href="https://layers.openembedded.org/">layers.openembedded.org</a> で先に探す。</li>
+        </ul>
+      </div>
+      <div class="panel green">
+        <h3>製品化で必ず来る宿題</h3>
+        <ul class="small">
+          <li><b>ソフトウェア更新</b>：RAUC / SWUpdate / Mender による A/B 更新。後付けはパーティション設計からやり直しになるので<b>最初に決める</b></li>
+          <li><b>ライセンスコンプライアンス</b>：<code>tmp/deploy/licenses/</code> と <code>archiver</code> クラスでソース開示の準備</li>
+          <li><b>CVE 対応</b>：<code>cve-check</code> クラスで既知脆弱性を検出し、LTS ブランチの更新に追従する運用を決める</li>
+          <li><b>再現ビルド</b>：レイヤーのリビジョン固定（<code>kas</code>）+ CI + sstate ミラー</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 20 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Wrap-up</p>
+  <h2>まとめと参考資料</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel yo">
+        <h3>要点</h3>
+        <ul class="small">
+          <li>Yocto は<b>ディストロを作る工場</b>。レシピ × レイヤー × <code>MACHINE</code> の組み合わせで、必要な物だけの OS を再現可能に生成する。</li>
+          <li>M4 Mac では <b>VMware Fusion の arm64 Linux VM の中でビルド</b>する。共有フォルダを避け、ディスクは 200 GB 取る。</li>
+          <li>Raspberry Pi・ルーター・Intel NUC の違いは、<b>レイヤー・<code>MACHINE</code>・イメージレシピの 3 点だけ</b>。手順は共通。</li>
+          <li>GUI なし → <code>core-image-base</code>、GUI あり → <code>core-image-weston</code>。まず CUI で起動を確認してから GUI を重ねる。</li>
+          <li>実機で手直ししない。<b>変更は必ずレイヤーへ戻す</b>。再現性こそが Yocto を使う理由。</li>
+        </ul>
+      </div>
+      <div class="panel blue">
+        <h3>学習ロードマップ</h3>
+        <ol class="small">
+          <li><code>qemuarm64</code> + <code>core-image-minimal</code> を一度通す（仕組みに慣れる）</li>
+          <li><code>raspberrypi5</code> + <code>core-image-base</code> を実機で起動する</li>
+          <li>自作レイヤーを作り、自分のアプリを 1 本入れる</li>
+          <li><code>devtool</code> で編集 → <code>deploy-target</code> の開発ループを回す</li>
+          <li><code>genericx86-64</code> やルーター用イメージへ横展開し、<code>kas</code> と CI で固める</li>
+        </ol>
+      </div>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><a href="https://docs.yoctoproject.org/">docs.yoctoproject.org</a> — 公式ドキュメント。<b>Quick Build</b>（最短の導入手順）/ <b>Reference Manual</b>（変数・クラス・タスクの辞書）/ <b>Development Tasks Manual</b>（レイヤー作成・イメージカスタマイズ）</li>
+        <li><a href="https://docs.yoctoproject.org/ref-manual/system-requirements.html">System Requirements</a> — サポート対象ディストロとホスト依存パッケージの正本</li>
+        <li><a href="https://docs.yoctoproject.org/ref-manual/variables.html">Variables Glossary</a> — <code>MACHINE</code> / <code>IMAGE_INSTALL</code> / <code>DISTRO_FEATURES</code> など全変数の定義</li>
+        <li><a href="https://wiki.yoctoproject.org/wiki/Releases">Yocto Project Releases</a> — リリースとコードネーム、LTS のサポート期限</li>
+        <li><a href="https://github.com/agherzan/meta-raspberrypi">agherzan/meta-raspberrypi</a> — Raspberry Pi BSP。対応 <code>MACHINE</code> と固有変数は README とドキュメントが正</li>
+        <li><a href="https://git.yoctoproject.org/meta-intel/">meta-intel</a> — Intel プラットフォーム BSP（<code>intel-corei7-64</code> ほか）</li>
+        <li><a href="https://layers.openembedded.org/">OpenEmbedded Layer Index</a> — レシピ・レイヤーの横断検索。「あのパッケージある？」はここで</li>
+        <li><a href="https://github.com/siemens/kas">siemens/kas</a> — レイヤー構成を YAML で固定するツール</li>
+        <li><a href="https://www.openembedded.org/">openembedded.org</a> — OE-Core / meta-openembedded 本体</li>
+      </ul>
+      <p class="xs muted">本スライドは 2026-09-15 時点の情報に基づく入門用の整理。コマンド例・変数名・対応機種はリリースとレイヤーのバージョンで変わるため、実際に使うリリースの公式ドキュメントと各レイヤーの README で最新を確認すること。ビルド時間・容量の数値は環境依存の目安。</p>
+    </div>
+  </div>
+</section>
+
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷/PDF</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>
