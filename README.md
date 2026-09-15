@@ -6,6 +6,8 @@
 
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
+| [tgrep 解説 — トライグラム索引・AI エージェント連携・プラグイン化](tgrep-overview/index.html) | 21 | 手書き HTML | [#29](https://github.com/ysksm/slides/issues/29) |
+| [Redmine の UI を SPA で作るための技術](redmine-ui-spa/index.html) | 16 | 手書き HTML | [#26](https://github.com/ysksm/slides/issues/26) |
 | [npm ライブラリの不具合・脆弱性の時系列集計](npm-vulnerability-trends/index.html) | 14 | 手書き HTML + 設計資料 | [#18](https://github.com/ysksm/slides/issues/18) |
 | [自動実装 × AI — Rails generate を DDD フロントエンドで再現する](ai-scaffold/index.html) | 32 | 手書き HTML | [#16](https://github.com/ysksm/slides/issues/16) |
 | [自動実装と AI の組み合わせ](ai-scaffolding/index.html) | 28 | 手書き HTML + 設計・タスク | [#16](https://github.com/ysksm/slides/issues/16) |
@@ -16,6 +18,22 @@
 | [Claude Code コマンド一覧](claude-code-commands/index.html) | 201（6 デッキ） | Marp（`src/*.md` から生成） | [#2](https://github.com/ysksm/slides/issues/2) |
 | [tsc --lsp 徹底調査](antigravity-tsc-lsp-research/index.html) | 20 | 手書き HTML + 実証コード | [#1](https://github.com/ysksm/slides/issues/1) |
 | [tsc --lsp 調査報告（初版）](tsc-lsp/index.html) | 16 | 手書き HTML | [#1](https://github.com/ysksm/slides/issues/1) |
+
+### [tgrep 解説 — トライグラム索引・AI エージェント連携・プラグイン化](tgrep-overview/index.html)
+
+Microsoft の [tgrep](https://github.com/microsoft/tgrep)（トライグラム索引付き grep）の解説スライド（全 21 枚）。トライグラム転置索引の原理・3 層インデックス・常駐サーバーによる速さの仕組み、`index` / `serve` / `status` とコマンド体系、ripgrep との違いと落とし穴を押さえたうえで、AI コーディングエージェントへの組み込み方（公式 `AGENTS.md` の作法、ツール定義と安全設計、実運用ワークフロー）と、Claude Code プラグインとして配布して使わせる方法（`plugin.json`、SessionStart フックと Skill、Skill + Bash と MCP の比較、検証と配布）までをまとめている。
+
+- `tgrep-overview/index.html` を開き、← → / Space で移動、Home / End で最初・最後、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#12` など）でスライド番号を直接指定可能
+- 詳細: [tgrep-overview/README.md](tgrep-overview/README.md)
+
+### [Redmine の UI を SPA で作るための技術](redmine-ui-spa/index.html)
+
+Rails 製の Redmine を「API サーバー」として扱い、UI を自前の SPA に置き換える方法、間に別の Web サーバー（リバースプロキシ / BFF）を挟む方法、デスクトップアプリ化する方法を整理した解説スライド（全 16 枚）。REST API の使い方とカバレッジ、UI 置き換えの 3 方式（部分注入 / プラグイン同居 SPA / 完全分離 SPA）の比較、ブラウザ直結で当たる 4 つの壁（CORS・API キーの置き場・テキスト整形・N+1 と 100 件上限）、BFF の段階と認証設計、PWA / ガワアプリ / Electron / Tauri v2 の比較、推奨構成と段階的な進め方を収録。
+
+- `redmine-ui-spa/index.html` を開き、← → / Space で移動、Home / End で最初・最後、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#9` など）でスライド番号を直接指定可能
+- 詳細: [redmine-ui-spa/README.md](redmine-ui-spa/README.md)
 
 ### [npm ライブラリの不具合・脆弱性の時系列集計](npm-vulnerability-trends/index.html)
 
@@ -113,6 +131,8 @@ TypeScript 7 の Go ネイティブ言語サーバー `tsc --lsp` のアーキ�
 
 ```
 slides/
+├── tgrep-overview/                # tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）
+├── redmine-ui-spa/                # Redmine の UI を SPA で作るための技術（REST API / BFF / デスクトップ化）
 ├── npm-vulnerability-trends/       # npm 不具合・脆弱性の時系列集計（設計提案）
 ├── ai-scaffold/                   # 自動実装 × AI（DDD フロントエンドの generate 設計）スライド
 │   ├── notes.md                   #   検討メモ全文
@@ -148,13 +168,13 @@ slides/
 | 一覧表示 | `O` | Marp 製以外 |
 | 発表者ノート | `N` | `antigravity-tsc-lsp-research` |
 | 全画面 | `F` | すべて |
-| 印刷 / PDF | `P` | `playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
+| 印刷 / PDF | `P` | `tgrep-overview`、`redmine-ui-spa`、`playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
 
 ※ Marp 製の `claude-code-commands` では `P` はプレゼンターモードです。`tsc-lsp`（初版）は `P` に未対応のため、ブラウザの印刷機能を使ってください。
 
 ## ビルド
 
-手書き HTML のスライド（`npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
+手書き HTML のスライド（`tgrep-overview` / `redmine-ui-spa` / `npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
 
 Marp 製の `claude-code-commands` のみ、ソース（`src/*.md`）を編集したら再生成が必要です。
 

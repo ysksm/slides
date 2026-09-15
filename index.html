@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>slides — 調査報告・解説スライド集</title>
-<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。npm 不具合・脆弱性の時系列集計、自動実装 × AI（DDD フロントエンドの generate 設計）、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
+<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、Redmine の UI を SPA で作るための技術、npm 不具合・脆弱性の時系列集計、自動実装 × AI（DDD フロントエンドの generate 設計）、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -267,6 +267,44 @@
 
   <main>
     <ul class="decks">
+
+      <li class="deck">
+        <a href="tgrep-overview/index.html">
+          <h2>tgrep 解説 — トライグラム索引・AI エージェント連携・プラグイン化</h2>
+          <p>
+            Microsoft の tgrep（トライグラム索引付き grep）の仕組みとコマンド体系、ripgrep との違いを整理。
+            AI コーディングエージェントへの組み込み方と、Claude Code プラグインとして配布して使わせる方法までを扱います。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">21 枚</span>
+            <span class="tag tag-kind">HTML</span>
+            <span class="tag tag-issue">Issue #29</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/tgrep-overview/README.md">README</a>
+          <a href="https://github.com/microsoft/tgrep">microsoft/tgrep</a>
+        </p>
+      </li>
+
+      <li class="deck">
+        <a href="redmine-ui-spa/index.html">
+          <h2>Redmine の UI を SPA で作るための技術</h2>
+          <p>
+            Rails 製の Redmine を API サーバーとして扱い、UI を自前の SPA に置き換える方法を検討。
+            REST API の制約と認証・CORS、リバースプロキシ / BFF を挟む構成、Tauri・Electron でのデスクトップ化を比較します。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">16 枚</span>
+            <span class="tag tag-kind">HTML</span>
+            <span class="tag tag-issue">Issue #26</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/redmine-ui-spa/README.md">README</a>
+          <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a>
+        </p>
+      </li>
 
       <li class="deck">
         <a href="npm-vulnerability-trends/index.html">
