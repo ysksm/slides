@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>slides — 調査報告・解説スライド集</title>
-<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）、Oxlint で独自の Lint ルールを作る、Yocto 入門（Raspberry Pi・ルーター・x86_64 のイメージ作り）、Redmine の UI を SPA で作る（構成・導入編）、tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、Redmine の UI を SPA で作るための技術、npm 不具合・脆弱性の時系列集計、自動実装 × AI（DDD フロントエンドの generate 設計）、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
+<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。カテゴリ（AI エージェント運用 / AI × 自動生成・設計 / テスト・品質 / 開発ツール・言語基盤 / Web アプリ開発 / 組み込み Linux / セキュリティ・データ）とキーワード検索で探せます。Claude Code コマンド一覧、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、自動実装 × AI（DDD フロントエンドの generate 設計）、自動実装と AI の組み合わせ、Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）、Playwright 概要、Oxlint で独自の Lint ルールを作る、tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、tsc --lsp 徹底調査、Redmine の UI を SPA で作る（技術編・構成/導入編）、Yocto 入門、Yocto ビルドホストの構築手順、npm 不具合・脆弱性の時系列集計。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -40,6 +40,20 @@
     font-family: var(--body);
     font-size: 16px;
     line-height: 1.7;
+  }
+
+  [hidden] { display: none !important; }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .wrap {
@@ -89,9 +103,168 @@
     padding: 0.1em 0.4em;
   }
 
-  /* ---------- deck list ---------- */
-  main { padding-block: 40px 8px; }
+  /* ---------- finder (search + category filter) ---------- */
+  main { padding-block: 32px 8px; }
 
+  .finder {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    margin: 0 -24px;
+    padding: 16px 24px 14px;
+    background: rgba(16, 27, 18, 0.94);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid rgba(220, 238, 223, 0.12);
+  }
+
+  .search {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search input {
+    width: 100%;
+    padding: 11px 76px 11px 38px;
+    border: 1px solid rgba(220, 238, 223, 0.22);
+    border-radius: 8px;
+    background: rgba(220, 238, 223, 0.05);
+    color: var(--term-ink);
+    font-family: var(--body);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .search input::placeholder { color: rgba(126, 155, 133, 0.85); }
+  .search input::-webkit-search-cancel-button { display: none; }
+
+  .search input:focus {
+    outline: none;
+    border-color: rgba(143, 224, 155, 0.6);
+    background: rgba(143, 224, 155, 0.07);
+  }
+
+  .search .icon {
+    position: absolute;
+    left: 14px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--term-dim);
+    pointer-events: none;
+  }
+
+  .search .hint {
+    position: absolute;
+    right: 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--term-dim);
+    pointer-events: none;
+  }
+
+  .search .clear {
+    position: absolute;
+    right: 10px;
+    padding: 3px 9px;
+    border: 1px solid rgba(220, 238, 223, 0.28);
+    border-radius: 999px;
+    background: none;
+    color: var(--term-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.5;
+    cursor: pointer;
+  }
+
+  .search .clear:hover,
+  .search .clear:focus-visible { color: var(--term-key); border-color: currentColor; }
+
+  .chips {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 0;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 11px;
+    border: 1px solid rgba(220, 238, 223, 0.22);
+    border-radius: 999px;
+    background: none;
+    color: var(--term-dim);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    line-height: 1.6;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+
+  .chip .n { font-size: 10.5px; opacity: 0.75; }
+
+  .chip:hover { color: var(--term-ink); border-color: rgba(143, 224, 155, 0.45); }
+
+  .chip:focus-visible {
+    outline: 2px solid var(--term-key);
+    outline-offset: 2px;
+  }
+
+  .chip[aria-pressed="true"] {
+    color: var(--term);
+    background: var(--term-key);
+    border-color: var(--term-key);
+    font-weight: 500;
+  }
+
+  .chip[disabled] { opacity: 0.4; cursor: default; }
+
+  .count {
+    margin: 10px 0 0;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    color: var(--term-dim);
+  }
+
+  /* ---------- category groups ---------- */
+  .cat {
+    margin-block: 34px 0;
+  }
+
+  .cat-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 12px;
+    margin: 0 0 4px;
+    font-family: var(--display);
+    font-size: clamp(1.05rem, 3vw, 1.25rem);
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .cat-head .cat-n {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: var(--term-key);
+  }
+
+  .cat-desc {
+    margin: 0 0 16px;
+    color: var(--term-dim);
+    font-size: 0.88rem;
+  }
+
+  /* ---------- deck list ---------- */
   .decks {
     list-style: none;
     margin: 0;
@@ -127,7 +300,7 @@
     border-radius: 10px;
   }
 
-  .deck h2 {
+  .deck h3 {
     font-family: var(--display);
     font-weight: 700;
     font-size: clamp(1.15rem, 3.4vw, 1.4rem);
@@ -160,6 +333,7 @@
     line-height: 1.5;
   }
 
+  .tag-cat { color: #C6B1E8; }
   .tag-count { color: var(--term-key); }
   .tag-kind { color: var(--term-dim); }
   .tag-issue { color: #9EC9E0; }
@@ -184,6 +358,31 @@
 
   .sub a:hover,
   .sub a:focus-visible { color: var(--term-key); border-bottom-color: currentColor; }
+
+  /* ---------- empty state ---------- */
+  .empty {
+    margin: 40px 0 0;
+    padding: 28px 26px;
+    border: 1px dashed rgba(220, 238, 223, 0.2);
+    border-radius: 10px;
+    color: var(--term-dim);
+    font-size: 0.92rem;
+    text-align: center;
+  }
+
+  .empty button {
+    margin-left: 10px;
+    padding: 3px 10px;
+    border: 1px solid rgba(220, 238, 223, 0.28);
+    border-radius: 999px;
+    background: none;
+    color: var(--term-ink);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+
+  .empty button:hover { color: var(--term-key); border-color: currentColor; }
 
   /* ---------- keys ---------- */
   .keys {
@@ -243,6 +442,8 @@
 
   @media (max-width: 560px) {
     header { padding-block: 48px 32px; }
+    .finder { margin: 0 -20px; padding: 14px 20px 12px; }
+    .search .hint { display: none; }
     .deck > a { padding: 20px 20px 18px; }
     .sub { padding: 0 20px 18px; }
   }
@@ -261,320 +462,444 @@
     <h1>調査報告・解説スライド</h1>
     <p class="lede">
       ビルド不要の HTML スライド集です。各カードを開くとそのままブラウザで閲覧できます。
+      カテゴリで絞り込むか、キーワードで検索してください。
       ソースは <a href="https://github.com/ysksm/slides" style="color:var(--term-key)">GitHub</a> にあります。
     </p>
   </header>
 
   <main>
-    <ul class="decks">
 
-      <li class="deck">
-        <a href="playwright-practices/index.html">
-          <h2>Playwright 活用方法 — 画面遷移図・デグレ防止・ローカライズ資料</h2>
-          <p>
-            Playwright を「実物のブラウザから資料と安全網を作る道具」として使う手順をまとめました。
-            画面一覧と実キャプチャ付きの画面遷移図の生成、遷移パラメータの洗い出し、デグレを止めるスポット UI テスト、ローカライズ用の UI 資料づくりまでを扱います。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">18 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #34</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/playwright-practices/README.md">README</a>
-          <a href="https://playwright.dev/">Playwright 公式</a>
-        </p>
-      </li>
+    <section class="finder" aria-label="スライドを絞り込む">
+      <div class="search">
+        <span class="icon" aria-hidden="true">&gt;</span>
+        <label class="visually-hidden" for="q">キーワードで検索</label>
+        <input id="q" type="search" autocomplete="off" spellcheck="false"
+               placeholder="キーワードで検索（例: playwright, yocto, キャッシュ）">
+        <span class="hint" id="search-hint" aria-hidden="true"><kbd>/</kbd> で検索</span>
+        <button class="clear" id="clear" type="button" hidden>クリア</button>
+      </div>
 
-      <li class="deck">
-        <a href="oxlint-custom-rules/index.html">
-          <h2>Oxlint で独自の Lint ルールを作る — JS プラグイン実践</h2>
-          <p>
-            Rust 製リンタ Oxlint の独自ルールを ESLint 互換の JS プラグイン API で書く方法を整理。
-            最小構成・AST とセレクタ・context API・自動修正・<code>createOnce</code>・RuleTester・<code>jsPlugins</code> 設定と制限事項、参考として Rust ネイティブルールまで扱います。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">21 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #33</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/oxlint-custom-rules/README.md">README</a>
-          <a href="https://oxc.rs/docs/guide/usage/linter">Oxlint 公式</a>
-        </p>
-      </li>
+      <ul class="chips" id="chips">
+        <li><button class="chip" type="button" data-cat="all" aria-pressed="true">すべて <span class="n"></span></button></li>
+        <li><button class="chip" type="button" data-cat="ai" aria-pressed="false">AI エージェント運用 <span class="n"></span></button></li>
+        <li><button class="chip" type="button" data-cat="codegen" aria-pressed="false">AI × 自動生成・設計 <span class="n"></span></button></li>
+        <li><button class="chip" type="button" data-cat="testing" aria-pressed="false">テスト・品質 <span class="n"></span></button></li>
+        <li><button class="chip" type="button" data-cat="devtools" aria-pressed="false">開発ツール・言語基盤 <span class="n"></span></button></li>
+        <li><button class="chip" type="button" data-cat="web" aria-pressed="false">Web アプリ開発 <span class="n"></span></button></li>
+        <li><button class="chip" type="button" data-cat="embedded" aria-pressed="false">組み込み Linux <span class="n"></span></button></li>
+        <li><button class="chip" type="button" data-cat="security" aria-pressed="false">セキュリティ・データ <span class="n"></span></button></li>
+      </ul>
 
-      <li class="deck">
-        <a href="yocto-intro/index.html">
-          <h2>Yocto 入門 — macOS/VM で作る Raspberry Pi・ルーター・x86_64 の Linux イメージ</h2>
-          <p>
-            Yocto Project で組み込み Linux ディストリビューションを「自分で作る」仕組みを整理。
-            Poky / BitBake とレイヤー、macOS + VMware Fusion でのビルド環境づくり、GUI あり/なしのイメージ、Raspberry Pi・ルーター・Intel NUC 向けの作り分けを扱います。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">20 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #32</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/yocto-intro/README.md">README</a>
-          <a href="https://docs.yoctoproject.org/">Yocto Project 公式</a>
-        </p>
-      </li>
+      <p class="count" id="count" role="status" aria-live="polite"></p>
+    </section>
 
-      <li class="deck">
-        <a href="redmine-ui-spa-2/index.html">
-          <h2>Redmine の UI を SPA で作る（構成・導入編）</h2>
-          <p>
-            同じ Issue #26 を構成の選択と導入手順の側から検討した続編。
-            UI の置き換え、別 Web サーバー経由の配信と認証、Electron・Tauri・PWA によるデスクトップアプリ化を整理します。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">19 枚</span>
-            <span class="tag tag-kind">HTML + 調査メモ</span>
-            <span class="tag tag-issue">Issue #26</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/redmine-ui-spa-2/README.md">README</a>
-          <a href="https://github.com/ysksm/slides/blob/main/redmine-ui-spa-2/research.md">調査メモ</a>
-        </p>
-      </li>
+    <div id="results">
 
-      <li class="deck">
-        <a href="tgrep-overview/index.html">
-          <h2>tgrep 解説 — トライグラム索引・AI エージェント連携・プラグイン化</h2>
-          <p>
-            Microsoft の tgrep（トライグラム索引付き grep）の仕組みとコマンド体系、ripgrep との違いを整理。
-            AI コーディングエージェントへの組み込み方と、Claude Code プラグインとして配布して使わせる方法までを扱います。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">21 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #29</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/tgrep-overview/README.md">README</a>
-          <a href="https://github.com/microsoft/tgrep">microsoft/tgrep</a>
-        </p>
-      </li>
+      <section class="cat" data-cat="ai">
+        <h2 class="cat-head">AI エージェント運用 <span class="cat-n"></span></h2>
+        <p class="cat-desc">Claude Code などの AI コーディングエージェントの使い方・コスト・実行環境。</p>
+        <ul class="decks">
 
-      <li class="deck">
-        <a href="redmine-ui-spa/index.html">
-          <h2>Redmine の UI を SPA で作るための技術</h2>
-          <p>
-            Rails 製の Redmine を API サーバーとして扱い、UI を自前の SPA に置き換える方法を検討。
-            REST API の制約と認証・CORS、リバースプロキシ / BFF を挟む構成、Tauri・Electron でのデスクトップ化を比較します。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">16 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #26</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/redmine-ui-spa/README.md">README</a>
-          <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a>
-        </p>
-      </li>
+          <li class="deck" data-cat="ai" data-keywords="claude code token usage context window prompt cache トークン 節約 コンテキスト キャッシュ 課金 usage context">
+            <a href="claude-code-token-usage/index.html">
+              <h3>Claude Code のトークン使用量と削減策</h3>
+              <p>
+                公式ドキュメントに基づき、トークンがどう消費されるか、コンテキストウィンドウに何が乗るか、
+                プロンプトキャッシュの仕組み・無効化条件・TTL、/usage や /context による計測、削減策を
+                各スライドに出典 URL 付きで整理。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">AI エージェント運用</span>
+                <span class="tag tag-count">18 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #15</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/claude-code-token-usage/README.md">README</a>
+            </p>
+          </li>
 
-      <li class="deck">
-        <a href="npm-vulnerability-trends/index.html">
-          <h2>npm ライブラリの不具合・脆弱性の時系列集計</h2>
-          <p>公式情報の収集、更新・撤回・重複排除、CWE による内容別分類と月次可視化を設計。
-            通常の不具合報告と脆弱性件数を分けて扱う検討資料です。図は説明用の架空データです。</p>
-          <div class="meta">
-            <span class="tag tag-count">14 枚</span>
-            <span class="tag tag-kind">HTML + 設計資料</span>
-            <span class="tag tag-issue">Issue #18</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/npm-vulnerability-trends/README.md">README</a>
-          <a href="https://github.com/ysksm/slides/blob/main/npm-vulnerability-trends/research.md">詳細設計資料</a>
-        </p>
-      </li>
+          <li class="deck" data-cat="ai" data-keywords="chatgpt claude prompt cache 利用枠 レート制限 動画 要約 youtube にゃんた 会話履歴">
+            <a href="ai-usage-cache/index.html">
+              <h3>すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）</h3>
+              <p>
+                YouTube 動画「AIの使用枠がすぐになくなる？ChatGPTとClaudeの利用枠を節約するキャッシュの仕組みを解説してみた」の要約。
+                会話履歴の再送、プロンプトキャッシュ、キャッシュを切らさない 3 原則、ツール呼び出し回数の抑制を図解で整理。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">AI エージェント運用</span>
+                <span class="tag tag-count">15 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #15</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/ai-usage-cache/README.md">README</a>
+              <a href="https://www.youtube.com/watch?v=t22FELAl-BM">元動画</a>
+            </p>
+          </li>
 
-      <li class="deck">
-        <a href="ai-scaffold/index.html">
-          <h2>自動実装 × AI — Rails generate を DDD フロントエンドで再現する</h2>
-          <p>
-            モデル情報から UI・モデル・ユースケース・リポジトリを生成する仕組みを、「スクリプトが決定論的に生成し、
-            AI がその引数を考える」形で設計。検討メモ、4 案の比較、推奨案（生成仕様駆動ジェネレーター）の設計、
-            実施計画とタスクを収録。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">32 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #16</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/ai-scaffold/notes.md">検討メモ</a>
-          <a href="https://github.com/ysksm/slides/blob/main/ai-scaffold/plan.md">実施計画・タスク</a>
-          <a href="https://github.com/ysksm/slides/blob/main/ai-scaffold/README.md">README</a>
-        </p>
-      </li>
+          <li class="deck" data-cat="ai" data-keywords="orca ide git worktree 並列 オーケストレーション codex cursor cli エージェント stablyai">
+            <a href="orca/index.html">
+              <h3>Orca 解説 — AI エージェント時代のオーケストレーター IDE</h3>
+              <p>
+                Claude Code・Codex などの CLI エージェントをタスクごとの git worktree で並列に走らせる IDE「Orca」を解説。
+                機能一覧と設定場所、オーケストレーション・オートメーション・タスク管理、リポジトリ／ワークスペースの切り方、
+                マルチリポで 1 タスクを回す手順、組み合わせレシピを収録。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">AI エージェント運用</span>
+                <span class="tag tag-count">42 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #3</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/orca/README.md">README</a>
+            </p>
+          </li>
 
-      <li class="deck">
-        <a href="ai-scaffolding/index.html">
-          <h2>自動実装と AI の組み合わせ</h2>
-          <p>
-            React・DDD・TypeSpec を前提に、AI が生成条件を提案し、スクリプトが実装を再現する構成を検討。
-            3 案の比較、部分生成と再生成、ID・Value Object、DI、テスト用 backend、実施計画を収録。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">28 枚</span>
-            <span class="tag tag-kind">HTML + 設計・タスク</span>
-            <span class="tag tag-issue">Issue #16</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="ai-scaffolding/design.md">検討記録・詳細設計</a>
-          <a href="ai-scaffolding/tasks.md">実施タスク</a>
-          <a href="https://github.com/ysksm/slides/issues/16">Issue #16</a>
-        </p>
-      </li>
+          <li class="deck" data-cat="ai" data-keywords="claude code slash command cli flag skill plugin mcp キー操作 コマンド 一覧 marp">
+            <a href="claude-code-commands/index.html">
+              <h3>Claude Code コマンド一覧</h3>
+              <p>
+                スラッシュコマンド・CLI コマンド/フラグ・キー操作をジャンル別に整理し、1 コマンド 1 スライドで解説。
+                公式ベストプラクティスに基づくユースケースと、類似コマンドの使い分けも収録。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">AI エージェント運用</span>
+                <span class="tag tag-count">201 枚 / 6 デッキ</span>
+                <span class="tag tag-kind">Marp</span>
+                <span class="tag tag-issue">Issue #2</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="claude-code-commands/01-overview.html">01 概要</a>
+              <a href="claude-code-commands/02-session-context-model.html">02 セッション・コンテキスト</a>
+              <a href="claude-code-commands/03-review-parallel-permissions.html">03 レビュー・並列・権限</a>
+              <a href="claude-code-commands/04-extensions-integrations-account.html">04 拡張・連携</a>
+              <a href="claude-code-commands/05-cli-shortcuts-skills.html">05 CLI・キー操作</a>
+              <a href="claude-code-commands/06-usecases.html">06 ユースケース</a>
+            </p>
+          </li>
 
-      <li class="deck">
-        <a href="claude-code-token-usage/index.html">
-          <h2>Claude Code のトークン使用量と削減策</h2>
-          <p>
-            公式ドキュメントに基づき、トークンがどう消費されるか、コンテキストウィンドウに何が乗るか、
-            プロンプトキャッシュの仕組み・無効化条件・TTL、/usage や /context による計測、削減策を
-            各スライドに出典 URL 付きで整理。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">18 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #15</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/claude-code-token-usage/README.md">README</a>
-        </p>
-      </li>
+        </ul>
+      </section>
 
-      <li class="deck">
-        <a href="ai-usage-cache/index.html">
-          <h2>すぐ溶ける AI の利用枠 — キャッシュの仕組み（動画要約）</h2>
-          <p>
-            YouTube 動画「AIの使用枠がすぐになくなる？ChatGPTとClaudeの利用枠を節約するキャッシュの仕組みを解説してみた」の要約。
-            会話履歴の再送、プロンプトキャッシュ、キャッシュを切らさない 3 原則、ツール呼び出し回数の抑制を図解で整理。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">15 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #15</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/ai-usage-cache/README.md">README</a>
-          <a href="https://www.youtube.com/watch?v=t22FELAl-BM">元動画</a>
-        </p>
-      </li>
+      <section class="cat" data-cat="codegen">
+        <h2 class="cat-head">AI × 自動生成・設計 <span class="cat-n"></span></h2>
+        <p class="cat-desc">モデル情報からコードを生成する仕組みと、AI をその設計に組み込む検討。</p>
+        <ul class="decks">
 
-      <li class="deck">
-        <a href="orca/index.html">
-          <h2>Orca 解説 — AI エージェント時代のオーケストレーター IDE</h2>
-          <p>
-            Claude Code・Codex などの CLI エージェントをタスクごとの git worktree で並列に走らせる IDE「Orca」を解説。
-            機能一覧と設定場所、オーケストレーション・オートメーション・タスク管理、リポジトリ／ワークスペースの切り方、
-            マルチリポで 1 タスクを回す手順、組み合わせレシピを収録。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">42 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #3</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/orca/README.md">README</a>
-        </p>
-      </li>
+          <li class="deck" data-cat="codegen" data-keywords="scaffold generate rails ddd react typespec repository コード生成 ジェネレーター 生成仕様 json schema">
+            <a href="ai-scaffold/index.html">
+              <h3>自動実装 × AI — Rails generate を DDD フロントエンドで再現する</h3>
+              <p>
+                モデル情報から UI・モデル・ユースケース・リポジトリを生成する仕組みを、「スクリプトが決定論的に生成し、
+                AI がその引数を考える」形で設計。検討メモ、4 案の比較、推奨案（生成仕様駆動ジェネレーター）の設計、
+                実施計画とタスクを収録。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">AI × 自動生成・設計</span>
+                <span class="tag tag-count">32 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #16</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/ai-scaffold/notes.md">検討メモ</a>
+              <a href="https://github.com/ysksm/slides/blob/main/ai-scaffold/plan.md">実施計画・タスク</a>
+              <a href="https://github.com/ysksm/slides/blob/main/ai-scaffold/README.md">README</a>
+            </p>
+          </li>
 
-      <li class="deck">
-        <a href="playwright-overview/index.html">
-          <h2>Playwright 概要 — ライブラリ・CLI・MCP</h2>
-          <p>
-            Playwright の 3 つの利用形態を、利用シーン・メリット/デメリット・要素技術（Locator /
-            auto-waiting / web-first assertion / アクセシビリティツリー）・確実性の高いテストコード作成の順序で整理。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">16 枚</span>
-            <span class="tag tag-kind">HTML</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/playwright-overview/README.md">README</a>
-        </p>
-      </li>
+          <li class="deck" data-cat="codegen" data-keywords="scaffolding react ddd typespec di value object 部分生成 再生成 テンプレート cli コード生成">
+            <a href="ai-scaffolding/index.html">
+              <h3>自動実装と AI の組み合わせ</h3>
+              <p>
+                React・DDD・TypeSpec を前提に、AI が生成条件を提案し、スクリプトが実装を再現する構成を検討。
+                3 案の比較、部分生成と再生成、ID・Value Object、DI、テスト用 backend、実施計画を収録。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">AI × 自動生成・設計</span>
+                <span class="tag tag-count">28 枚</span>
+                <span class="tag tag-kind">HTML + 設計・タスク</span>
+                <span class="tag tag-issue">Issue #16</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="ai-scaffolding/design.md">検討記録・詳細設計</a>
+              <a href="ai-scaffolding/tasks.md">実施タスク</a>
+              <a href="https://github.com/ysksm/slides/issues/16">Issue #16</a>
+            </p>
+          </li>
 
-      <li class="deck">
-        <a href="claude-code-commands/index.html">
-          <h2>Claude Code コマンド一覧</h2>
-          <p>
-            スラッシュコマンド・CLI コマンド/フラグ・キー操作をジャンル別に整理し、1 コマンド 1 スライドで解説。
-            公式ベストプラクティスに基づくユースケースと、類似コマンドの使い分けも収録。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">201 枚 / 6 デッキ</span>
-            <span class="tag tag-kind">Marp</span>
-            <span class="tag tag-issue">Issue #2</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="claude-code-commands/01-overview.html">01 概要</a>
-          <a href="claude-code-commands/02-session-context-model.html">02 セッション・コンテキスト</a>
-          <a href="claude-code-commands/03-review-parallel-permissions.html">03 レビュー・並列・権限</a>
-          <a href="claude-code-commands/04-extensions-integrations-account.html">04 拡張・連携</a>
-          <a href="claude-code-commands/05-cli-shortcuts-skills.html">05 CLI・キー操作</a>
-          <a href="claude-code-commands/06-usecases.html">06 ユースケース</a>
-        </p>
-      </li>
+        </ul>
+      </section>
 
-      <li class="deck">
-        <a href="antigravity-tsc-lsp-research/index.html">
-          <h2>tsc --lsp 徹底調査 — 機能・利用ケースと AI エージェント活用の総合評価</h2>
-          <p>
-            TypeScript 7 の Go ネイティブ言語サーバーのアーキテクチャ・通信プロトコル・実測性能・
-            AI コーディングエージェント連携を調査。実証クライアント、MCP サーバー、実機計測ログを同梱。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">20 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #1</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/antigravity-tsc-lsp-research/research.md">詳細技術報告書</a>
-          <a href="https://github.com/ysksm/slides/blob/main/antigravity-tsc-lsp-research/README.md">README</a>
-        </p>
-      </li>
+      <section class="cat" data-cat="testing">
+        <h2 class="cat-head">テスト・品質 <span class="cat-n"></span></h2>
+        <p class="cat-desc">ブラウザ自動化によるテスト・資料づくりとデグレ防止。</p>
+        <ul class="decks">
 
-      <li class="deck">
-        <a href="tsc-lsp/index.html">
-          <h2>tsc --lsp 調査報告（初版）</h2>
-          <p>
-            上記徹底調査の元になった初版。<code>tsc --lsp</code> の機能・用途・AI エージェント活用の概要と、
-            最小実証クライアントを収録。
-          </p>
-          <div class="meta">
-            <span class="tag tag-count">16 枚</span>
-            <span class="tag tag-kind">HTML</span>
-            <span class="tag tag-issue">Issue #1</span>
-          </div>
-        </a>
-        <p class="sub">
-          <a href="https://github.com/ysksm/slides/blob/main/tsc-lsp/README.md">README</a>
-        </p>
-      </li>
+          <li class="deck" data-cat="testing" data-keywords="playwright e2e テスト 画面遷移図 デグレ ローカライズ スクリーンショット キャプチャ react 資料">
+            <a href="playwright-practices/index.html">
+              <h3>Playwright 活用方法 — 画面遷移図・デグレ防止・ローカライズ資料</h3>
+              <p>
+                Playwright を「実物のブラウザから資料と安全網を作る道具」として使う手順をまとめました。
+                画面一覧と実キャプチャ付きの画面遷移図の生成、遷移パラメータの洗い出し、デグレを止めるスポット UI テスト、ローカライズ用の UI 資料づくりまでを扱います。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">テスト・品質</span>
+                <span class="tag tag-count">18 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #34</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/playwright-practices/README.md">README</a>
+              <a href="https://playwright.dev/">Playwright 公式</a>
+            </p>
+          </li>
 
-    </ul>
+          <li class="deck" data-cat="testing" data-keywords="playwright library cli mcp locator auto-waiting web-first assertion アクセシビリティツリー 概要 e2e">
+            <a href="playwright-overview/index.html">
+              <h3>Playwright 概要 — ライブラリ・CLI・MCP</h3>
+              <p>
+                Playwright の 3 つの利用形態を、利用シーン・メリット/デメリット・要素技術（Locator /
+                auto-waiting / web-first assertion / アクセシビリティツリー）・確実性の高いテストコード作成の順序で整理。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">テスト・品質</span>
+                <span class="tag tag-count">16 枚</span>
+                <span class="tag tag-kind">HTML</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/playwright-overview/README.md">README</a>
+            </p>
+          </li>
+
+        </ul>
+      </section>
+
+      <section class="cat" data-cat="devtools">
+        <h2 class="cat-head">開発ツール・言語基盤 <span class="cat-n"></span></h2>
+        <p class="cat-desc">リンタ・検索・言語サーバーなど、日々の開発を支えるツールの中身。</p>
+        <ul class="decks">
+
+          <li class="deck" data-cat="devtools" data-keywords="oxlint oxc lint eslint rust js plugin ast ルール ruletester createonce 静的解析">
+            <a href="oxlint-custom-rules/index.html">
+              <h3>Oxlint で独自の Lint ルールを作る — JS プラグイン実践</h3>
+              <p>
+                Rust 製リンタ Oxlint の独自ルールを ESLint 互換の JS プラグイン API で書く方法を整理。
+                最小構成・AST とセレクタ・context API・自動修正・<code>createOnce</code>・RuleTester・<code>jsPlugins</code> 設定と制限事項、参考として Rust ネイティブルールまで扱います。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">開発ツール・言語基盤</span>
+                <span class="tag tag-count">21 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #33</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/oxlint-custom-rules/README.md">README</a>
+              <a href="https://oxc.rs/docs/guide/usage/linter">Oxlint 公式</a>
+            </p>
+          </li>
+
+          <li class="deck" data-cat="devtools" data-keywords="tgrep trigram grep ripgrep 索引 検索 microsoft claude code plugin mcp agents.md">
+            <a href="tgrep-overview/index.html">
+              <h3>tgrep 解説 — トライグラム索引・AI エージェント連携・プラグイン化</h3>
+              <p>
+                Microsoft の tgrep（トライグラム索引付き grep）の仕組みとコマンド体系、ripgrep との違いを整理。
+                AI コーディングエージェントへの組み込み方と、Claude Code プラグインとして配布して使わせる方法までを扱います。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">開発ツール・言語基盤</span>
+                <span class="tag tag-count">21 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #29</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/tgrep-overview/README.md">README</a>
+              <a href="https://github.com/microsoft/tgrep">microsoft/tgrep</a>
+            </p>
+          </li>
+
+          <li class="deck" data-cat="devtools" data-keywords="typescript tsc lsp language server go native mcp 性能 計測 antigravity 調査">
+            <a href="antigravity-tsc-lsp-research/index.html">
+              <h3>tsc --lsp 徹底調査 — 機能・利用ケースと AI エージェント活用の総合評価</h3>
+              <p>
+                TypeScript 7 の Go ネイティブ言語サーバーのアーキテクチャ・通信プロトコル・実測性能・
+                AI コーディングエージェント連携を調査。実証クライアント、MCP サーバー、実機計測ログを同梱。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">開発ツール・言語基盤</span>
+                <span class="tag tag-count">20 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #1</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/antigravity-tsc-lsp-research/research.md">詳細技術報告書</a>
+              <a href="https://github.com/ysksm/slides/blob/main/antigravity-tsc-lsp-research/README.md">README</a>
+            </p>
+          </li>
+
+          <li class="deck" data-cat="devtools" data-keywords="typescript tsc lsp language server 初版 実証クライアント 調査報告">
+            <a href="tsc-lsp/index.html">
+              <h3>tsc --lsp 調査報告（初版）</h3>
+              <p>
+                上記徹底調査の元になった初版。<code>tsc --lsp</code> の機能・用途・AI エージェント活用の概要と、
+                最小実証クライアントを収録。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">開発ツール・言語基盤</span>
+                <span class="tag tag-count">16 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #1</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/tsc-lsp/README.md">README</a>
+            </p>
+          </li>
+
+        </ul>
+      </section>
+
+      <section class="cat" data-cat="web">
+        <h2 class="cat-head">Web アプリ開発 <span class="cat-n"></span></h2>
+        <p class="cat-desc">既存 Web アプリの UI を作り替えるための構成・API・配信の検討。</p>
+        <ul class="decks">
+
+          <li class="deck" data-cat="web" data-keywords="redmine spa 構成 導入 nginx リバースプロキシ bff 認証 electron tauri pwa デスクトップ">
+            <a href="redmine-ui-spa-2/index.html">
+              <h3>Redmine の UI を SPA で作る（構成・導入編）</h3>
+              <p>
+                同じ Issue #26 を構成の選択と導入手順の側から検討した続編。
+                UI の置き換え、別 Web サーバー経由の配信と認証、Electron・Tauri・PWA によるデスクトップアプリ化を整理します。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">Web アプリ開発</span>
+                <span class="tag tag-count">19 枚</span>
+                <span class="tag tag-kind">HTML + 調査メモ</span>
+                <span class="tag tag-issue">Issue #26</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/redmine-ui-spa-2/README.md">README</a>
+              <a href="https://github.com/ysksm/slides/blob/main/redmine-ui-spa-2/research.md">調査メモ</a>
+            </p>
+          </li>
+
+          <li class="deck" data-cat="web" data-keywords="redmine rails rest api spa cors bff リバースプロキシ tauri electron 認証 api キー">
+            <a href="redmine-ui-spa/index.html">
+              <h3>Redmine の UI を SPA で作るための技術</h3>
+              <p>
+                Rails 製の Redmine を API サーバーとして扱い、UI を自前の SPA に置き換える方法を検討。
+                REST API の制約と認証・CORS、リバースプロキシ / BFF を挟む構成、Tauri・Electron でのデスクトップ化を比較します。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">Web アプリ開発</span>
+                <span class="tag tag-count">16 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #26</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/redmine-ui-spa/README.md">README</a>
+              <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a>
+            </p>
+          </li>
+
+        </ul>
+      </section>
+
+      <section class="cat" data-cat="embedded">
+        <h2 class="cat-head">組み込み Linux <span class="cat-n"></span></h2>
+        <p class="cat-desc">Yocto Project による組み込み Linux ディストリビューションづくり。</p>
+        <ul class="decks">
+
+          <li class="deck" data-cat="embedded" data-keywords="yocto ビルドホスト ubuntu debian fedora almalinux wsl vm ディストリビューション インストール core-image-minimal buildtools ディスク">
+            <a href="yocto-build-host/index.html">
+              <h3>Yocto ビルドホストの構築手順 — ディストリビューションの選択とインストール</h3>
+              <p>
+                Yocto 入門の付録として、ビルドホストに使う Linux ディストリビューションの選び方と、
+                インストールから最初のビルドが通るまでの手順を単独で扱います。
+                サポート対象ディストロの選定基準、ベアメタル / VM / WSL 2 / コンテナの選択、ディスク設計、ホスト依存パッケージ、動作確認までを収録。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">組み込み Linux</span>
+                <span class="tag tag-count">18 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #40</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/yocto-build-host/README.md">README</a>
+              <a href="https://docs.yoctoproject.org/ref-manual/system-requirements.html">System Requirements</a>
+            </p>
+          </li>
+
+          <li class="deck" data-cat="embedded" data-keywords="yocto poky bitbake openembedded raspberry pi ルーター x86_64 intel nuc vmware fusion macos レイヤー devtool sdk 組み込み linux">
+            <a href="yocto-intro/index.html">
+              <h3>Yocto 入門 — macOS/VM で作る Raspberry Pi・ルーター・x86_64 の Linux イメージ</h3>
+              <p>
+                Yocto Project で組み込み Linux ディストリビューションを「自分で作る」仕組みを整理。
+                Poky / BitBake とレイヤー、macOS + VMware Fusion でのビルド環境づくり、GUI あり/なしのイメージ、Raspberry Pi・ルーター・Intel NUC 向けの作り分けを扱います。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">組み込み Linux</span>
+                <span class="tag tag-count">20 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #32</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/yocto-intro/README.md">README</a>
+              <a href="https://docs.yoctoproject.org/">Yocto Project 公式</a>
+            </p>
+          </li>
+
+        </ul>
+      </section>
+
+      <section class="cat" data-cat="security">
+        <h2 class="cat-head">セキュリティ・データ <span class="cat-n"></span></h2>
+        <p class="cat-desc">脆弱性情報の収集・分類と、時系列での可視化の設計。</p>
+        <ul class="decks">
+
+          <li class="deck" data-cat="security" data-keywords="npm 脆弱性 vulnerability cve cwe advisory 集計 可視化 時系列 osv 設計">
+            <a href="npm-vulnerability-trends/index.html">
+              <h3>npm ライブラリの不具合・脆弱性の時系列集計</h3>
+              <p>公式情報の収集、更新・撤回・重複排除、CWE による内容別分類と月次可視化を設計。
+                通常の不具合報告と脆弱性件数を分けて扱う検討資料です。図は説明用の架空データです。</p>
+              <div class="meta">
+                <span class="tag tag-cat">セキュリティ・データ</span>
+                <span class="tag tag-count">14 枚</span>
+                <span class="tag tag-kind">HTML + 設計資料</span>
+                <span class="tag tag-issue">Issue #18</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/npm-vulnerability-trends/README.md">README</a>
+              <a href="https://github.com/ysksm/slides/blob/main/npm-vulnerability-trends/research.md">詳細設計資料</a>
+            </p>
+          </li>
+
+        </ul>
+      </section>
+
+    </div>
+
+    <p class="empty" id="empty" hidden>
+      該当するスライドがありません。
+      <button type="button" id="reset">条件をリセット</button>
+    </p>
 
     <section class="keys">
       <h2>キー操作</h2>
@@ -593,6 +918,167 @@
   </footer>
 
 </div>
+
+<script>
+  // 目次の絞り込み: カテゴリのチップとキーワード検索。外部ライブラリには依存しない。
+  // 検索対象はカードの本文（題名・概要・タグ）＋ data-keywords ＋ リンク先のディレクトリ名。
+  (function () {
+    'use strict';
+
+    var input = document.getElementById('q');
+    var hint = document.getElementById('search-hint');
+    var clearBtn = document.getElementById('clear');
+    var resetBtn = document.getElementById('reset');
+    var countEl = document.getElementById('count');
+    var emptyEl = document.getElementById('empty');
+    var chips = [].slice.call(document.querySelectorAll('.chip'));
+    var groups = [].slice.call(document.querySelectorAll('.cat'));
+    var cards = [].slice.call(document.querySelectorAll('.deck'));
+    var total = cards.length;
+    var cat = 'all';
+
+    function norm(value) {
+      var s = String(value == null ? '' : value);
+      if (s.normalize) { s = s.normalize('NFKC'); }
+      return s.toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    cards.forEach(function (card) {
+      var link = card.querySelector('a[href]');
+      // textContent はタグ（枚数・形式・Issue 番号）と同梱物リンクの文言も含む
+      card.searchText = norm(
+        card.textContent + ' ' +
+        (card.getAttribute('data-keywords') || '') + ' ' +
+        (link ? link.getAttribute('href') : '')
+      );
+    });
+
+    function countOf(key) {
+      if (key === 'all') { return total; }
+      return cards.filter(function (card) { return card.getAttribute('data-cat') === key; }).length;
+    }
+
+    chips.forEach(function (chip) {
+      var n = chip.querySelector('.n');
+      var count = countOf(chip.getAttribute('data-cat'));
+      if (n) { n.textContent = count; }
+      if (count === 0) { chip.disabled = true; }
+    });
+
+    function decode(value) {
+      try { return decodeURIComponent(String(value).replace(/\+/g, ' ')); } catch (e) { return ''; }
+    }
+
+    function readUrl() {
+      var query = location.search.replace(/^\?/, '');
+      if (!query) { return; }
+      query.split('&').forEach(function (pair) {
+        var eq = pair.indexOf('=');
+        var key = decode(eq === -1 ? pair : pair.slice(0, eq));
+        var value = eq === -1 ? '' : decode(pair.slice(eq + 1));
+        if (key === 'q') {
+          input.value = value;
+        } else if (key === 'cat' && chips.some(function (chip) { return chip.getAttribute('data-cat') === value; })) {
+          cat = value;
+        }
+      });
+    }
+
+    function syncUrl() {
+      if (!window.history || !history.replaceState) { return; }
+      var params = [];
+      var q = input.value.trim();
+      if (q) { params.push('q=' + encodeURIComponent(q)); }
+      if (cat !== 'all') { params.push('cat=' + encodeURIComponent(cat)); }
+      try {
+        history.replaceState(null, '', location.pathname + (params.length ? '?' + params.join('&') : ''));
+      } catch (e) {
+        // file:// で開いた場合など。絞り込み自体は動くので無視する。
+      }
+    }
+
+    function apply() {
+      var terms = norm(input.value).split(' ').filter(Boolean);
+      var shown = 0;
+
+      cards.forEach(function (card) {
+        var hit = (cat === 'all' || card.getAttribute('data-cat') === cat);
+        for (var i = 0; hit && i < terms.length; i++) {
+          if (card.searchText.indexOf(terms[i]) === -1) { hit = false; }
+        }
+        card.hidden = !hit;
+        if (hit) { shown++; }
+      });
+
+      groups.forEach(function (group) {
+        var visible = group.querySelectorAll('.deck:not([hidden])').length;
+        group.hidden = visible === 0;
+        var label = group.querySelector('.cat-n');
+        if (label) { label.textContent = visible + ' 件'; }
+      });
+
+      chips.forEach(function (chip) {
+        chip.setAttribute('aria-pressed', String(chip.getAttribute('data-cat') === cat));
+      });
+
+      countEl.textContent = (terms.length || cat !== 'all')
+        ? '全 ' + total + ' 件中 ' + shown + ' 件を表示'
+        : '全 ' + total + ' 件';
+      emptyEl.hidden = shown !== 0;
+      clearBtn.hidden = input.value === '';
+      if (hint) { hint.hidden = input.value !== ''; }
+
+      syncUrl();
+    }
+
+    function reset() {
+      input.value = '';
+      cat = 'all';
+      apply();
+    }
+
+    chips.forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        var key = chip.getAttribute('data-cat');
+        cat = (cat === key && key !== 'all') ? 'all' : key;
+        apply();
+      });
+    });
+
+    input.addEventListener('input', apply);
+
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') {
+        input.value = '';
+        apply();
+      }
+    });
+
+    clearBtn.addEventListener('click', function () {
+      input.value = '';
+      input.focus();
+      apply();
+    });
+
+    resetBtn.addEventListener('click', function () {
+      reset();
+      input.focus();
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) { return; }
+      var active = document.activeElement;
+      var tag = active && active.tagName ? active.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || (active && active.isContentEditable)) { return; }
+      event.preventDefault();
+      input.focus();
+      input.select();
+    });
+
+    readUrl();
+    apply();
+  })();
+</script>
 
 </body>
 </html>
