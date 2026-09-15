@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>slides — 調査報告・解説スライド集</title>
-<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、Redmine の UI を SPA で作るための技術、npm 不具合・脆弱性の時系列集計、自動実装 × AI（DDD フロントエンドの generate 設計）、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
+<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）、Oxlint で独自の Lint ルールを作る、Yocto 入門（Raspberry Pi・ルーター・x86_64 のイメージ作り）、Redmine の UI を SPA で作る（構成・導入編）、tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、Redmine の UI を SPA で作るための技術、npm 不具合・脆弱性の時系列集計、自動実装 × AI（DDD フロントエンドの generate 設計）、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -267,6 +267,82 @@
 
   <main>
     <ul class="decks">
+
+      <li class="deck">
+        <a href="playwright-practices/index.html">
+          <h2>Playwright 活用方法 — 画面遷移図・デグレ防止・ローカライズ資料</h2>
+          <p>
+            Playwright を「実物のブラウザから資料と安全網を作る道具」として使う手順をまとめました。
+            画面一覧と実キャプチャ付きの画面遷移図の生成、遷移パラメータの洗い出し、デグレを止めるスポット UI テスト、ローカライズ用の UI 資料づくりまでを扱います。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">18 枚</span>
+            <span class="tag tag-kind">HTML</span>
+            <span class="tag tag-issue">Issue #34</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/playwright-practices/README.md">README</a>
+          <a href="https://playwright.dev/">Playwright 公式</a>
+        </p>
+      </li>
+
+      <li class="deck">
+        <a href="oxlint-custom-rules/index.html">
+          <h2>Oxlint で独自の Lint ルールを作る — JS プラグイン実践</h2>
+          <p>
+            Rust 製リンタ Oxlint の独自ルールを ESLint 互換の JS プラグイン API で書く方法を整理。
+            最小構成・AST とセレクタ・context API・自動修正・<code>createOnce</code>・RuleTester・<code>jsPlugins</code> 設定と制限事項、参考として Rust ネイティブルールまで扱います。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">21 枚</span>
+            <span class="tag tag-kind">HTML</span>
+            <span class="tag tag-issue">Issue #33</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/oxlint-custom-rules/README.md">README</a>
+          <a href="https://oxc.rs/docs/guide/usage/linter">Oxlint 公式</a>
+        </p>
+      </li>
+
+      <li class="deck">
+        <a href="yocto-intro/index.html">
+          <h2>Yocto 入門 — macOS/VM で作る Raspberry Pi・ルーター・x86_64 の Linux イメージ</h2>
+          <p>
+            Yocto Project で組み込み Linux ディストリビューションを「自分で作る」仕組みを整理。
+            Poky / BitBake とレイヤー、macOS + VMware Fusion でのビルド環境づくり、GUI あり/なしのイメージ、Raspberry Pi・ルーター・Intel NUC 向けの作り分けを扱います。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">20 枚</span>
+            <span class="tag tag-kind">HTML</span>
+            <span class="tag tag-issue">Issue #32</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/yocto-intro/README.md">README</a>
+          <a href="https://docs.yoctoproject.org/">Yocto Project 公式</a>
+        </p>
+      </li>
+
+      <li class="deck">
+        <a href="redmine-ui-spa-2/index.html">
+          <h2>Redmine の UI を SPA で作る（構成・導入編）</h2>
+          <p>
+            同じ Issue #26 を構成の選択と導入手順の側から検討した続編。
+            UI の置き換え、別 Web サーバー経由の配信と認証、Electron・Tauri・PWA によるデスクトップアプリ化を整理します。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">19 枚</span>
+            <span class="tag tag-kind">HTML + 調査メモ</span>
+            <span class="tag tag-issue">Issue #26</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/redmine-ui-spa-2/README.md">README</a>
+          <a href="https://github.com/ysksm/slides/blob/main/redmine-ui-spa-2/research.md">調査メモ</a>
+        </p>
+      </li>
 
       <li class="deck">
         <a href="tgrep-overview/index.html">
