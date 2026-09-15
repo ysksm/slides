@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oxlint で独自の Lint ルールを作る — JS プラグイン実践</title>
+<meta name="description" content="Oxlint で独自 Lint ルールを作る方法を、ESLint 互換の JS プラグイン API を軸に整理した解説スライド。最小構成・context API・自動修正・createOnce・RuleTester・設定・制限・Rust ネイティブルールまで">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F7F6FB;
+    --paper-2: #EDEBF6;
+    --ink: #191627;
+    --ink-2: #494463;
+    --ink-3: #7B7695;
+    --rule: #D5D2E6;
+    --ox: #6C3FD1;          /* oxc violet */
+    --ox-soft: #E7DEFA;
+    --ai: #1F6FA8;          /* ESLint / JS blue */
+    --ai-soft: #D8E9F5;
+    --amber: #B7791F;
+    --amber-soft: #FBEBC8;
+    --red: #B4432F;
+    --red-soft: #F6DAD5;
+    --term: #14111F;
+    --term-ink: #E3E0F0;
+    --term-dim: #8B85A8;
+    --term-key: #C3A6FF;
+    --term-str: #8FD2E8;
+    --term-num: #F3C77B;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--term);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+  /* ---------- stage ---------- */
+  #stage {
+    position: fixed; inset: 0;
+    padding: 16px;
+  }
+  /* deck はレイアウト上 1280x720 のまま transform で縮小する。グリッド/フレックスの
+     中央寄せはコンテナより大きい要素だと start 寄せに落ちてスライドが画面外に出るため、
+     ビューポート中央に絶対配置し、fit() が縮小後サイズの半分だけ戻す。 */
+  .deck {
+    width: 1280px; height: 720px;
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: 0 0;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 52px 72px 60px;
+    display: none;
+    flex-direction: column;
+    gap: 20px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "Oxlint で独自の Lint ルールを作る — JS プラグイン実践";
+    position: absolute; left: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  /* ---------- type ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ox); margin: 0;
+  }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 62px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 18px; margin: 0 0 6px; }
+  p { margin: 0; }
+  .lead { font-size: 19px; color: var(--ink-2); max-width: 48em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code, dd code {
+    background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: .92em;
+  }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--ox); }
+  b, strong { font-weight: 600; }
+  a { color: var(--ox); text-decoration: none; border-bottom: 1px solid var(--ox-soft); }
+
+  /* ---------- layout helpers ---------- */
+  .cols { display: grid; gap: 26px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.15fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.25fr; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel {
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px;
+  }
+  .panel.ox { border-top: 3px solid var(--ox); }
+  .panel.ai { border-top: 3px solid var(--ai); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 999px; background: var(--ox-soft); color: var(--ox); vertical-align: middle;
+  }
+  .tag.ai { background: var(--ai-soft); color: var(--ai); }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  .good::marker { content: "○ "; color: var(--ox); }
+  .bad::marker { content: "△ "; color: var(--red); }
+  ul.plusminus { list-style: none; padding-left: 1.4em; }
+  ul.plusminus li { text-indent: -1.4em; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--ox); font-weight: 700; }
+  ul.plusminus li.bad::before { content: "△ "; color: var(--red); font-weight: 700; }
+
+  /* ---------- terminal ---------- */
+  .term {
+    background: var(--term); color: var(--term-ink); border-radius: 8px;
+    padding: 14px 18px; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+    overflow: auto; white-space: pre; tab-size: 2;
+  }
+  .term .k { color: var(--term-key); }
+  .term .s { color: var(--term-str); }
+  .term .n { color: var(--term-num); }
+  .term .d { color: var(--term-dim); }
+  .term .c { color: var(--term-dim); font-style: italic; }
+  .term.sm { font-size: 12px; }
+  .term.xxs { font-size: 11px; line-height: 1.5; padding: 12px 14px; }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 5px 8px; }
+
+  /* ---------- diagram ---------- */
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 10px; }
+  .box { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+  .box .t { font-family: var(--display); font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+  .box.ox { border-color: var(--ox); background: var(--ox-soft); }
+  .box.ai { border-color: var(--ai); background: var(--ai-soft); }
+  .arrow { font-family: var(--mono); color: var(--ink-3); font-size: 12px; text-align: center; line-height: 1.3; align-self: center; }
+  .arrow b { display: block; font-size: 18px; color: var(--ox); }
+
+  /* ---------- step flow (確実性手順) ---------- */
+  .steps { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+  .step { display: grid; grid-template-columns: 46px 220px 1fr; gap: 14px; align-items: start;
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 10px 16px; }
+  .step .no { font-family: var(--display); font-weight: 900; font-size: 26px; color: var(--ox); line-height: 1.2; }
+  .step .name { font-family: var(--display); font-weight: 700; font-size: 16px; line-height: 1.4; }
+  .step .name .tag { margin-left: 0; margin-top: 2px; }
+  .step .desc { font-size: 13.5px; color: var(--ink-2); }
+
+  /* ---------- cover ---------- */
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 80px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; font-size: 72px; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 28px; }
+  .cover .frame {
+    position: absolute; right: 72px; top: 56px; width: 470px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--ox); padding-left: 16px;
+  }
+  .cover code { background: rgba(255,255,255,.10); color: var(--term-key); }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); }
+
+  /* ---------- nav ---------- */
+  #hud {
+    position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7;
+  }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--ox); outline-offset: 2px; }
+
+  /* ---------- overview & print ---------- */
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────── -->
+<section class="slide cover">
+  <div class="frame"><span class="c">// oxlint-plugin/index.js</span>
+<span class="k">export default</span> {
+  meta: { name: <span class="s">'house-rules'</span> },
+  rules: { <span class="s">'no-direct-dayjs'</span>: rule },
+};
+
+<span class="c">// .oxlintrc.json</span>
+{ <span class="s">"jsPlugins"</span>: [<span class="s">"./oxlint-plugin/index.js"</span>],
+  <span class="s">"rules"</span>: { <span class="s">"house-rules/no-direct-dayjs"</span>: <span class="s">"error"</span> } }
+
+<span class="k">$</span> npx oxlint
+  Found <span class="n">3</span> warnings and <span class="n">1</span> error in <span class="n">182</span>ms</div>
+  <p class="eyebrow">Custom Lint Rules · ysksm/slides</p>
+  <h1>Oxlint で独自の<br>Lint ルールを作る</h1>
+  <p class="lead">Rust 製リンタ Oxlint に、ESLint 互換の <b>JS プラグイン API</b> で自社ルールを載せる。最小構成から context API・自動修正・<code>createOnce</code>・RuleTester・設定・制限、そして Rust ネイティブルールまでを一通り。</p>
+  <p class="meta"><span>2026-09-15</span><span>oxlint 1.83.0</span><span>oxc-project (Rust)</span></p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Summary</p>
+  <h2>結論を先に：独自ルールは「JS プラグイン」で書く</h2>
+  <div class="cols cols-3">
+    <div class="panel ox stack">
+      <h3>① JS プラグインが本命 <span class="tag">推奨</span></h3>
+      <p class="small">Oxlint のプラグイン API は <b>ESLint v9+ と互換</b>。<code>create(context)</code> に AST ビジタを書き、<code>.oxlintrc.json</code> の <code>jsPlugins</code> に登録するだけで動く。JavaScript でも TypeScript でも書ける。</p>
+      <p class="xs muted">既存の ESLint カスタムルールは、多くの場合<b>そのまま移植できる</b>（コピーして登録するだけ）。</p>
+    </div>
+    <div class="panel ai stack">
+      <h3>② Rust ネイティブは原則不要 <span class="tag ai">OSS 貢献の話</span></h3>
+      <p class="small">公式は「JS プラグインが使えるようになったので <b>新しい Rust 製プラグインは追加しない</b>」方針。Rust の出番は <b>既存プラグインへのルール追加＝ oxc への貢献</b>で、自社ルールの手段ではない。</p>
+      <p class="xs muted">全ユーザーに効く汎用ルールなら PR を歓迎、という位置づけ。</p>
+    </div>
+    <div class="panel amber stack">
+      <h3>③ ただし現状は alpha <span class="tag amber">2026-09 時点</span></h3>
+      <p class="small">ESLint の API 面はほぼ実装済み（自動修正・スコープ解析・LSP まで）。一方で <b>型情報を使う独自ルール</b>と <b>Vue / Svelte / Angular の独自ファイル形式</b>は未対応。</p>
+      <p class="xs muted">挙動が ESLint と違えば「バグとして報告してほしい」というのが公式の立場。</p>
+    </div>
+  </div>
+  <p class="small muted">最短ルート：<b><code>npm add -D oxlint</code> → <code>plugin.js</code> に <code>create</code> を書く → <code>jsPlugins</code> に登録 → <code>npx oxlint</code></b>（次スライド以降で詳細）</p>
+</section>
+
+<!-- 3 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">What it is</p>
+  <h2>前提：Oxlint とは何か</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <ul>
+        <li>oxc（The JavaScript Oxidation Compiler）プロジェクトの <b>Rust 製 JS/TS リンタ</b>。公式ブログによれば <b>650 以上の人気ルールを Rust で内蔵</b>し、ネイティブ速度で走る。</li>
+        <li>ESLint 比の速度向上は <b>ベンチマークで概ね 4x〜100x</b>。設定は <code>.oxlintrc.json</code> または <code>oxlint.config.ts</code>。</li>
+        <li><b>JS プラグイン</b>（本スライドの主題）が「Rust で実装されていないルール」の穴を埋める。既存 ESLint プラグインの実行と、独自ルールの作成の両方を担う。</li>
+        <li>型情報が要るルールは別系統：<code>oxlint --type-aware</code> が Go 製 <b>tsgolint</b>（typescript-go）を呼び、typescript-eslint の型認識ルール 61 個中 <b>59 個</b>に対応。TypeScript 7.0+ が前提。</li>
+        <li>本番採用例として Preact・PostHog・Outline・Actual・Midjourney などが挙げられている。</li>
+      </ul>
+      <p class="xs muted">数値はいずれも oxc 公式ドキュメント／公式ブログ（2026-03-11「Oxlint JS Plugins Alpha」）の記載。バージョンは npm の <code>oxlint@1.83.0</code>（2026-09-14 公開）時点。</p>
+    </div>
+    <div class="term"><span class="c"># 導入（dev 依存）</span>
+<span class="k">$</span> npm add -D oxlint
+
+<span class="c"># 実行 / 自動修正</span>
+<span class="k">$</span> npx oxlint
+<span class="k">$</span> npx oxlint --fix
+
+<span class="c"># 型認識ルール（tsgolint 経由）</span>
+<span class="k">$</span> npx oxlint --type-aware
+
+<span class="c"># 動作要件（package.json の engines）</span>
+node: <span class="s">"^20.19.0 || &gt;=22.12.0"</span>
+
+<span class="c"># ESLint 設定からの移行ツール</span>
+<span class="k">$</span> npx @oxlint/migrate eslint.config.js</div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Options</p>
+  <h2>「独自ルール」を実現する 4 つの手段</h2>
+  <table class="tight">
+    <tr><th style="white-space:nowrap">手段</th><th style="white-space:nowrap">書くもの</th><th>向いている場面</th><th>制限・コスト</th></tr>
+    <tr>
+      <td><b>① JS プラグイン</b><br><span class="tag">本命</span></td>
+      <td style="white-space:nowrap">JS / TS のルール実装</td>
+      <td>自社固有の規約（禁止 import、命名、危険 API の使用禁止、レイヤ間依存の制限など）。既存 ESLint カスタムルールの移植。</td>
+      <td>型情報は使えない。JS プラグイン機構自体は alpha。ルールの実行は JS なのでネイティブルールよりは遅い。</td>
+    </tr>
+    <tr>
+      <td><b>② 既存 ESLint プラグイン</b><br><span class="tag ai">書かない</span></td>
+      <td style="white-space:nowrap">設定だけ</td>
+      <td>すでに世の中にあるルール（testing-library、react-hooks、sonarjs など）。まず探して、無ければ作る。</td>
+      <td>ESLint v9 以前の古い API しか使っていない未メンテのプラグインは動かない可能性。</td>
+    </tr>
+    <tr>
+      <td><b>③ <code>no-restricted-syntax</code> + セレクタ</b><br><span class="tag ai">書かない</span></td>
+      <td style="white-space:nowrap">設定だけ</td>
+      <td>「この構文を書くな」で表現できる単純な禁止。<code>oxlint-plugin-eslint</code> を入れて <code>eslint-js/no-restricted-syntax</code> を使う。</td>
+      <td>状態を持つ判定・複数箇所の相関・自動修正はできない。セレクタが長くなると保守しづらい。</td>
+    </tr>
+    <tr>
+      <td><b>④ Rust ネイティブルール</b><br><span class="tag amber">OSS 貢献</span></td>
+      <td style="white-space:nowrap">Rust（oxc 本体に PR）</td>
+      <td>全ユーザーに有用な汎用ルール。最速で動かしたい場合。</td>
+      <td>新規 Rust プラグインは受け付けない方針。<b>社内ルールの手段としては非現実的</b>（fork の維持コスト）。</td>
+    </tr>
+  </table>
+  <p class="small muted">判断順序は <b>② → ③ → ①</b>。①でも足りない・広く役立つと確信できるときだけ④（詳細はスライド 19）。</p>
+</section>
+
+<!-- 5 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Hello world</p>
+  <h2>最小構成：3 ファイルで独自ルールが動く</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm"><span class="c">// plugin.js — クラス宣言が 6 個以上のファイルを警告</span>
+<span class="k">const</span> rule = {
+  create(context) {
+    <span class="k">let</span> classCount = <span class="n">0</span>;
+    <span class="k">return</span> {
+      ClassDeclaration(node) {
+        classCount++;
+        <span class="k">if</span> (classCount === <span class="n">6</span>) {
+          context.report({ message: <span class="s">'Too many classes'</span>, node });
+        }
+      },
+    };
+  },
+};
+
+<span class="k">const</span> plugin = {
+  meta: { name: <span class="s">'best-plugin-ever'</span> },
+  rules: { <span class="s">'max-classes'</span>: rule },
+};
+
+<span class="k">export default</span> plugin;</div>
+      <p class="xs muted">出典：oxc 公式ドキュメント「Writing JS Plugins」のサンプルに注釈を加えたもの。</p>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c">// .oxlintrc.json</span>
+{
+  <span class="s">"jsPlugins"</span>: [<span class="s">"./plugin.js"</span>],
+  <span class="s">"rules"</span>: {
+    <span class="s">"best-plugin-ever/max-classes"</span>: <span class="s">"error"</span>
+  }
+}</div>
+      <div class="term sm"><span class="c">// oxlint.config.ts でも同じことが書ける</span>
+<span class="k">import</span> { defineConfig } <span class="k">from</span> <span class="s">'oxlint'</span>;
+
+<span class="k">export default</span> defineConfig({
+  jsPlugins: [<span class="s">'./plugin.js'</span>],
+  rules: { <span class="s">'best-plugin-ever/max-classes'</span>: <span class="s">'error'</span> },
+});</div>
+      <div class="panel ox">
+        <h3>ここだけ押さえる</h3>
+        <ul class="small">
+          <li>ルール名は <b><code>&lt;meta.name&gt;/&lt;rules のキー&gt;</code></b>。プラグイン名が名前空間になる。</li>
+          <li><code>jsPlugins</code> のパスは <b>設定ファイルからの相対</b>で解決される。</li>
+          <li>プラグインは <b>default export</b>。npm パッケージ名でも指定できる。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Anatomy</p>
+  <h2>プラグインとルールの解剖</h2>
+  <div class="flow">
+    <div class="box"><div class="t">plugin</div><span class="xs"><code>meta.name</code> = 名前空間<br><code>rules</code> = ルール名 → ルール定義</span></div>
+    <div class="arrow"><b>→</b>登録<br><code>jsPlugins</code></div>
+    <div class="box ox"><div class="t">rule.create(context)</div><span class="xs">ファイルごとに 1 回呼ばれ、<b>ビジタオブジェクト</b>を返す。キーが AST ノード種別／セレクタ、値がコールバック。</span></div>
+    <div class="arrow"><b>→</b>走査<br>(Rust 側)</div>
+    <div class="box ai"><div class="t">context.report()</div><span class="xs">位置（<code>node</code> か <code>loc</code>）とメッセージを渡すと診断になる。<code>fix</code> を返せば自動修正。</span></div>
+  </div>
+  <div class="cols cols-2">
+    <div class="term sm"><span class="c">// ルール定義のフルセット（ESLint と同じ形）</span>
+<span class="k">const</span> rule = {
+  meta: {
+    type: <span class="s">'problem'</span>,                <span class="c">// problem | suggestion | layout</span>
+    docs: { description: <span class="s">'…'</span> },
+    messages: { banned: <span class="s">'{{name}} は使用禁止です'</span> },
+    schema: [ <span class="c">/* オプションの JSON Schema */</span> ],
+    fixable: <span class="s">'code'</span>,               <span class="c">// 自動修正するなら必須</span>
+  },
+  create(context) {
+    <span class="k">return</span> {
+      <span class="c">// AST ノード名 / セレクタ / "Xxx:exit"</span>
+      ImportDeclaration(node) { <span class="c">/* … */</span> },
+      <span class="s">'Program:exit'</span>(node) { <span class="c">/* 集計はここで */</span> },
+    };
+  },
+};</div>
+    <div class="stack">
+      <div class="panel">
+        <h3>呼び出し規約</h3>
+        <ul class="small">
+          <li><code>create</code> は <b>ファイルごとに 1 回</b>、毎回新しい <code>context</code> で呼ばれる。ファイル単位の状態はここのローカル変数で持つ。</li>
+          <li>ビジタは AST を <b>深さ優先で下る時</b>に発火。<code>"ノード名:exit"</code> は登る時。ファイル全体を見てから判定するなら <code>Program:exit</code>。</li>
+          <li>診断の重大度はルール側では決めない。<b><code>rules</code> の設定値（<code>"error"</code> / <code>"warn"</code> / <code>"off"</code>）</b>が決める。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>ESLint 経験者向けの差分</h3>
+        <p class="small">書き方は ESLint と<b>同一</b>。違うのは「登録先が <code>plugins</code> ではなく <code>jsPlugins</code>」という設定側だけ。加えて Oxlint 独自の高速版 API <code>createOnce</code> がある（スライド 11）。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">AST</p>
+  <h2>ルールを書く前に：AST とセレクタを知る</h2>
+  <div class="cols cols-25">
+    <div class="stack">
+      <div class="panel ox">
+        <h3>ノード名は ESTree 準拠</h3>
+        <p class="small">ESLint と同じ命名（<code>ImportDeclaration</code>、<code>CallExpression</code>、<code>ClassDeclaration</code>、<code>MemberExpression</code>…）。TypeScript 構文のノードも同じ API で辿れる（<b>ただし型情報は取得できない</b>）。</p>
+      </div>
+      <div class="panel">
+        <h3>探索の道具</h3>
+        <ul class="small">
+          <li><a href="https://playground.oxc.rs/">playground.oxc.rs</a> — oxc パーサの AST をその場で確認</li>
+          <li><a href="https://astexplorer.net/">astexplorer.net</a> — ノード名・構造を調べる定番</li>
+          <li><code>node.parent</code> / <code>context.sourceCode.getAncestors(node)</code> で上に辿る</li>
+        </ul>
+      </div>
+      <div class="panel ai">
+        <h3>セレクタ</h3>
+        <p class="small">CSS 風の <b>ESLint セレクタ</b>がビジタのキーに使える。属性・正規表現・子孫・<code>:has()</code> などで、ビジタ内の <code>if</code> をかなり減らせる。</p>
+      </div>
+    </div>
+    <div class="term sm"><span class="c">// ① 素直にノードで受ける</span>
+ImportDeclaration(node) {
+  <span class="k">if</span> (node.source.value === <span class="s">'dayjs'</span>) { <span class="c">/* … */</span> }
+}
+
+<span class="c">// ② セレクタで絞ってから受ける（同じ意味）</span>
+<span class="s">'ImportDeclaration[source.value="dayjs"]'</span>(node) { <span class="c">/* … */</span> }
+
+<span class="c">// ③ 正規表現つき・子孫セレクタ</span>
+<span class="s">'ThrowStatement &gt; CallExpression[callee.name=/Error$/]'</span>(node) {
+  context.report({ node, message: <span class="s">'Error は new を付けて投げる'</span> });
+}
+
+<span class="c">// ④ 退出時フック：ファイル全体の集計はここ</span>
+<span class="s">'Program:exit'</span>() {
+  <span class="k">if</span> (found.length &gt; <span class="n">0</span>) { <span class="c">/* まとめて report */</span> }
+}
+
+<span class="c">// ⑤ 位置を直接指定して報告することもできる</span>
+context.report({
+  message: <span class="s">'…'</span>, node,
+  line: <span class="n">1</span>, column: <span class="n">0</span>, endLine: <span class="n">1</span>, endColumn: <span class="n">10</span>,
+});</div>
+  </div>
+</section>
+
+<!-- 8 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">API surface</p>
+  <h2>context から使える API（ESLint 互換の実装済み範囲）</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <table class="tight small">
+        <tr><th style="white-space:nowrap">API</th><th>用途</th></tr>
+        <tr><td style="white-space:nowrap"><code>context.report()</code></td><td>診断の報告。<code>node</code> / <code>loc</code>、<code>message</code> または <code>messageId</code> + <code>data</code>、<code>fix</code></td></tr>
+        <tr><td style="white-space:nowrap"><code>context.options</code></td><td>設定で渡されたルールオプション（配列）</td></tr>
+        <tr><td style="white-space:nowrap"><code>context.filename</code></td><td>対象ファイルのパス。ディレクトリ別の判定に</td></tr>
+        <tr><td style="white-space:nowrap"><code>context.id</code></td><td>ルール ID</td></tr>
+        <tr><td style="white-space:nowrap"><code>context.sourceCode.text</code></td><td>ソース全文</td></tr>
+        <tr><td style="white-space:nowrap"><code>….getText(node)</code></td><td>ノードのソース片。修正文字列の組み立てに必須</td></tr>
+        <tr><td style="white-space:nowrap"><code>….getTokens(node)</code></td><td>トークン列。記号・空白まで見る整形系ルール向け</td></tr>
+        <tr><td style="white-space:nowrap"><code>….getAncestors(node)</code></td><td>祖先ノード。<code>node.parent</code> でも辿れる</td></tr>
+        <tr><td style="white-space:nowrap">スコープ解析</td><td>変数の宣言・参照の解決（shadowing の判定など）</td></tr>
+        <tr><td style="white-space:nowrap">コードパス解析</td><td>制御フロー（到達可能性の判定など）</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="panel ox">
+        <h3>対応済みとされている機能</h3>
+        <ul class="small">
+          <li>AST 走査・探索、<b>セレクタ</b>、ルールオプション</li>
+          <li><b>自動修正（fixes）</b>と、エディタでの suggestion / quick-fix</li>
+          <li><code>SourceCode</code> API とトークン API、スコープ解析、コードパス解析</li>
+          <li>インラインの無効化コメント（<code>// oxlint-disable</code>）</li>
+          <li>言語サーバー（LSP）経由の IDE 診断</li>
+        </ul>
+      </div>
+      <div class="panel red">
+        <h3>未対応（2026-09 時点）</h3>
+        <ul class="small">
+          <li><b>独自ファイル形式・独自パーサ</b>（Svelte / Vue / Angular）</li>
+          <li><b>TypeScript の型情報に依存するルール</b></li>
+          <li>ESLint v9 で削除済みの旧 API（原則実装しない方針）</li>
+        </ul>
+      </div>
+      <p class="xs muted">出典：oxc 公式ドキュメント「JS Plugins &gt; API Support」。残りも数か月かけて ESLint API の 100% 到達を目指すとされている。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Recipe ①</p>
+  <h2>実践：禁止 import を検出するルール（TypeScript）</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm xxs"><span class="c">// tools/oxlint-plugin/no-direct-dayjs.ts</span>
+<span class="k">import</span> { defineRule } <span class="k">from</span> <span class="s">'@oxlint/plugins'</span>;
+
+<span class="k">export const</span> noDirectDayjs = defineRule({
+  meta: {
+    type: <span class="s">'problem'</span>,
+    messages: {
+      useWrapper: <span class="s">'dayjs ではなく @/lib/date を使ってください'</span>,
+    },
+  },
+  create(context) {
+    <span class="k">return</span> {
+      ImportDeclaration(node) {
+        <span class="k">if</span> (node.source.value !== <span class="s">'dayjs'</span>) <span class="k">return</span>;
+        <span class="c">// 許可されたラッパ自身は対象外にする</span>
+        <span class="k">if</span> (context.filename.includes(<span class="s">'/lib/date'</span>)) <span class="k">return</span>;
+        context.report({ node, messageId: <span class="s">'useWrapper'</span> });
+      },
+    };
+  },
+});</div>
+    </div>
+    <div class="stack">
+      <div class="term sm xxs"><span class="c">// tools/oxlint-plugin/index.ts</span>
+<span class="k">import</span> { definePlugin } <span class="k">from</span> <span class="s">'@oxlint/plugins'</span>;
+<span class="k">import</span> { noDirectDayjs } <span class="k">from</span> <span class="s">'./no-direct-dayjs.js'</span>;
+
+<span class="k">export default</span> definePlugin({
+  meta: { name: <span class="s">'house-rules'</span> },
+  rules: { <span class="s">'no-direct-dayjs'</span>: noDirectDayjs },
+});</div>
+      <div class="term sm xxs"><span class="c">// .oxlintrc.json</span>
+{
+  <span class="s">"jsPlugins"</span>: [<span class="s">"./tools/oxlint-plugin/index.ts"</span>],
+  <span class="s">"rules"</span>: { <span class="s">"house-rules/no-direct-dayjs"</span>: <span class="s">"error"</span> }
+}</div>
+      <div class="panel ox">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li><code>definePlugin</code> / <code>defineRule</code> は <b>型付けのための薄いヘルパ</b>で、付けなくても動く。型 <code>Context</code> / <code>Rule</code> / <code>ESTree</code> も同パッケージから取れる。</li>
+          <li><b>TypeScript でルールを書ける</b>（alpha で TypeScript プラグイン対応が入った）。</li>
+          <li><code>messages</code> + <code>messageId</code> にしておくと、テストで文言に依存せず検証できる。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Recipe ②</p>
+  <h2>実践：オプションと自動修正を付ける</h2>
+  <div class="cols cols-25">
+    <div class="stack">
+      <div class="panel ox">
+        <h3>オプション</h3>
+        <p class="small"><code>meta.schema</code> に JSON Schema を書き、<code>context.options[0]</code> で受け取る。設定側は <code>["error", { … }]</code> の配列形式。</p>
+      </div>
+      <div class="panel ai">
+        <h3>自動修正</h3>
+        <p class="small"><code>meta.fixable: 'code'</code> を宣言し、<code>report</code> に <code>fix(fixer)</code> を渡す。<code>fixer</code> は <code>replaceText</code> / <code>insertTextBefore</code> / <code>remove</code> などの ESLint と同じ API。</p>
+      </div>
+      <div class="panel amber">
+        <h3>適用するコマンド</h3>
+        <table class="tight xs">
+          <tr><td style="white-space:nowrap"><code>oxlint --fix</code></td><td>安全な修正（挙動を変えない）</td></tr>
+          <tr><td style="white-space:nowrap"><code>--fix-suggestions</code></td><td>挙動が変わりうる提案</td></tr>
+          <tr><td style="white-space:nowrap"><code>--fix-dangerously</code></td><td>壊す可能性のある強い修正</td></tr>
+        </table>
+        <p class="xs muted">エディタ拡張では「コードアクション」として提示される。既定では<b>何も適用されない</b>（明示フラグが必要）。</p>
+      </div>
+    </div>
+    <div class="term sm xxs"><span class="c">// 非推奨 API を新しい API に置換するルール（抜粋）</span>
+<span class="k">const</span> rule = {
+  meta: {
+    fixable: <span class="s">'code'</span>,   <span class="c">// ← これが無いと fix は無視される</span>
+    messages: { deprecated: <span class="s">'{{from}} は非推奨。{{to}} を使う'</span> },
+    schema: [{        <span class="c">// ← オプションの JSON Schema</span>
+      type: <span class="s">'object'</span>,
+      properties: { mapping: { type: <span class="s">'object'</span> } },
+    }],
+  },
+  create(context) {
+    <span class="k">const</span> { mapping = {} } = context.options[<span class="n">0</span>] ?? {};
+    <span class="k">return</span> {
+      <span class="s">'CallExpression &gt; Identifier.callee'</span>(node) {
+        <span class="k">const</span> to = mapping[node.name];
+        <span class="k">if</span> (!to) <span class="k">return</span>;
+        context.report({
+          node, messageId: <span class="s">'deprecated'</span>,
+          data: { from: node.name, to },   <span class="c">// ← {{…}} に埋まる</span>
+          fix: (fixer) =&gt; fixer.replaceText(node, to),
+        });
+      },
+    };
+  },
+};
+
+<span class="c">// .oxlintrc.json — 設定側</span>
+<span class="s">"house-rules/no-deprecated-api"</span>: [<span class="s">"error"</span>, {
+  <span class="s">"mapping"</span>: { <span class="s">"formatDateOld"</span>: <span class="s">"formatDate"</span> } }]</div>
+  </div>
+</section>
+
+<!-- 11 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Performance API</p>
+  <h2>代替 API：<code>createOnce</code> と before / after フック</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm xxs"><span class="k">import</span> { eslintCompatPlugin } <span class="k">from</span> <span class="s">'@oxlint/plugins'</span>;
+
+<span class="k">const</span> rule = {
+  createOnce(context) {      <span class="c">// ← 全体で 1 回だけ</span>
+    <span class="k">let</span> classCount;
+    <span class="k">return</span> {
+      before() {             <span class="c">// ← ファイルごとの初期化</span>
+        classCount = <span class="n">0</span>;
+      },
+      ClassDeclaration(node) {
+        classCount++;
+        <span class="k">if</span> (classCount === <span class="n">6</span>) {
+          context.report({ message: <span class="s">'Too many classes'</span>, node });
+        }
+      },
+      after() { <span class="c">/* 後始末（任意）*/</span> },
+    };
+  },
+};
+
+<span class="k">export default</span> eslintCompatPlugin({
+  meta: { name: <span class="s">'best-plugin-ever'</span> },
+  rules: { <span class="s">'max-classes'</span>: rule },
+});</div>
+      <p class="xs muted"><code>before()</code> が <code>false</code> を返すとそのファイルはスキップされる（ESLint の「空ビジタを返す」に相当）。</p>
+    </div>
+    <div class="stack">
+      <div class="panel ox">
+        <h3>なぜこの API があるのか</h3>
+        <p class="small">ESLint の <code>create</code> は<b>ファイルごとに任意のビジタを返せる</b>ため、Rust 側は「このルールがどのノードに関心があるか」を事前に知れず、毎ファイル JS を呼ぶしかない。<code>createOnce</code> なら<b>一度呼べば分かる</b>ので、① 関心ノードへのポインタ列だけを Rust から渡す、② 該当ノードが無いファイルは JS を呼ばない、という最適化ができる。</p>
+      </div>
+      <div class="panel amber">
+        <h3>公式の但し書き</h3>
+        <ul class="small">
+          <li>「<b>今は速くない。でもすぐ速くなる</b>」— 最適化は順次投入予定で、<code>createOnce</code> で書いておけば <b>バージョンを上げるだけで恩恵</b>を受けられる。</li>
+          <li><code>before</code> / <code>after</code> は <b>全ファイルで走る保証がない</b>（将来スキップされうる）。必ず毎ファイル実行したい処理は <code>Program(node)</code> ビジタに置く。</li>
+          <li><code>before</code> が <code>false</code> を返した場合、<code>after</code> も実行されない。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 12 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Interop</p>
+  <h2>ESLint と Oxlint の両方で動かす</h2>
+  <div class="cols cols-3">
+    <div class="panel ox stack">
+      <h3><code>eslintCompatPlugin</code> の役割</h3>
+      <p class="small">プラグイン内の各ルールに <b><code>createOnce</code> へ委譲する <code>create</code> を生やす</b>だけの薄いラッパ。結果として同じプラグインが：</p>
+      <ul class="small">
+        <li>Oxlint では <code>createOnce</code> の高速パスで動く</li>
+        <li>ESLint では通常の <code>create</code> ルールとして動く</li>
+      </ul>
+    </div>
+    <div class="panel ai stack">
+      <h3>npm 公開時の注意</h3>
+      <ul class="small">
+        <li><code>@oxlint/plugins</code> は <b>runtime dependency</b> に入れる（devDependencies ではない）。</li>
+        <li>同パッケージは <b>ESM / CommonJS 両方のエントリ</b>を持ち、Node.js 12.22+ で動く（ESLint 8 の最低要件に合わせてある）。</li>
+        <li>つまり公開プラグインは <b>Oxlint の任意バージョン + ESLint 8 以降</b>の両対応にできる。</li>
+      </ul>
+    </div>
+    <div class="panel amber stack">
+      <h3>移行期の現実解</h3>
+      <ul class="small">
+        <li>ESLint と Oxlint は<b>併走できる</b>。まず Oxlint を CI に足し、ESLint 側を段階的に削る。</li>
+        <li>社内ルールを両対応にしておけば、<b>切り替えの可逆性</b>が確保できる。</li>
+        <li>ESLint 設定の変換は <code>npx @oxlint/migrate eslint.config.js</code>。</li>
+      </ul>
+    </div>
+  </div>
+  <div class="term sm"><span class="c">// 同じプラグインを両方の設定から参照する</span>
+<span class="c">// eslint.config.js</span>                                   <span class="c">// .oxlintrc.json</span>
+<span class="k">import</span> houseRules <span class="k">from</span> <span class="s">'./tools/oxlint-plugin/index.js'</span>;      { <span class="s">"jsPlugins"</span>: [<span class="s">"./tools/oxlint-plugin/index.js"</span>],
+<span class="k">export default</span> [{                                          <span class="s">"rules"</span>: { <span class="s">"house-rules/no-direct-dayjs"</span>: <span class="s">"error"</span> } }
+  plugins: { <span class="s">'house-rules'</span>: houseRules },
+  rules: { <span class="s">'house-rules/no-direct-dayjs'</span>: <span class="s">'error'</span> },
+}];</div>
+</section>
+
+<!-- 13 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Testing</p>
+  <h2>ルールをテストする：RuleTester</h2>
+  <div class="cols cols-52">
+    <div class="term sm xxs"><span class="k">import</span> { RuleTester } <span class="k">from</span> <span class="s">'oxlint/plugins-dev'</span>;
+<span class="k">import</span> { describe, it } <span class="k">from</span> <span class="s">'vitest'</span>;
+<span class="k">import</span> { maxClasses } <span class="k">from</span> <span class="s">'./max-classes.js'</span>;
+
+RuleTester.describe = describe;
+RuleTester.it = it;
+
+<span class="k">const</span> ruleTester = <span class="k">new</span> RuleTester({
+  languageOptions: { parserOptions: { lang: <span class="s">'ts'</span> } },
+});
+
+ruleTester.run(<span class="s">'max-classes'</span>, maxClasses, {
+  valid: [
+    <span class="s">'class A {}'</span>,
+    <span class="c">// ちょうど上限</span>
+    <span class="s">'class A {} class B {} class C {} class D {} class E {}'</span>,
+    <span class="c">// 式は宣言ではないので数えない</span>
+    <span class="s">'const a = class {}; const b = class {};'</span>,
+  ],
+  invalid: [
+    {
+      name: <span class="s">'the sixth declaration'</span>,
+      code: <span class="s">'class A {} … class F {}'</span>,
+      errors: [{ messageId: <span class="s">'maxClasses'</span>,
+        line: <span class="n">1</span>, column: <span class="n">55</span>, endColumn: <span class="n">65</span> }],
+    },
+  ],
+});</div>
+    <div class="stack">
+      <div class="panel ox">
+        <h3>使い方</h3>
+        <ul class="small">
+          <li>ESLint の <code>RuleTester</code> と同じ思想の API を <code>oxlint/plugins-dev</code> が提供する。</li>
+          <li>テストランナーは任意（例は Vitest）。<code>RuleTester.describe</code> / <code>.it</code> に注入する。</li>
+          <li><code>valid</code> は<b>誤検知しないこと</b>、<code>invalid</code> は<b>期待する診断が出ること</b>を確認する。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>テストで押さえるケース</h3>
+        <ul class="small">
+          <li>境界値（上限ちょうど / 1 つ超え）</li>
+          <li><b>似ているが対象外</b>のコード（クラス式、動的 import、型だけの import など）</li>
+          <li>オプションの各パターン（<code>options: [{ … }]</code>）</li>
+          <li>自動修正を持つなら <code>output</code> で<b>修正後のコード</b>を固定する</li>
+        </ul>
+      </div>
+      <p class="xs muted">ルールは「検出漏れ」より <b>誤検知</b>で信頼を失う。<code>valid</code> ケースを厚く書くほうが実務では効く。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 14 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Config</p>
+  <h2>設定リファレンス：<code>jsPlugins</code> の指定方法</h2>
+  <div class="cols cols-2">
+    <div class="term sm xxs"><span class="c">// 3 通りの指定（いずれも import 指定子として解決）</span>
+{
+  <span class="s">"jsPlugins"</span>: [
+    <span class="s">"./path/to/my-plugin.js"</span>,   <span class="c">// 設定ファイルからの相対パス</span>
+    <span class="s">"eslint-plugin-whatever"</span>,    <span class="c">// npm パッケージ</span>
+    <span class="s">"@foobar/eslint-plugin"</span>      <span class="c">// スコープ付きパッケージ</span>
+  ],
+  <span class="s">"rules"</span>: {
+    <span class="s">"my-plugin/rule1"</span>: <span class="s">"error"</span>,
+    <span class="s">"whatever/rule2"</span>: <span class="s">"warn"</span>,
+    <span class="s">"@foobar/rule1"</span>: <span class="s">"error"</span>
+  }
+}</div>
+    <div class="term sm xxs"><span class="c">// エイリアス：{ name, specifier } で別名を付ける</span>
+{
+  <span class="s">"jsPlugins"</span>: [
+    <span class="c">// jsdoc は Oxlint がネイティブ実装している予約名</span>
+    { <span class="s">"name"</span>: <span class="s">"jsdoc-js"</span>, <span class="s">"specifier"</span>: <span class="s">"eslint-plugin-jsdoc"</span> },
+    <span class="c">// 長い名前を短縮する用途にも使える</span>
+    { <span class="s">"name"</span>: <span class="s">"short"</span>, <span class="s">"specifier"</span>: <span class="s">"eslint-plugin-with-very-long-name"</span> }
+  ],
+  <span class="s">"rules"</span>: {
+    <span class="s">"jsdoc-js/check-examples"</span>: <span class="s">"error"</span>,   <span class="c">// JS プラグイン側</span>
+    <span class="s">"jsdoc/require-property-name"</span>: <span class="s">"error"</span> <span class="c">// ネイティブ側</span>
+  }
+}</div>
+  </div>
+  <div class="cols cols-3">
+    <div class="panel ox">
+      <h3>エイリアスが要る場面</h3>
+      <ul class="xs">
+        <li>ネイティブプラグイン名（jsdoc / react など）と衝突する</li>
+        <li>名前が長すぎる</li>
+        <li><b>ネイティブ実装済みだが、欲しいルールだけ未実装</b>のとき、JS 版を別名で併用する</li>
+      </ul>
+    </div>
+    <div class="panel ai">
+      <h3>設定ファイルの形式</h3>
+      <ul class="xs">
+        <li><code>.oxlintrc.json</code>（JSONC）と <code>oxlint.config.ts</code>（<code>defineConfig</code>）</li>
+        <li>ディレクトリごとのネスト設定に対応</li>
+        <li>重大度は <code>"error"</code> / <code>"warn"</code> / <code>"off"</code>、オプションは配列形式</li>
+      </ul>
+    </div>
+    <div class="panel amber">
+      <h3>よくある詰まり</h3>
+      <ul class="xs">
+        <li>パスの基準は <b>設定ファイル</b>であって cwd ではない</li>
+        <li>ルール名の接頭辞は <b>プラグインの <code>meta.name</code></b>（パッケージ名ではない）</li>
+        <li><code>jsPlugins</code> に入れただけでは何も有効にならない。<code>rules</code> での明示が必要</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 15 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Reuse</p>
+  <h2>書く前に：既存の ESLint 資産を載せる</h2>
+  <div class="cols cols-25">
+    <div class="stack">
+      <div class="panel ox">
+        <h3>互換テスト済みプラグイン（公式の conformance 結果）</h3>
+        <table class="tight xs">
+          <tr><th>プラグイン</th><th style="text-align:right">テスト数</th><th style="text-align:right">合格率</th></tr>
+          <tr><td>ESLint 組み込みルール</td><td style="text-align:right">33,006</td><td style="text-align:right">100%</td></tr>
+          <tr><td>Testing Library</td><td style="text-align:right">17,016</td><td style="text-align:right">100%</td></tr>
+          <tr><td>ESLint Stylistic</td><td style="text-align:right">18,310</td><td style="text-align:right">99.99%</td></tr>
+          <tr><td>React Hooks</td><td style="text-align:right">5,007</td><td style="text-align:right">100%</td></tr>
+          <tr><td>SonarJS</td><td style="text-align:right">3,951</td><td style="text-align:right">99.6%*</td></tr>
+          <tr><td>e18e</td><td style="text-align:right">474</td><td style="text-align:right">100%*</td></tr>
+        </table>
+        <p class="xs muted">* 型認識ルールを除く。ほかに cypress / mocha / playwright / regexp / storybook / react-hooks なども conformance 対象。一覧に無いプラグインも多くは動く。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c">// ルールを書かずに「この構文を禁止」する</span>
+{
+  <span class="s">"jsPlugins"</span>: [<span class="s">"oxlint-plugin-eslint"</span>],
+  <span class="s">"rules"</span>: {
+    <span class="c">// 注意: "eslint" ではなく "eslint-js"</span>
+    <span class="s">"eslint-js/no-restricted-syntax"</span>: [<span class="s">"error"</span>, {
+      <span class="s">"selector"</span>:
+        <span class="s">"ThrowStatement &gt; CallExpression[callee.name=/Error$/]"</span>,
+      <span class="s">"message"</span>: <span class="s">"Error を投げるときは new を付ける"</span>
+    }]
+  }
+}</div>
+      <div class="panel ai">
+        <h3><code>oxlint-plugin-eslint</code></h3>
+        <p class="small">ESLint の組み込みルール全部を JS プラグインとして詰めたパッケージ。Oxlint にネイティブ実装がまだ無い <code>no-restricted-syntax</code> などを、<b>自作せずに</b>使えるようにする。</p>
+      </div>
+      <p class="xs muted">判断基準：<b>セレクタ 1 本で書ける禁止なら設定で済ませる</b>。状態を持つ・相関を見る・自動修正したい、のいずれかが要るなら独自ルールを書く。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 16 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Design</p>
+  <h2>設計指針：何をルールにし、どう運用するか</h2>
+  <div class="cols cols-3">
+    <div class="panel ox stack">
+      <h3>ルール化に向くもの</h3>
+      <ul class="small">
+        <li><b>機械的に判定できて、例外が少ない</b>規約（禁止 import、禁止 API、レイヤ間依存、命名パターン）</li>
+        <li>レビューで<b>毎回同じ指摘</b>をしているもの</li>
+        <li>壊れると事故になるが、目視では見落とすもの</li>
+      </ul>
+      <p class="xs muted">逆に「設計が良いか」「命名が適切か」といった判断は、ルールにすると誤検知だらけになる。</p>
+    </div>
+    <div class="panel amber stack">
+      <h3>誤検知を抑える作法</h3>
+      <ul class="small">
+        <li>まず <b>狭く</b>作る。対象パスやノード種別を絞り、必要になってから広げる。</li>
+        <li>正当な例外は <b>オプション（allowList）</b>で逃がす。コメントでの無効化（<code>// oxlint-disable-next-line</code>）も想定しておく。</li>
+        <li>メッセージは<b>命令形で「どう直すか」</b>まで書く（oxc 自身のルール作法でもある）。</li>
+      </ul>
+    </div>
+    <div class="panel ai stack">
+      <h3>運用</h3>
+      <ul class="small">
+        <li>導入時は <code>"warn"</code> で入れて件数を見る → 既存違反を潰す → <code>"error"</code> に上げる。</li>
+        <li>ルールは <b>リポジトリ内の <code>tools/oxlint-plugin/</code></b> に置き、テストを CI で回す。複数リポジトリで使うなら npm パッケージ化。</li>
+        <li>自動修正を付けられるルールは付ける。<code>--fix</code> 一発で移行できると定着が速い。</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small muted">ルールは「増やすこと」ではなく「<b>レビューの手間を減らすこと</b>」が目的。使われない・無効化だらけのルールは消す判断も運用のうち。</p>
+</section>
+
+<!-- 17 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Limitations</p>
+  <h2>制限と注意点（2026-09 時点）</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel red">
+        <h3>仕様上できないこと</h3>
+        <ul class="small">
+          <li><b>型情報を使う独自ルール</b>は書けない。「この式の型が Promise なら」といった判定は不可。typescript-eslint の型認識ルール自体は <code>--type-aware</code> で内蔵提供される（61 個中 59 個）。</li>
+          <li><b>Vue / Svelte / Angular などの独自ファイル形式</b>は限定的な対応にとどまる（公式は「今年後半に対応予定」）。独自パーサも未対応。</li>
+          <li>ESLint v9 より前の API しか使っていない未メンテのプラグインは、原則動かない。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>既知の不具合</h3>
+        <p class="small">Windows で<b>メモリ不足エラー</b>が報告されている（既知の issue）。回避策として WSL での実行が案内されている。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <h3>書き方で踏みやすい落とし穴</h3>
+        <ul class="small">
+          <li><code>before</code> / <code>after</code> は <b>毎ファイル実行が保証されない</b>。必ず走らせたい初期化は <code>Program</code> ビジタへ。</li>
+          <li><code>create</code>（ESLint 形式）は<b>ファイルごとに呼ばれる</b>。重い初期化をここに書くとファイル数ぶん効いてくる。<code>createOnce</code> + <code>before</code> に寄せる。</li>
+          <li>プラグインのコード自体の速度は <b>Oxlint の管轄外</b>。ファイル I/O や重いアルゴリズムは ESLint と同じだけ遅い。</li>
+          <li>JS プラグインは <b>alpha</b>。ESLint と挙動が違えばバグとして報告する（それが公式の想定）。</li>
+        </ul>
+      </div>
+      <p class="xs muted">出典：oxc 公式ドキュメント「JS Plugins」および公式ブログ「Oxlint JS Plugins Alpha」（2026-03-11）。進捗はトラッキング issue で追える。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 18 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Performance</p>
+  <h2>速度：JS プラグインを入れても速いのか</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel ox">
+        <h3>Node.js リポジトリの移行ベンチマーク（公式）</h3>
+        <table class="tight small">
+          <tr><th>リンタ</th><th>時間</th><th style="text-align:right">速度差</th></tr>
+          <tr><td>ESLint</td><td>1 分 43 秒</td><td style="text-align:right">—</td></tr>
+          <tr><td><b>Oxlint</b></td><td><b>21 秒</b></td><td style="text-align:right"><b>4.8x</b></td></tr>
+        </table>
+        <p class="xs muted">6,298 ファイル / ネイティブ 104 ルール（Rust） + JS プラグイン 75 ルール + 独自ルール 23 個。Mac mini M4・48GB・Node.js 24.14.0、hyperfine 計測。</p>
+      </div>
+      <div class="panel ai">
+        <h3>他の報告値</h3>
+        <ul class="small">
+          <li>200 万行のコードベースで <b>16x</b>（JS プラグインを多用した状態）</li>
+          <li>JS プラグインの使用が少ない構成では <b>最大 100x</b></li>
+          <li>typescript-eslint や eslint-plugin-import を使っていたプロジェクトほど効果が大きい</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <h3>速さの仕組み：raw transfer</h3>
+        <p class="small">AST を JSON にせず <b>Rust のメモリ配置のまま JS へ渡す</b>。さらに <b>遅延デシリアライズ</b>で、ルールが実際に触ったノードだけを JS オブジェクト化する。Rust ↔ JS の往復コストが native ツールの宿命的ボトルネックだったが、これをほぼゼロに近づけた。</p>
+        <p class="xs muted">初代の技術プレビュー（2025-10）では Vue core で ESLint 4,116ms に対し Oxlint 単体 48ms、JS プラグイン込み 236ms という比較が示されていた。</p>
+      </div>
+      <div class="panel amber">
+        <h3>公式の性能 tips</h3>
+        <ul class="small">
+          <li><b>整形はフォーマッタに寄せる</b>。Oxfmt（Prettier 比 30x）に移すと、Stylistic 系プラグインぶんの linting 時間が丸ごと消える。</li>
+          <li><b>プラグインを選ぶ</b>。遅いプラグインは Oxlint 上でも遅い。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 19 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Native route</p>
+  <h2>参考：Rust でネイティブルールを書く（oxc への貢献）</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel red">
+        <h3>まず方針の確認</h3>
+        <p class="small">公式ドキュメントは「ESLint 互換の JS プラグインが使えるようになったため、<b>新しい Rust 製プラグインを追加する予定はない</b>」と明記。一方で <b>既存プラグインへのルール追加は歓迎</b>。Rust にすべきか迷うなら、PR の前に Discussion を立てる。</p>
+      </div>
+      <div class="term sm xxs"><span class="c"># 雛形を生成（rulegen）</span>
+<span class="k">$</span> just new-rule no-debugger     <span class="c"># eslint 本体のルール</span>
+<span class="k">$</span> just new-ts-rule [name]       <span class="c"># @typescript-eslint</span>
+<span class="k">$</span> just new-oxc-rule [name]      <span class="c"># oxc 独自ルール</span>
+
+<span class="c"># 生成されるもの</span>
+crates/oxc_linter/src/rules/&lt;plugin&gt;/&lt;rule&gt;.rs
+  + rules.rs への mod 登録 / declare_all_lint_rules!
+  + ESLint から移植したテストケース
+
+<span class="k">$</span> cargo test -p oxc_linter -- no-debugger
+<span class="k">$</span> cargo insta review            <span class="c"># スナップショット確認</span></div>
+    </div>
+    <div class="stack">
+      <div class="term sm xxs"><span class="c">// crates/oxc_linter/src/rules/eslint/no_debugger.rs</span>
+declare_oxc_lint!(
+    <span class="c">/// ### What it does / Why is this bad? / Examples</span>
+    NoDebugger,
+    correctness,  <span class="c">// pedantic / perf / restriction / style / nursery …</span>
+    fix           <span class="c">// pending / fix_dangerous / suggestion / …</span>
+);
+<span class="k">impl</span> Rule <span class="k">for</span> NoDebugger {
+    <span class="k">fn</span> run&lt;<span class="s">'a</span>&gt;(&amp;<span class="k">self</span>, node: &amp;AstNode&lt;<span class="s">'a</span>&gt;, ctx: &amp;LintContext&lt;<span class="s">'a</span>&gt;) {
+        <span class="k">if let</span> AstKind::DebuggerStatement(stmt) = node.kind() {
+            ctx.diagnostic(no_debugger_diagnostic(stmt.span));
+        }
+    }
+}</div>
+      <div class="panel">
+        <h3>JS プラグインとの対応</h3>
+        <table class="tight xs">
+          <tr><td style="white-space:nowrap">ビジタ</td><td><code>run</code>（各ノード）/ <code>run_on_symbol</code>（各シンボル）/ <code>run_once</code>（ファイル全体）</td></tr>
+          <tr><td style="white-space:nowrap">メタ情報</td><td><code>declare_oxc_lint!</code>（説明・カテゴリ・fixer 能力）。診断文は message =「何が悪いか」、help =「どう直すか」</td></tr>
+          <tr><td style="white-space:nowrap">オプション</td><td>構造体フィールド + <code>JsonSchema</code> derive（説明も自動生成）</td></tr>
+          <tr><td style="white-space:nowrap">テスト</td><td><code>Tester::new(…).test_and_snapshot()</code> + insta</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 20 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Checklist</p>
+  <h2>導入手順：既存プロジェクトに独自ルールを載せるまで</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="no">1</div>
+      <div class="name">現状を移す <span class="tag">半自動</span></div>
+      <div class="desc"><code>npm add -D oxlint</code> の後、<code>npx @oxlint/migrate eslint.config.js</code> で <code>.oxlintrc.json</code> を生成。まずは <b>既存 ESLint 設定の再現</b>から始める。</div>
+    </div>
+    <div class="step">
+      <div class="no">2</div>
+      <div class="name">穴を埋める <span class="tag ai">設定だけ</span></div>
+      <div class="desc">ネイティブ実装が無いルールは <code>jsPlugins</code> に既存 ESLint プラグインを追加して補う。名前が衝突するものはエイリアス（<code>{ name, specifier }</code>）で回避する。</div>
+    </div>
+    <div class="step">
+      <div class="no">3</div>
+      <div class="name">独自ルールを書く <span class="tag">本題</span></div>
+      <div class="desc"><code>tools/oxlint-plugin/</code> に <code>createOnce</code> + <code>eslintCompatPlugin</code> で実装（ESLint 併走が不要なら素の <code>create</code> でよい）。<code>messageId</code> を使い、可能なら <code>fix</code> も付ける。</div>
+    </div>
+    <div class="step">
+      <div class="no">4</div>
+      <div class="name">テストする <span class="tag">必須</span></div>
+      <div class="desc"><code>oxlint/plugins-dev</code> の <code>RuleTester</code> + Vitest。<b>valid ケースを厚く</b>書いて誤検知を潰す。ルールの追加・変更時は必ずテストも更新する。</div>
+    </div>
+    <div class="step">
+      <div class="no">5</div>
+      <div class="name">段階的に有効化 <span class="tag amber">運用</span></div>
+      <div class="desc"><code>"warn"</code> で入れて件数を確認 → <code>--fix</code> と手作業で既存違反を解消 → <code>"error"</code> に昇格。CI では <code>oxlint</code> を必須チェックにし、エディタ拡張も配る。</div>
+    </div>
+    <div class="step">
+      <div class="no">6</div>
+      <div class="name">ESLint を畳む <span class="tag amber">任意</span></div>
+      <div class="desc">型認識ルールが必要なら <code>--type-aware</code> に寄せる。Vue / Svelte の独自ファイル形式など未対応領域が残る場合のみ、その範囲だけ ESLint を併走させる。</div>
+    </div>
+  </div>
+</section>
+
+<!-- 21 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Wrap-up</p>
+  <h2>まとめと参考資料</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel ox">
+        <h3>要点</h3>
+        <ul class="small">
+          <li>Oxlint の独自ルールは <b>ESLint 互換の JS プラグイン</b>で書く。<code>create(context)</code> にビジタ、<code>jsPlugins</code> に登録、それだけ。</li>
+          <li><b>書く前に探す</b>：既存 ESLint プラグイン → <code>eslint-js/no-restricted-syntax</code> + セレクタ → それでも無ければ自作。</li>
+          <li>新規は <b><code>createOnce</code> + <code>before</code></b> で書く。ESLint 互換は <code>eslintCompatPlugin</code> が保証し、将来の最適化も無改修で乗る。</li>
+          <li><b>型情報は使えない</b>。型が要る判定は <code>--type-aware</code> の内蔵ルールか、ESLint 併走で。</li>
+          <li>JS プラグインは alpha だが、ESLint 本体のテスト 33,006 件が 100% 通る水準。実プロジェクトでの採用を想定した段階にある。</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>次の一歩</h3>
+        <ul class="small">
+          <li><code>npm add -D oxlint</code> → スライド 5 の 15 行を <code>plugin.js</code> に貼って動かす</li>
+          <li>レビューで繰り返している指摘を 1 つルール化し、<code>"warn"</code> で CI に入れてみる</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><a href="https://oxc.rs/docs/guide/usage/linter/js-plugins">JS Plugins</a> — 設定・エイリアス・API 対応状況・互換プラグイン一覧</li>
+        <li><a href="https://oxc.rs/docs/guide/usage/linter/writing-js-plugins">Writing JS Plugins</a> — <code>create</code> / <code>createOnce</code> / before・after / RuleTester（スライド 5・11・13 の出典）</li>
+        <li><a href="https://oxc.rs/blog/2026-03-11-oxlint-js-plugins-alpha">Oxlint JS Plugins Alpha</a>（2026-03-11）— 互換テスト結果、Node.js ベンチ、制限事項の出典</li>
+        <li><a href="https://oxc.rs/blog/2025-10-09-oxlint-js-plugins.html">Oxlint JS Plugins Preview</a>（2025-10-09）— raw transfer と遅延デシリアライズの解説</li>
+        <li><a href="https://oxc.rs/docs/guide/usage/linter/automatic-fixes">Automatic fixes</a> / <a href="https://oxc.rs/docs/guide/usage/linter/type-aware">Type-aware linting</a> / <a href="https://oxc.rs/docs/guide/usage/linter/plugins">Built-in plugins</a></li>
+        <li><a href="https://www.npmjs.com/package/@oxlint/plugins">@oxlint/plugins</a> — <code>definePlugin</code> / <code>defineRule</code> / <code>eslintCompatPlugin</code> と型</li>
+        <li><a href="https://www.npmjs.com/package/oxlint-plugin-eslint">oxlint-plugin-eslint</a> / <a href="https://www.npmjs.com/package/oxlint">oxlint</a>（1.83.0・動作要件の出典）</li>
+        <li><a href="https://eslint.org/docs/latest/extend/custom-rules">ESLint: Custom Rules</a> / <a href="https://eslint.org/docs/latest/extend/selectors">Selectors</a> — API の一次情報</li>
+        <li><a href="https://oxc.rs/docs/contribute/linter/adding-rules.html">oxc: Adding Linter Rules</a> — Rust ルール実装（スライド 19 の出典）</li>
+      </ul>
+      <p class="xs muted">本スライドは 2026-09-15 時点の公式ドキュメント・公式ブログ・npm レジストリの情報に基づく。JS プラグインは alpha のため、API と対応状況は各リンク先で最新を確認のこと。</p>
+    </div>
+  </div>
+</section>
+
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷/PDF</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>
