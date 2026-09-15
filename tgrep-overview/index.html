@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tgrep 解説 — トライグラム索引・AI エージェント連携・プラグイン化</title>
+<meta name="description" content="Microsoft の tgrep（トライグラム索引付き grep）の仕組み・コマンド・ripgrep との違いを整理し、AI コーディングエージェントへの組み込み方と Claude Code プラグインとしての配布方法までを解説するスライド">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F8F7F4;
+    --paper-2: #EEEBE4;
+    --ink: #1B1A16;
+    --ink-2: #4C4941;
+    --ink-3: #858176;
+    --rule: #D9D4C9;
+    --tg: #B8480F;          /* tgrep / Rust orange */
+    --tg-soft: #FAE2D4;
+    --ai: #2F62B8;          /* AI agent blue */
+    --ai-soft: #DBE5F7;
+    --amber: #A5761A;
+    --amber-soft: #FAEBC6;
+    --red: #A8392B;
+    --red-soft: #F5D8D3;
+    --term: #14110D;
+    --term-ink: #EDE6DC;
+    --term-dim: #9A8F7F;
+    --term-key: #F0A35E;
+    --term-str: #9CC6E8;
+    --term-num: #E9CE7A;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--term);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+  /* ---------- stage ---------- */
+  #stage { position: fixed; inset: 0; padding: 16px; }
+  /* deck はレイアウト上 1280x720 のまま transform で縮小する。ビューポート中央に
+     絶対配置し、fit() が縮小後サイズの半分だけ戻す。 */
+  .deck {
+    width: 1280px; height: 720px;
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: 0 0;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 52px 72px 60px;
+    display: none;
+    flex-direction: column;
+    gap: 20px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "tgrep 解説 — 索引・エージェント・プラグイン";
+    position: absolute; left: 72px; bottom: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  /* ---------- type ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--tg); margin: 0;
+  }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 62px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 18px; margin: 0 0 6px; }
+  p { margin: 0; }
+  .lead { font-size: 19px; color: var(--ink-2); max-width: 48em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code, dd code {
+    background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: .92em;
+  }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--tg); }
+  b, strong { font-weight: 600; }
+  a { color: var(--tg); text-decoration: none; border-bottom: 1px solid var(--tg-soft); }
+
+  /* ---------- layout helpers ---------- */
+  .cols { display: grid; gap: 26px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.15fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.25fr; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px; }
+  .panel.tg { border-top: 3px solid var(--tg); }
+  .panel.ai { border-top: 3px solid var(--ai); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 999px; background: var(--tg-soft); color: var(--tg); vertical-align: middle;
+  }
+  .tag.ai { background: var(--ai-soft); color: var(--ai); }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  ul.plusminus { list-style: none; padding-left: 1.4em; }
+  ul.plusminus li { text-indent: -1.4em; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--tg); font-weight: 700; }
+  ul.plusminus li.bad::before { content: "△ "; color: var(--red); font-weight: 700; }
+
+  /* ---------- terminal ---------- */
+  .term {
+    background: var(--term); color: var(--term-ink); border-radius: 8px;
+    padding: 14px 18px; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+    overflow: auto; white-space: pre; tab-size: 2;
+  }
+  .term .k { color: var(--term-key); }
+  .term .s { color: var(--term-str); }
+  .term .n { color: var(--term-num); }
+  .term .d { color: var(--term-dim); }
+  .term .c { color: var(--term-dim); font-style: italic; }
+  .term.sm { font-size: 12px; }
+  .term.xsm { font-size: 11.5px; line-height: 1.5; }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 5px 8px; }
+  .nowrap { white-space: nowrap; }
+  td.mono, th.mono { font-family: var(--mono); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---------- diagram ---------- */
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 10px; }
+  .box { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+  .box .t { font-family: var(--display); font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+  .box.tg { border-color: var(--tg); background: var(--tg-soft); }
+  .box.ai { border-color: var(--ai); background: var(--ai-soft); }
+  .arrow { font-family: var(--mono); color: var(--ink-3); font-size: 12px; text-align: center; line-height: 1.3; align-self: center; }
+  .arrow b { display: block; font-size: 18px; color: var(--tg); }
+
+  /* ---------- step flow ---------- */
+  .steps { display: flex; flex-direction: column; gap: 9px; flex: 1; min-height: 0; }
+  .step { display: grid; grid-template-columns: 42px 210px 1fr; gap: 14px; align-items: start;
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 9px 16px; }
+  .step .no { font-family: var(--display); font-weight: 900; font-size: 24px; color: var(--tg); line-height: 1.2; }
+  .step .name { font-family: var(--display); font-weight: 700; font-size: 15px; line-height: 1.4; }
+  .step .desc { font-size: 13px; color: var(--ink-2); }
+
+  /* ---------- cover ---------- */
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 80px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; font-size: 72px; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 28px; }
+  .cover .frame {
+    position: absolute; right: 72px; top: 56px; width: 470px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--tg); padding-left: 16px;
+  }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); }
+
+  /* ---------- nav ---------- */
+  #hud {
+    position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7;
+  }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--tg); outline-offset: 2px; }
+
+  /* ---------- overview & print ---------- */
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────── -->
+<section class="slide cover">
+  <div class="frame"><span class="k">$</span> tgrep serve . &amp;
+<span class="c"># 索引を作って常駐。以後の検索はミリ秒</span>
+
+<span class="k">$</span> tgrep -F -l -- <span class="s">"parseConfig"</span> .
+src/config/parser.ts
+src/config/index.ts
+<span class="d">… 4 files (12ms)</span>
+
+<span class="c"># ripgrep は毎回 O(全バイト) を走査する。</span>
+<span class="c"># tgrep は索引で候補を絞ってから走査する。</span></div>
+  <p class="eyebrow">Deep dive · ysksm/slides</p>
+  <h1>tgrep 解説</h1>
+  <p class="lead">Microsoft が公開したトライグラム索引付き grep「tgrep」。その仕組みと使い方を押さえたうえで、<b>AI コーディングエージェントとの組み合わせ</b>と、<b>プラグインとして配布して使わせる</b>方法までを扱う。</p>
+  <p class="meta"><span>2026-09-15</span><span>microsoft/tgrep (Rust · MIT)</span><span>Issue #29</span></p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Summary</p>
+  <h2>結論を先に：索引を一度作り、エージェントに配る</h2>
+  <div class="cols cols-3">
+    <div class="panel tg stack">
+      <h3>① 何者か <span class="tag">索引付き grep</span></h3>
+      <p class="small">リポジトリ全体から <b>3 バイトのトライグラム</b>の転置索引を事前に作り、検索時は候補ファイルだけを走査する。クライアント／サーバー構成で索引を常駐させ、ファイル監視で自動更新。<b>巨大リポジトリで ripgrep 比 15〜52 倍</b>の実測値が公開されている。</p>
+      <p class="xs muted">インターフェースは ripgrep 互換。<code>-i -F -l -c -A/-B/-C -g -t --json</code> がそのまま通る。</p>
+    </div>
+    <div class="panel ai stack">
+      <h3>② なぜ AI エージェントに効くか <span class="tag ai">本題 1</span></h3>
+      <p class="small">エージェントは 1 タスクで<b>何十回も grep する</b>。1 回 30 秒の全走査が 0.5 秒になれば、探索の深さと往復回数がそのまま変わる。実際 <b>GitHub Copilot CLI は tgrep を検索基盤に採用</b>している。リポジトリには <code>AGENTS.md</code>（エージェント向けの作法）が同梱されている。</p>
+      <p class="xs muted">鍵は「速さ」だけではない。<code>--json</code> / 終了コード / <code>-l</code> による<b>出力量の制御</b>がコンテキスト節約に効く。</p>
+    </div>
+    <div class="panel amber stack">
+      <h3>③ プラグイン化 <span class="tag amber">本題 2</span></h3>
+      <p class="small">「入れて、常駐させて、使い方を教える」までを 1 パッケージにする。Claude Code プラグインなら <b>SessionStart フックで <code>tgrep serve</code> を起動</b>し、<b>Skill で使い方を教え</b>、<b>marketplace 経由でチームに配る</b>ところまで一式にできる。</p>
+      <p class="xs muted">「各自インストールしてね」を配布物に変えるのがプラグイン化の目的。</p>
+    </div>
+  </div>
+  <p class="small muted">この順に見ていく：<b>仕組み（3〜6）→ 使い方（7〜11）→ エージェント連携（12〜16）→ プラグイン化（17〜21）</b>。</p>
+</section>
+
+<!-- 3 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">What it is</p>
+  <h2>tgrep とは何か</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <ul>
+        <li>Microsoft が公開した <b>トライグラム索引付きの grep</b>（<a href="https://github.com/microsoft/tgrep">microsoft/tgrep</a>、Rust 製、MIT ライセンス）。</li>
+        <li><code>grep</code> / <code>ripgrep</code> は検索のたびに <b>O(全バイト)</b> の走査を行う。10 万ファイル超のモノレポではこれが支配的なコストになる。</li>
+        <li>tgrep は <b>索引を一度作り</b>、検索時は索引が示した候補ファイルだけを開く。「毎回全部読む」を「最初に一度読む」に置き換える。</li>
+        <li><b>クライアント／サーバー構成</b>。<code>tgrep serve</code> が索引を常駐させ、ファイル監視で差分を取り込む。問い合わせは JSON-RPC 2.0 over TCP。</li>
+        <li>CLI は <b>ripgrep 互換</b>。既存のフラグ・<code>--json</code> 出力・終了コードがほぼそのまま使え、<b>GitHub Copilot CLI に統合</b>されている。</li>
+      </ul>
+      <div class="panel amber">
+        <h3>似たツールとの位置づけ</h3>
+        <table class="tight small">
+          <tr><td class="nowrap"><b>ripgrep</b></td><td>索引なしの全走査。常に最新・セットアップ不要。小〜中規模なら十分速い</td></tr>
+          <tr><td class="nowrap"><b>Zoekt</b></td><td>トライグラム索引検索。サーバー前提の Web 検索基盤寄り</td></tr>
+          <tr><td class="nowrap"><b>tgrep</b></td><td>ローカル CLI の使い勝手のまま索引を持つ。単一マシン向け</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="term"><span class="c"># 導入（Homebrew）</span>
+<span class="k">$</span> brew install tgrep
+
+<span class="c"># 索引を作って常駐（初回は索引構築を含む）</span>
+<span class="k">$</span> tgrep serve . &amp;
+
+<span class="c"># 以後は ripgrep と同じ感覚で検索</span>
+<span class="k">$</span> tgrep <span class="s">"TODO|FIXME"</span> . -t rust -C 2
+
+<span class="c"># 状態確認</span>
+<span class="k">$</span> tgrep status .
+pid       <span class="n">48213</span>    port      <span class="n">51037</span>
+files     <span class="n">388,214</span>  watcher   native
+trigrams  <span class="n">16,742,901</span>
+indexing  complete</div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">How it works · 原理</p>
+  <h2>なぜ速いのか ①：トライグラム転置索引</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel tg">
+        <h3>索引側：3 バイトの連なりを全部覚える</h3>
+        <p class="small">各ファイルの本文を <b>3 バイトずつスライドさせた部分文字列（トライグラム）</b>に分解し、「どのトライグラムがどのファイルに出現するか」の転置索引を作る。<code>parseConfig</code> なら <code>par</code>, <code>ars</code>, <code>rse</code>, <code>seC</code> … が記録される。</p>
+      </div>
+      <div class="panel tg">
+        <h3>検索側：正規表現をトライグラムの論理式に落とす</h3>
+        <p class="small">パターンを解析し、「マッチするなら必ず含まれるトライグラム」の <b>AND / OR 式</b>を導く。<code>TODO|FIXME</code> なら <code>(TOD AND ODO) OR (FIX AND IXM AND XME)</code> のような式になる。索引でこの式を評価し、<b>候補ファイル集合</b>を得る。</p>
+      </div>
+      <div class="panel amber">
+        <h3>最後は通常の正規表現エンジンで確認する</h3>
+        <p class="small">索引が返すのは「含む<b>可能性がある</b>ファイル」（偽陽性あり・偽陰性なし）。その候補だけを実際に読んで正規表現でマッチさせるので、<b>結果は ripgrep と同じ</b>になる。速さは「読むファイルを減らした」ことから来ており、精度を落としていない。</p>
+      </div>
+      <p class="xs muted">短すぎるパターンや <code>.*</code> のように有効なトライグラムを取り出せないパターンでは候補が絞れず、全走査に近づく。3 文字以上の具体的な文字列ほど索引が効く。</p>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># パターン → トライグラム論理式 → 候補ファイル</span>
+
+pattern:  <span class="s">"parseConfig"</span>
+            <span class="d">↓ 分解</span>
+trigrams: par ars rse seC eCo Con onf nfi fig
+            <span class="d">↓ 索引を AND で引く</span>
+posting:  par → [<span class="n">12</span>, <span class="n">88</span>, <span class="n">204</span>, <span class="n">991</span>, …]
+          seC → [<span class="n">204</span>, <span class="n">991</span>]
+            <span class="d">↓ 積集合 → 正規表現で検証</span>
+candidates: [<span class="n">204</span>]   <span class="c">← 実際に開くのはここだけ</span>
+match:    src/config/parser.ts:41</div>
+      <div class="panel">
+        <h3>オンディスク索引の中身</h3>
+        <table class="tight xs">
+          <tr><td class="mono nowrap">lookup.bin</td><td>トライグラム → オフセット・長さ（ソート済み・二分探索）</td></tr>
+          <tr><td class="mono nowrap">index.bin</td><td>ポスティングリスト本体（ファイル ID の列）</td></tr>
+          <tr><td class="mono nowrap">files.bin</td><td>ファイルパス表</td></tr>
+          <tr><td class="mono nowrap">meta.json</td><td>バージョン・件数・タイムスタンプ・カバレッジ</td></tr>
+          <tr><td class="mono nowrap">serve.json</td><td>サーバーの PID と TCP ポート（クライアントの発見用）</td></tr>
+        </table>
+        <p class="xs muted">既定では対象ディレクトリ直下の <code>.tgrep/</code> に置かれる。<b><code>.gitignore</code> に <code>.tgrep/</code> を追加する</b>こと。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">How it works · アーキテクチャ</p>
+  <h2>なぜ速いのか ②：3 層インデックスと常駐サーバー</h2>
+  <div class="flow">
+    <div class="box"><div class="t">クライアント</div><code>tgrep "pat" .</code> / エージェントのツール呼び出し<br><span class="xs muted"><code>.tgrep/serve.json</code> を読んでサーバーを発見。無ければ索引直読み、索引も無ければ全走査へフォールバック</span></div>
+    <div class="arrow"><b>⇄</b>JSON-RPC 2.0<br>改行区切り TCP</div>
+    <div class="box tg"><div class="t">tgrep serve</div>HybridIndex（= 索引 + 差分）で問い合わせに応答<br><span class="xs muted">複数クライアント同時接続可。バックグラウンドで索引構築・中断再開・定期フラッシュ</span></div>
+    <div class="arrow"><b>⇄</b>notify /<br>ポーリング</div>
+    <div class="box"><div class="t">ファイルシステム</div>ワークツリーの変更を監視<br><span class="xs muted">ネイティブ監視が使えない・上限を超える環境ではポーリングに自動フォールバック</span></div>
+  </div>
+  <div class="cols cols-3">
+    <div class="panel tg">
+      <h3>IndexReader（ディスク層）</h3>
+      <p class="small">オンディスク索引を <b>mmap</b> して、コピーなしの二分探索で引く。プロセス起動時に全体を読み込まないため、常駐していなくても索引があれば十分速い。</p>
+    </div>
+    <div class="panel tg">
+      <h3>LiveIndex（メモリ層）</h3>
+      <p class="small">起動後に変更・追加されたファイルのトライグラムを<b>メモリ上のオーバーレイ</b>として保持。5 万ファイルごと／5 分ごとなどの契機でディスクへフラッシュされる。</p>
+    </div>
+    <div class="panel tg">
+      <h3>HybridIndex（合成層）</h3>
+      <p class="small">両者を重ね、<b>メモリ層を優先</b>して結果を返す。「索引は古いがファイルは新しい」状態を、再構築なしで吸収するための仕組み。</p>
+    </div>
+  </div>
+  <p class="small muted">索引構築自体も並列化されている（1,024 ファイル単位のバッチを rayon で処理し、外部マージソートでピークメモリを抑える）。<code>.gitignore</code> を尊重し、約 50 種類のバイナリ拡張子と先頭 8KB の内容判定でバイナリを除外する。</p>
+</section>
+
+<!-- 6 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Benchmark</p>
+  <h2>実測：どれくらい速いのか</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel">
+        <h3>公式ベンチマーク（索引構築済み・平均レイテンシ）</h3>
+        <table class="tight small">
+          <tr><th>リポジトリ</th><th class="num">ファイル数</th><th>環境</th><th class="num">ripgrep</th><th class="num">tgrep</th><th class="num">倍率</th></tr>
+          <tr><td>gecko-dev</td><td class="num">388K</td><td class="nowrap">macOS arm64</td><td class="num">33,402 ms</td><td class="num">643 ms</td><td class="num"><b>51.9x</b></td></tr>
+          <tr><td>gecko-dev</td><td class="num">388K</td><td class="nowrap">Windows</td><td class="num">17,841 ms</td><td class="num">463 ms</td><td class="num"><b>38.6x</b></td></tr>
+          <tr><td>chromium</td><td class="num">504K</td><td class="nowrap">macOS arm64</td><td class="num">41,806 ms</td><td class="num">2,643 ms</td><td class="num"><b>15.8x</b></td></tr>
+          <tr><td>linux</td><td class="num">96K</td><td class="nowrap">macOS arm64</td><td class="num">5,390 ms</td><td class="num">256 ms</td><td class="num"><b>21.0x</b></td></tr>
+        </table>
+        <p class="xs muted">出典: <a href="https://github.com/microsoft/tgrep">microsoft/tgrep</a> の README。2026-09-15 時点の掲載値。</p>
+      </div>
+      <div class="panel amber">
+        <h3>この数字の読み方</h3>
+        <ul class="small">
+          <li><b>索引構築の時間は含まない。</b>初回はリポジトリ規模に応じた構築コストを一度払う。</li>
+          <li><b>マッチ件数が多いほど差は縮む。</b>chromium で倍率が落ちているのは、候補を絞る利得よりマッチを出力する時間が支配的になるため。「絞り込める検索」ほど効く。</li>
+          <li><b>小さなリポジトリでは差が出ない。</b>数千ファイル規模なら ripgrep でも数十 ms で、索引の維持コストのほうが高くつく。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel tg">
+        <h3>効く場面 / 効かない場面</h3>
+        <ul class="plusminus small">
+          <li class="good">10 万ファイル超のモノレポ。1 タスク中に何度も検索する</li>
+          <li class="good">具体的な識別子・文字列を探す（トライグラムが取れる）</li>
+          <li class="good">同じリポジトリで作業し続ける（索引が再利用される）</li>
+          <li class="bad">使い捨てのチェックアウト・CI の 1 回きりの検索</li>
+          <li class="bad"><code>.</code> や 1〜2 文字など、索引が絞り込めないパターン</li>
+          <li class="bad">結果が数万行になる検索（出力が支配的）</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>コストの実態</h3>
+        <p class="small">索引はディスクを消費し、常駐サーバーはメモリと監視ハンドルを消費する。監視ハンドルの上限（Linux の inotify など）に達すると <b>ポーリングへ自動降格</b>するため、<code>--watch-mode poll</code> / <code>--poll-interval</code> / <code>--watch-budget</code> で明示的に制御できる。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Getting started</p>
+  <h2>導入とセットアップ</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm"><span class="c"># Homebrew（macOS / Linux）</span>
+<span class="k">$</span> brew install tgrep
+
+<span class="c"># ソースから（Rust ツールチェーンが必要）</span>
+<span class="k">$</span> git clone https://github.com/microsoft/tgrep.git
+<span class="k">$</span> cd tgrep
+<span class="k">$</span> cargo install --path tgrep-cli --locked
+
+<span class="c"># ビルド済みバイナリ（Linux x86_64 の例）</span>
+<span class="k">$</span> gh release download --repo microsoft/tgrep \
+    -p <span class="s">'*x86_64-unknown-linux-musl*'</span> -D <span class="s">"$tmpdir"</span>
+<span class="k">$</span> tar xzf <span class="s">"$tmpdir"</span>/tgrep-*.tar.gz -C <span class="s">"$tmpdir"</span>
+<span class="k">$</span> install -Dm755 <span class="s">"$tmpdir/tgrep"</span> <span class="s">"$HOME/.local/bin/tgrep"</span></div>
+      <p class="xs muted">Linux (x86_64) / macOS (Intel・Apple Silicon) / Windows のビルド済みバイナリが GitHub Releases で配布されている。エージェントやチームへ配る場合は、この「バイナリ取得」の手順こそが自動化の対象になる（スライド 19）。</p>
+    </div>
+    <div class="stack">
+      <div class="panel tg">
+        <h3>リポジトリごとの初期化（1 回だけ）</h3>
+        <div class="term sm"><span class="c"># 常駐させる（索引が無ければ自動で構築）</span>
+<span class="k">$</span> tgrep serve . &amp;
+
+<span class="c"># 常駐できない環境なら索引だけ作る</span>
+<span class="k">$</span> tgrep index .
+
+<span class="c"># 索引を成果物に混ぜない</span>
+<span class="k">$</span> echo <span class="s">'.tgrep/'</span> &gt;&gt; .gitignore</div>
+      </div>
+      <div class="panel amber">
+        <h3>索引の置き場所と対象の調整</h3>
+        <div class="term sm"><span class="k">$</span> tgrep index . --exclude vendor
+<span class="k">$</span> tgrep index . --max-filesize 8M
+<span class="k">$</span> tgrep index . --index-path /tmp/idx
+<span class="k">$</span> tgrep serve . --index-path /tmp/idx</div>
+        <p class="xs muted"><b>ここが最大の落とし穴：</b><code>--exclude</code> / <code>--no-ignore</code> / <code>--index-path</code> / <code>--max-filesize</code> / <code>--no-require-git</code> は <code>index</code>・<code>serve</code>・検索の<b>すべてで揃えないと、黙って別のファイル集合を検索する</b>ことになる（スライド 11）。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Commands</p>
+  <h2>コマンド：index / serve / status</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel tg">
+        <h3><code>tgrep index</code> — 索引を作る</h3>
+        <table class="tight small">
+          <tr><td class="mono nowrap">tgrep index .</td><td>カレント配下の索引を構築</td></tr>
+          <tr><td class="mono nowrap">--exclude <i>DIR</i></td><td>ディレクトリを除外</td></tr>
+          <tr><td class="mono nowrap">--max-filesize 8M</td><td>対象ファイルサイズの上限</td></tr>
+          <tr><td class="mono nowrap">--index-path <i>PATH</i></td><td>索引の保存先を変える</td></tr>
+        </table>
+        <p class="xs muted"><code>.gitignore</code> を尊重し、バイナリは自動で除外される。中断しても次回は途中から再開される。</p>
+      </div>
+      <div class="panel tg">
+        <h3><code>tgrep serve</code> — 常駐させる</h3>
+        <table class="tight small">
+          <tr><td class="mono nowrap">tgrep serve .</td><td>索引が無ければ構築してから待ち受け</td></tr>
+          <tr><td class="mono nowrap">--watch-mode poll</td><td>ネイティブ監視を使わずポーリング</td></tr>
+          <tr><td class="mono nowrap">--poll-interval 60</td><td>ポーリング間隔（秒）</td></tr>
+          <tr><td class="mono nowrap">--watch-budget 4096</td><td>監視ハンドル数の上限</td></tr>
+          <tr><td class="mono nowrap">--no-watch</td><td>自動更新を止める</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <h3><code>tgrep status</code> / <code>count-files</code> — 状態を見る</h3>
+        <div class="term sm"><span class="k">$</span> tgrep status .
+<span class="c"># PID・ポート・ファイル数・トライグラム数・</span>
+<span class="c"># キャッシュ指標・監視モード・索引の進捗</span>
+
+<span class="k">$</span> tgrep count-files .
+<span class="c"># サーバー不要。索引対象になるテキスト</span>
+<span class="c"># ファイル数を数えるだけ（規模の見積り）</span>
+
+<span class="k">$</span> tgrep --files .
+<span class="c"># 検索対象のファイル一覧を出す</span>
+<span class="c"># → 「なぜヒットしないのか」の調査に使う</span></div>
+      </div>
+      <div class="panel ai">
+        <h3>3 段のフォールバックを意識する</h3>
+        <table class="tight small">
+          <tr><td class="nowrap"><b>1. サーバー稼働</b></td><td>最速。メモリ上の索引に問い合わせる</td></tr>
+          <tr><td class="nowrap"><b>2. 索引あり</b></td><td>速い。ディスク索引を mmap して引く</td></tr>
+          <tr><td class="nowrap"><b>3. 索引なし</b></td><td>正しいが遅い。全走査へフォールバック</td></tr>
+        </table>
+        <p class="xs muted">どの段でも<b>結果は同じ</b>で、違うのは速度だけ。索引が無くても壊れない。ただし「遅い」は警告として <b>stderr</b> に出るので捨てないこと（スライド 14）。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Search flags</p>
+  <h2>検索フラグ早見表（ripgrep 互換）</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel tg">
+        <h3>パターンの指定</h3>
+        <table class="tight small">
+          <tr><td class="mono nowrap">-F</td><td>リテラル検索（正規表現として解釈しない）</td></tr>
+          <tr><td class="mono nowrap">-i / -S</td><td>大文字小文字を無視 / スマートケース</td></tr>
+          <tr><td class="mono nowrap">-w</td><td>単語単位でマッチ</td></tr>
+          <tr><td class="mono nowrap">-v</td><td>マッチしない行を出す</td></tr>
+          <tr><td class="mono nowrap">-U</td><td>複数行マッチを有効にする</td></tr>
+          <tr><td class="mono nowrap">-P</td><td>PCRE2 エンジンを使う（後方参照・先読み）</td></tr>
+        </table>
+      </div>
+      <div class="panel tg">
+        <h3>対象の絞り込み</h3>
+        <table class="tight small">
+          <tr><td class="mono nowrap">-g '*.rs'</td><td>glob で対象ファイルを絞る</td></tr>
+          <tr><td class="mono nowrap">-t rust</td><td>ファイルタイプで絞る（50 種類以上）</td></tr>
+          <tr><td class="mono nowrap">--type-list</td><td>使えるタイプの一覧を表示</td></tr>
+          <tr><td class="mono nowrap">--type-add 'web:*.html'</td><td>独自タイプを追加する</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel ai">
+        <h3>出力の制御 <span class="tag ai">エージェントではここが本質</span></h3>
+        <table class="tight small">
+          <tr><td class="mono nowrap">-l</td><td>ファイル名だけ（まず全体像を掴む）</td></tr>
+          <tr><td class="mono nowrap">-c</td><td>ファイルごとのマッチ数</td></tr>
+          <tr><td class="mono nowrap">-o</td><td>マッチした部分だけを出す</td></tr>
+          <tr><td class="mono nowrap">-m 5</td><td>1 ファイルあたりの最大マッチ数</td></tr>
+          <tr><td class="mono nowrap">-A 3 / -B 2 / -C 3</td><td>前後の文脈行</td></tr>
+          <tr><td class="mono nowrap">-q</td><td>出力せず終了コードだけ返す</td></tr>
+          <tr><td class="mono nowrap">-r '$1_backup'</td><td>キャプチャを使って置換表示</td></tr>
+        </table>
+      </div>
+      <div class="term sm"><span class="c"># 広い問いは -l で輪郭から</span>
+<span class="k">$</span> tgrep -l -t ts -- <span class="s">"useAuthContext"</span> .
+
+<span class="c"># 絞れたら文脈つきで読む</span>
+<span class="k">$</span> tgrep -C 3 -m 3 -t ts -- <span class="s">"useAuthContext"</span> src/
+<span class="c"># 存在確認だけなら -q + 終了コード</span>
+<span class="k">$</span> tgrep -q -F -- <span class="s">"LEGACY_KEY"</span> . ; echo $?
+<span class="n">1</span>   <span class="c"># 1 = マッチなし（エラーではない）</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Machine-readable output</p>
+  <h2>機械可読な出力と終了コード</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="term sm"><span class="k">$</span> tgrep --json -- <span class="s">"parseConfig"</span> . | head -4
+{<span class="s">"type"</span>:<span class="s">"begin"</span>,<span class="s">"data"</span>:{<span class="s">"path"</span>:{<span class="s">"text"</span>:<span class="s">"src/config/parser.ts"</span>}}}
+{<span class="s">"type"</span>:<span class="s">"match"</span>,<span class="s">"data"</span>:{<span class="s">"path"</span>:{<span class="s">"text"</span>:<span class="s">"src/config/parser.ts"</span>},
+  <span class="s">"lines"</span>:{<span class="s">"text"</span>:<span class="s">"export function parseConfig(raw: string) {\n"</span>},
+  <span class="s">"line_number"</span>:<span class="n">41</span>,<span class="s">"submatches"</span>:[{<span class="s">"start"</span>:<span class="n">16</span>,<span class="s">"end"</span>:<span class="n">27</span>}]}}
+{<span class="s">"type"</span>:<span class="s">"end"</span>,<span class="s">"data"</span>:{…}}
+{<span class="s">"type"</span>:<span class="s">"summary"</span>,<span class="s">"data"</span>:{…}}
+
+<span class="k">$</span> tgrep --vimgrep -- <span class="s">"parseConfig"</span> .
+src/config/parser.ts:41:17:export function parseConfig(raw…
+
+<span class="k">$</span> tgrep --stats -- <span class="s">"parseConfig"</span> .
+<span class="c"># 候補ファイル数・走査バイト数・所要時間などを表示</span></div>
+      <div class="panel amber">
+        <h3>ripgrep との JSON の差分</h3>
+        <p class="small">不正な UTF-8 バイトを含む行で、ripgrep は <code>lines.bytes</code> に base64 を入れるが、<b>tgrep は <code>lines.text</code> に U+FFFD（置換文字）を入れて返す</b>。バイト列を厳密に扱うパイプラインではこの違いが効く。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel tg">
+        <h3>終了コードの意味</h3>
+        <table class="tight small">
+          <tr><td class="mono num nowrap">0</td><td><b>1 件以上マッチした</b></td></tr>
+          <tr><td class="mono num nowrap">1</td><td><b>マッチしなかった</b> — <b>エラーではない</b></td></tr>
+          <tr><td class="mono num nowrap">2</td><td>本当のエラー（不正な正規表現、読めないパス）</td></tr>
+        </table>
+        <p class="xs muted"><code>set -e</code> のシェルや、非ゼロを一律に失敗とみなすツールラッパーでは <b>1 を失敗として扱ってしまう</b>。エージェントに「検索は失敗しました」と誤って伝える典型的な事故なので、<b>1 と 2 を分けて扱う</b>こと。</p>
+      </div>
+      <div class="panel ai">
+        <h3>出力形式の使い分け</h3>
+        <table class="tight small">
+          <tr><td class="nowrap"><b>人間・LLM</b></td><td>既定のテキスト。<code>-C</code> で文脈を足す。LLM にとっても読みやすい</td></tr>
+          <tr><td class="nowrap"><b>プログラム</b></td><td><code>--json</code>。1 行 1 オブジェクトなのでストリーム処理できる</td></tr>
+          <tr><td class="nowrap"><b>エディタ連携</b></td><td><code>--vimgrep</code>。<code>file:line:col:text</code> で該当箇所へ飛べる</td></tr>
+          <tr><td class="nowrap"><b>存在判定</b></td><td><code>-q</code> + 終了コード。出力ゼロでコンテキストを使わない</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Caveats</p>
+  <h2>ripgrep との違いと、踏みやすい落とし穴</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel red">
+        <h3>① 索引の鮮度 <span class="tag red">最重要</span></h3>
+        <p class="small">サーバーの結果は「<b>インデクサが処理し終えた最後の監視イベント時点</b>」を反映する。イベントは非同期にキューイングされるため、<b>直前の編集が即座には見えないことがある</b>。「今さっき書いた内容が必ず見えてほしい」場面では <code>--no-index</code> を付けて全走査させる。</p>
+        <p class="xs muted">サーバーを使わずディスク索引だけの場合は、最後に <code>tgrep index</code> を走らせた時点が反映される。エージェントに「編集直後の再検索」をさせる設計なら、ここは必ず考慮する。</p>
+      </div>
+      <div class="panel red">
+        <h3>② フラグの不整合</h3>
+        <p class="small"><code>--exclude</code> / <code>--no-ignore</code> / <code>--index-path</code> / <code>--max-filesize</code> / <code>--no-require-git</code> は <b>index・serve・検索で一致</b>していなければならない。ずれると<b>エラーにならず、黙って違うファイル集合を検索する</b>。ラッパーやプラグインでは、これらを 1 か所に固定するのが安全。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel amber">
+        <h3>③ 既定値の違い</h3>
+        <table class="tight small">
+          <tr><td class="nowrap"><b>ファイルサイズ上限</b></td><td>既定 64 MiB（ripgrep は無制限）。合わせるなら <code>--no-max-filesize</code></td></tr>
+          <tr><td class="nowrap"><b>不正な UTF-8</b></td><td>索引化のため U+FFFD に修復する</td></tr>
+          <tr><td class="nowrap"><b>大文字小文字</b></td><td>Git リポジトリでは <code>core.ignorecase</code> の設定を尊重する</td></tr>
+        </table>
+      </div>
+      <div class="panel amber">
+        <h3>④ サブコマンドとパターンの取り違え</h3>
+        <p class="small">ユーザー入力や LLM 生成のパターンが <code>serve</code> や <code>index</code> と一致すると、サブコマンドとして解釈されうる。公式 <code>AGENTS.md</code> は明確に指示している — <b>「パターンの前に <code>--</code> を置き、検索ルートを明示的に渡すこと」</b>。</p>
+        <div class="term sm"><span class="c"># 危ない</span>
+<span class="k">$</span> tgrep <span class="s">"index"</span>
+<span class="c"># 安全</span>
+<span class="k">$</span> tgrep -- <span class="s">"index"</span> .</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 12 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">AI agents · なぜ効くのか</p>
+  <h2>本題 1：AI エージェントとの組み合わせ</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <div class="panel ai">
+        <h3>エージェントの作業は「検索が律速」になりやすい</h3>
+        <p class="small">コーディングエージェントは、1 つのタスクの中で <b>探索 → 読む → 仮説 → また探索</b> を何十回も繰り返す。人間は 1 回の grep を待てるが、エージェントは<b>待ち時間の合計</b>がそのままタスク時間になる。1 回 30 秒の全走査を 20 回行えば 10 分が検索に消える。</p>
+      </div>
+      <div class="panel ai">
+        <h3>速さは「深さ」に変換される</h3>
+        <ul class="small">
+          <li>検索が安いと、<b>当たりをつけずに広く探る</b>ことが許される。推測でファイルを読む回数が減る。</li>
+          <li>「この識別子は他にどこで使われているか」を<b>毎回確認</b>できる。思い込みによる破壊的変更が減る。</li>
+          <li>タイムアウトでツール呼び出しが失敗し、<b>エージェントが別の（劣った）手段に逃げる</b>ことがなくなる。</li>
+        </ul>
+      </div>
+      <div class="panel tg">
+        <h3>実例：GitHub Copilot CLI</h3>
+        <p class="small">tgrep は <b>GitHub Copilot CLI に統合</b>され、大規模リポジトリの高速 grep を担っている。エージェント向けの <code>AGENTS.md</code> が同梱されていることからも、「エージェントの検索基盤」が<b>想定された主用途のひとつ</b>だと読める。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel amber">
+        <h3>速さと同じくらい重要な「出力量」</h3>
+        <p class="small">エージェントにとって検索結果は<b>コンテキストウィンドウの消費</b>でもある。10,000 行の grep 結果は、遅いだけでなく<b>会話を破壊する</b>。tgrep が持つ <code>-l</code> / <code>-c</code> / <code>-m</code> / <code>-q</code> / <code>--json</code> は、この観点では速度と同格の機能になる。</p>
+      </div>
+      <div class="term sm"><span class="c"># 悪い例：全部返させる</span>
+<span class="k">$</span> tgrep -- <span class="s">"config"</span> .
+<span class="d">… 18,402 matches across 2,913 files</span>
+<span class="c"># → コンテキストが飽和し、要約に迷い込む</span>
+
+<span class="c"># 良い例：段階的に絞る</span>
+<span class="k">$</span> tgrep -l -t ts -- <span class="s">"parseConfig"</span> .
+<span class="d">3 files</span>
+<span class="k">$</span> tgrep -C 3 -m 2 -- <span class="s">"parseConfig"</span> src/config/
+<span class="d">6 matches</span>
+<span class="c"># → 読むべき場所が特定できた</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">AI agents · 作法</p>
+  <h2>公式 AGENTS.md が定めるエージェントの作法</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel ai">
+        <h3>セットアップは 1 リポジトリ 1 回</h3>
+        <div class="term sm"><span class="k">$</span> tgrep serve . &amp;
+<span class="c"># 索引が無ければ構築し、</span>
+<span class="c"># .tgrep/serve.json にポートを書く</span></div>
+        <p class="xs muted">バックグラウンドプロセスを維持できない環境（1 コマンド 1 プロセスのサンドボックス等）では <code>tgrep index .</code> で代替する。<code>.tgrep/</code> は <code>.gitignore</code> へ。</p>
+      </div>
+      <div class="panel ai">
+        <h3>クエリの組み立て方</h3>
+        <table class="tight small">
+          <tr><td class="mono nowrap">-- の前置</td><td>パターンをサブコマンドと誤解させない。検索ルートも明示する</td></tr>
+          <tr><td class="mono nowrap">-F を優先</td><td>記号やユーザー入力の文字列は<b>正規表現エスケープ事故</b>を避けるためリテラルで</td></tr>
+          <tr><td class="mono nowrap">-t で先に絞る</td><td>出力を削る <code>-m</code> より先に、対象を型で絞るほうが効く</td></tr>
+          <tr><td class="mono nowrap">-l から始める</td><td>広いクエリはまずファイル名だけ。そのあと深掘りする</td></tr>
+          <tr><td class="mono nowrap">-C 2 / -C 3</td><td>周辺コードの意味が要るときだけ文脈を足す</td></tr>
+          <tr><td class="mono nowrap">-q + 終了コード</td><td>Yes/No の判定は出力を捨てて終了コードで見る</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel red">
+        <h3>鮮度について合意しておく</h3>
+        <p class="small">サーバーの結果は監視イベントの処理状況に依存するため、<b>「たった今の編集が必ず見えなければならない検索」には <code>--no-index</code> を使う</b>、と公式ドキュメントは明示している。エージェントの「編集 → 検証」ループを設計するときの前提条件になる。</p>
+      </div>
+      <div class="panel red">
+        <h3>stderr を必ず返す</h3>
+        <p class="small">「索引がありません」といった警告は、<b>成功の終了コードと同時に stderr へ出る</b>。ツールラッパーが stderr を捨てると、エージェントは「今は遅い経路で動いている」ことに気づけない。<b>stdout・stderr・終了コードを 3 点セットで返す</b>のが公式の指示。</p>
+      </div>
+      <div class="panel">
+        <h3>ツールスキーマの推奨形</h3>
+        <p class="small">最小構成は <code>pattern</code>（必須）・<code>path</code>（既定 <code>.</code>）・<code>flags</code>（文字列配列）。実行形は次の形に固定する。</p>
+        <div class="term sm">tgrep &lt;flags...&gt; -- &lt;pattern&gt; &lt;path&gt;</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">AI agents · 実装</p>
+  <h2>エージェントへの組み込み：ツール定義と安全設計</h2>
+  <div class="cols cols-52">
+    <div class="term xsm"><span class="c">// LLM に見せるツール定義（MCP / Function calling 共通）</span>
+{
+  <span class="s">"name"</span>: <span class="s">"tgrep_search"</span>,
+  <span class="s">"description"</span>: <span class="s">"Search the repo with tgrep. Prefer -l first, then"</span>
+                 <span class="s">"narrow with -t and -C. Use -F for literals."</span>,
+  <span class="s">"input_schema"</span>: {
+    <span class="s">"type"</span>: <span class="s">"object"</span>,
+    <span class="s">"properties"</span>: {
+      <span class="s">"pattern"</span>: { <span class="s">"type"</span>: <span class="s">"string"</span> },
+      <span class="s">"path"</span>:    { <span class="s">"type"</span>: <span class="s">"string"</span>, <span class="s">"default"</span>: <span class="s">"."</span> },
+      <span class="s">"flags"</span>:   { <span class="s">"type"</span>: <span class="s">"array"</span>, <span class="s">"items"</span>: { <span class="s">"type"</span>: <span class="s">"string"</span> } }
+    }, <span class="s">"required"</span>: [<span class="s">"pattern"</span>] }
+}
+
+<span class="c">// 実装側（擬似コード）: フラグは allowlist</span>
+<span class="k">const</span> ALLOWED = <span class="k">new</span> Set([<span class="s">"-i"</span>,<span class="s">"-S"</span>,<span class="s">"-F"</span>,<span class="s">"-w"</span>,<span class="s">"-l"</span>,<span class="s">"-c"</span>,<span class="s">"-o"</span>,<span class="s">"-q"</span>,<span class="s">"-U"</span>,
+   <span class="s">"-A"</span>,<span class="s">"-B"</span>,<span class="s">"-C"</span>,<span class="s">"-m"</span>,<span class="s">"-g"</span>,<span class="s">"-t"</span>,<span class="s">"--json"</span>,<span class="s">"--vimgrep"</span>,<span class="s">"--no-index"</span>]);
+
+<span class="k">const</span> root = realpath(repoRoot);
+<span class="k">const</span> dir  = realpath(join(root, input.path ?? <span class="s">"."</span>));
+<span class="k">if</span> (!dir.startsWith(root)) <span class="k">throw</span> <span class="k">new</span> Error(<span class="s">"path escapes repo root"</span>);
+<span class="k">for</span> (<span class="k">const</span> f <span class="k">of</span> input.flags ?? []) assertAllowed(f, ALLOWED);
+
+<span class="c">// シェルを介さず引数配列で起動する</span>
+<span class="k">const</span> r = spawnSync(<span class="s">"tgrep"</span>, [...flags, <span class="s">"--"</span>, input.pattern, dir]);
+<span class="k">return</span> { stdout: r.stdout, stderr: r.stderr, exitCode: r.status };</div>
+    <div class="stack">
+      <div class="panel red">
+        <h3>安全設計の 4 点</h3>
+        <ul class="small">
+          <li><b>シェルを経由しない。</b><code>spawn</code> に引数配列で渡す。文字列連結して <code>sh -c</code> に渡すと、パターン内の <code>;</code> や <code>$( )</code> がコマンド実行になる。</li>
+          <li><b>フラグは allowlist。</b>任意のトークンを通すと、<code>-r</code>（置換）や設定系フラグで想定外の挙動を作れてしまう。<b>検索専用フラグだけ</b>を通す。</li>
+          <li><b>パスを正規化してルート内に閉じる。</b><code>realpath</code> 後にリポジトリルート配下かを検証する。<code>../</code> やシンボリックリンクでの脱出を防ぐ。</li>
+          <li><b>出力に上限を設ける。</b>ツール側で <code>-m</code> の既定値と総バイト数の打ち切りを入れる。エージェントのコンテキストは有限のリソース。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>返し方</h3>
+        <p class="small"><b>stdout・stderr・終了コードを常に 3 つとも返す。</b>終了コード <code>1</code>（マッチなし）は<b>正常系</b>としてモデルに伝え、<code>2</code> だけをエラーとして扱う。stderr の警告文はモデルが読んで自分で対処できる情報になる。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 15 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">AI agents · 運用</p>
+  <h2>実際のワークフロー：常駐させ、段階的に絞らせる</h2>
+  <div class="steps">
+    <div class="step"><div class="no">1</div><div class="name">セッション開始時に常駐<br><span class="tag ai">自動化する</span></div><div class="desc"><code>tgrep serve . &amp;</code> をセッション開始フック等で起動する。初回だけ索引構築のコストが乗るが、以降のセッションでは再利用される。<b>エージェント自身に「まず serve しろ」と指示するより、環境側で済ませておくほうが確実</b>。</div></div>
+    <div class="step"><div class="no">2</div><div class="name">輪郭を掴む<br><span class="tag">-l / -c</span></div><div class="desc"><code>tgrep -l -- "SymbolName" .</code> でまず<b>どのファイルにあるか</b>だけを得る。ファイル数が多ければ <code>-t</code> や <code>-g</code> で絞り直す。この段階の出力は数十行に収める。</div></div>
+    <div class="step"><div class="no">3</div><div class="name">文脈を読む<br><span class="tag">-C / -m</span></div><div class="desc">絞れたディレクトリに対して <code>-C 3 -m 3</code> 付きで再検索し、定義と主要な使用箇所を掴む。ここで初めてファイル全体を読む判断ができる。</div></div>
+    <div class="step"><div class="no">4</div><div class="name">編集する<br><span class="tag amber">tgrep の外</span></div><div class="desc">エージェントがファイルを編集する。サーバーはファイル監視で差分を取り込むが、<b>取り込みは非同期</b>である点を忘れない。</div></div>
+    <div class="step"><div class="no">5</div><div class="name">編集直後の検証<br><span class="tag red">--no-index</span></div><div class="desc">「置換漏れがないか」のように<b>たった今の編集が反映されていなければ意味がない</b>検索は <code>--no-index</code> で全走査させる。対象を編集したディレクトリに限定すれば、全走査でも十分速い。</div></div>
+    <div class="step"><div class="no">6</div><div class="name">存在判定で締める<br><span class="tag">-q + exit code</span></div><div class="desc">「旧 API はもう残っていないか」を <code>-q</code> と終了コードで確認する。出力ゼロなのでコンテキストを消費せず、判定が曖昧にならない。</div></div>
+  </div>
+  <p class="small muted">要点：<b>索引は「速いが少し古いかもしれない」層</b>として扱い、確証が要る場面だけ全走査に落とす。この使い分けをエージェントに教えるのが、次のプラグイン化の中身になる。</p>
+</section>
+
+<!-- 16 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Plugin · なぜ</p>
+  <h2>本題 2：なぜ「プラグイン化」するのか</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel red">
+        <h3>ドキュメントに書くだけでは配れない</h3>
+        <p class="small">ここまでの内容（導入・常駐・フラグの作法・鮮度の扱い）を README に書いても、実際には <b>①各自がインストールし ②毎回 serve を起動し ③作法を覚えている</b> ことが前提になる。エージェントに至っては、セッションごとに記憶がリセットされる。</p>
+      </div>
+      <div class="panel tg">
+        <h3>プラグインなら 4 つを同梱できる</h3>
+        <table class="tight small">
+          <tr><td class="nowrap"><b>実行環境</b></td><td><code>bin/</code> に置いた実行ファイルは、プラグイン有効時に Bash ツールの <code>PATH</code> に入る</td></tr>
+          <tr><td class="nowrap"><b>起動</b></td><td><code>hooks/hooks.json</code> の <code>SessionStart</code> で <code>tgrep serve</code> を自動起動できる</td></tr>
+          <tr><td class="nowrap"><b>作法</b></td><td><code>skills/</code> の <code>SKILL.md</code> が、必要なときだけモデルに読み込まれる</td></tr>
+          <tr><td class="nowrap"><b>配布</b></td><td>marketplace 経由で <code>/plugin install</code> 一発。バージョン管理も効く</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel amber">
+        <h3>標準設定（<code>.claude/</code>）との使い分け</h3>
+        <table class="tight small">
+          <tr><th></th><th>標準設定</th><th>プラグイン</th></tr>
+          <tr><td class="nowrap">範囲</td><td>そのプロジェクトだけ</td><td>複数プロジェクト・チームで再利用</td></tr>
+          <tr><td class="nowrap">呼び名</td><td><code>/tgrep-search</code></td><td><code>/tgrep:search</code>（名前空間付き）</td></tr>
+          <tr><td class="nowrap">配布</td><td>手でコピー</td><td><code>/plugin install</code> ・バージョン指定</td></tr>
+          <tr><td class="nowrap">向き</td><td>試作・個人の工夫</td><td>共有・版管理された配布物</td></tr>
+        </table>
+        <p class="xs muted">まず <code>.claude/</code> で作り、形が決まったらプラグインへ移す、が公式の推奨順序。</p>
+      </div>
+      <div class="panel ai">
+        <h3>「Skill か MCP か」の判断</h3>
+        <p class="small">tgrep は <b>CLI として完成している</b>ので、わざわざ MCP サーバーを書かなくても、<b>Bash ツール + 使い方を教える Skill</b> で機能する。MCP サーバーが要るのは、<b>フラグを allowlist で強制したい</b>／<b>出力量を機械的に打ち切りたい</b>／Bash ツールを許可していない環境で使いたい場合（スライド 19）。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 17 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Plugin · 構成</p>
+  <h2>プラグインの構成とマニフェスト</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm">tgrep-plugin/
+├── .claude-plugin/
+│   └── plugin.json        <span class="c"># マニフェスト</span>
+├── skills/
+│   └── search/
+│       └── SKILL.md       <span class="c"># 使い方をモデルに教える</span>
+├── hooks/
+│   └── hooks.json         <span class="c"># SessionStart で serve</span>
+├── scripts/
+│   ├── ensure-tgrep.sh    <span class="c"># 導入・起動</span>
+│   └── tgrep-search.mjs   <span class="c"># MCP を出す場合</span>
+├── .mcp.json              <span class="c"># 任意</span>
+└── README.md</div>
+      <div class="panel red">
+        <h3>よくある間違い</h3>
+        <p class="small"><code>.claude-plugin/</code> の中に入れてよいのは <b><code>plugin.json</code> だけ</b>。<code>skills/</code>・<code>hooks/</code>・<code>.mcp.json</code> はすべて<b>プラグインルート直下</b>に置く。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c">// .claude-plugin/plugin.json</span>
+{
+  <span class="s">"name"</span>: <span class="s">"tgrep"</span>, <span class="s">"displayName"</span>: <span class="s">"tgrep search"</span>,
+  <span class="s">"description"</span>: <span class="s">"Trigram-indexed repo search"</span>,
+  <span class="s">"version"</span>: <span class="s">"0.1.0"</span>, <span class="s">"license"</span>: <span class="s">"MIT"</span>,
+  <span class="s">"author"</span>: { <span class="s">"name"</span>: <span class="s">"ysksm"</span> },
+  <span class="s">"userConfig"</span>: {
+    <span class="s">"exclude"</span>: { <span class="s">"type"</span>: <span class="s">"string"</span>,
+                 <span class="s">"default"</span>: <span class="s">"node_modules"</span> } }
+}</div>
+      <div class="panel tg">
+        <h3>使える置換変数</h3>
+        <table class="tight small">
+          <tr><td class="mono nowrap">${CLAUDE_PLUGIN_ROOT}</td><td>プラグインの絶対パス。スクリプト・バイナリの参照に使う</td></tr>
+          <tr><td class="mono nowrap">${CLAUDE_PLUGIN_DATA}</td><td>更新をまたいで残る保存領域。索引置き場に向く</td></tr>
+          <tr><td class="mono nowrap">${CLAUDE_PROJECT_DIR}</td><td>プロジェクトのルート。検索対象の起点</td></tr>
+        </table>
+        <p class="xs muted"><code>userConfig</code> の値は Skill 内では <code>${user_config.exclude}</code>、フック・MCP では <code>CLAUDE_PLUGIN_OPTION_EXCLUDE</code> 環境変数として渡る。<b>「フラグ不整合」（スライド 11）を 1 か所に固定</b>できる。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 18 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Plugin · 起動と教育</p>
+  <h2>SessionStart で常駐させ、Skill で作法を教える</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm"><span class="c">// hooks/hooks.json</span>
+{ <span class="s">"hooks"</span>: { <span class="s">"SessionStart"</span>: [ { <span class="s">"hooks"</span>: [ {
+  <span class="s">"type"</span>: <span class="s">"command"</span>,
+  <span class="s">"command"</span>: <span class="s">"\"${CLAUDE_PLUGIN_ROOT}\"/scripts/ensure-tgrep.sh"</span>
+} ] } ] } }</div>
+      <div class="term sm"><span class="c"># scripts/ensure-tgrep.sh</span>
+<span class="k">#!/usr/bin/env bash</span>
+<span class="k">set</span> -u
+command -v tgrep &gt;/dev/null <span class="k">||</span> exit 0   <span class="c"># 未導入なら黙って諦める</span>
+cd <span class="s">"${CLAUDE_PROJECT_DIR:-$PWD}"</span> <span class="k">||</span> exit 0
+tgrep status . &gt;/dev/null 2&gt;&amp;1 <span class="k">&amp;&amp;</span> exit 0  <span class="c"># 常駐済み</span>
+
+EX=<span class="s">"${CLAUDE_PLUGIN_OPTION_EXCLUDE:-node_modules}"</span>
+nohup tgrep serve . --exclude <span class="s">"$EX"</span> &gt;/dev/null 2&gt;&amp;1 &amp;
+exit 0</div>
+      <p class="xs muted">未導入でも <b>exit 0 で黙って諦める</b>のが行儀のよいフック。tgrep が無ければ Claude Code は通常の検索にフォールバックするだけで、セッションは壊れない。</p>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># skills/search/SKILL.md</span>
+---
+description: Search this repository with tgrep (trigram-indexed
+  grep). Use for any code search in this repo - finding symbols,
+  callers, TODOs, or checking whether a string still exists.
+---
+
+# tgrep search
+
+必ず <span class="s">`tgrep &lt;flags&gt; -- &lt;pattern&gt; &lt;path&gt;</span><span class="s">`</span> の形で呼ぶ。
+
+1. まず <span class="s">`-l`</span> でファイル一覧を取り、<span class="s">`-t`</span> で型を絞る
+2. 絞れたら <span class="s">`-C 3 -m 3`</span> で文脈つきに再検索する
+3. 記号やユーザー入力の文字列は <span class="s">`-F`</span>（リテラル）
+4. 存在確認は <span class="s">`-q`</span>。終了コード 1 は正常（マッチなし）
+5. 直前の編集を確実に見たい検索は <span class="s">`--no-index`</span>
+6. <span class="s">`--exclude ${user_config.exclude}`</span> を常に付ける</div>
+      <div class="panel ai">
+        <h3>Skill にする理由</h3>
+        <p class="small">Skill は <b>description に合致したときだけ本文が読み込まれる</b>。「毎回すべてのセッションのシステムプロンプトに tgrep の使い方を載せる」のと違い、<b>検索しようとした瞬間にだけ</b>作法が届く。常時のコンテキスト消費がほぼゼロで済む。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 19 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Plugin · 設計の選択</p>
+  <h2>Skill + Bash か、MCP ツールか</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel tg">
+        <h3>A. Skill + Bash ツール <span class="tag">まずこれ</span></h3>
+        <ul class="plusminus small">
+          <li class="good">実装ゼロ。<code>SKILL.md</code> を書くだけ</li>
+          <li class="good">全フラグが使える。モデルが状況に応じて選べる</li>
+          <li class="good">出力がそのまま見えるので挙動を追いやすい</li>
+          <li class="bad">フラグを<b>強制できない</b>。作法は「お願い」止まり</li>
+          <li class="bad">出力量を機械的に打ち切れない</li>
+          <li class="bad">Bash ツールを許可していない環境では使えない</li>
+        </ul>
+      </div>
+      <div class="panel ai">
+        <h3>B. MCP サーバーとして出す</h3>
+        <ul class="plusminus small">
+          <li class="good">フラグ allowlist・パス正規化・出力上限を<b>コードで強制</b>できる（スライド 14）</li>
+          <li class="good">Bash 権限なしで検索だけを許可できる</li>
+          <li class="good">Claude Code 以外の MCP 対応エージェントでも同じ実装を使い回せる</li>
+          <li class="bad">サーバー実装と保守が要る</li>
+          <li class="bad">スキーマで塞いだフラグは使えなくなる</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c">// .mcp.json（B を選ぶ場合。プラグインルート直下）</span>
+{ <span class="s">"mcpServers"</span>: { <span class="s">"tgrep"</span>: {
+  <span class="s">"command"</span>: <span class="s">"node"</span>,
+  <span class="s">"args"</span>: [<span class="s">"${CLAUDE_PLUGIN_ROOT}/scripts/tgrep-search.mjs"</span>],
+  <span class="s">"env"</span>: { <span class="s">"TGREP_INDEX_PATH"</span>: <span class="s">"${CLAUDE_PLUGIN_DATA}/idx"</span> }
+} } }</div>
+      <div class="panel amber">
+        <h3>実務的には「両方入り」が扱いやすい</h3>
+        <p class="small">1 つのプラグインに <b>Skill（人間とモデルへの説明）</b> と <b>MCP ツール（強制したい制約）</b> の両方を入れ、Skill 側から「検索は <code>tgrep_search</code> ツールを使う」と指示する。プラグインは <code>skills/</code>・<code>hooks/</code>・<code>.mcp.json</code>・<code>bin/</code> を<b>まとめて 1 パッケージにできる</b>のが強みなので、どれか 1 つを選ぶ必要はない。</p>
+      </div>
+      <div class="panel">
+        <h3><code>bin/</code> でバイナリごと配る</h3>
+        <p class="small">プラグインルートの <code>bin/</code> に置いた実行ファイルは、プラグインが有効な間 Bash ツールの <code>PATH</code> に追加される。<b>「tgrep を各自インストール」の手順自体を消せる</b>。ただし claude.ai の組織設定から配布するプラグインでは、トップレベル <code>bin/</code> を含められない点に注意。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 20 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Plugin · 配布</p>
+  <h2>検証して、マーケットプレイスで配る</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel tg">
+        <h3>① 手元で試す</h3>
+        <div class="term sm"><span class="c"># インストールせずに読み込む</span>
+<span class="k">$</span> claude --plugin-dir ./tgrep-plugin
+
+<span class="c"># 変更を再読み込み（再起動不要）</span>
+/reload-plugins
+
+<span class="c"># 呼び出しは名前空間つき</span>
+/tgrep:search</div>
+      </div>
+      <div class="panel tg">
+        <h3>② 検証する</h3>
+        <div class="term sm"><span class="k">$</span> claude plugin validate ./tgrep-plugin
+✔ Validation passed</div>
+        <p class="xs muted">フックが動いたか、MCP サーバーが起動したかは <code>/plugin</code> の <b>Errors タブ</b>で確認する。起動に失敗した MCP / LSP サーバーはここに出る。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c">// マーケットプレイス側リポジトリ</span>
+<span class="c">// .claude-plugin/marketplace.json</span>
+{ <span class="s">"name"</span>: <span class="s">"ysksm-plugins"</span>,
+  <span class="s">"owner"</span>: { <span class="s">"name"</span>: <span class="s">"ysksm"</span> },
+  <span class="s">"plugins"</span>: [ {
+    <span class="s">"name"</span>: <span class="s">"tgrep"</span>,
+    <span class="s">"source"</span>: <span class="s">"./plugins/tgrep-plugin"</span>,
+    <span class="s">"description"</span>: <span class="s">"Trigram-indexed repo search"</span>
+  } ] }</div>
+      <div class="panel ai">
+        <h3>③ 配って入れてもらう</h3>
+        <div class="term sm"><span class="c"># マーケットプレイスを登録してインストール</span>
+<span class="k">$</span> claude plugin marketplace add ysksm/plugins
+<span class="k">$</span> claude plugin install tgrep@ysksm-plugins
+
+<span class="c"># セッション内からでも同じ</span>
+/plugin install tgrep@ysksm-plugins</div>
+        <p class="xs muted">社内限定にしたい場合はプライベートリポジトリをマーケットプレイスにする。<code>--scope project</code> で登録すれば <code>.claude/settings.json</code> 経由でチームに共有され、<b>リポジトリを clone した全員に同じ検索環境が入る</b>。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 21 ────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Wrap-up</p>
+  <h2>まとめと参考資料</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel tg">
+        <h3>要点</h3>
+        <ul class="small">
+          <li><b>tgrep = 索引付き grep。</b>トライグラム転置索引で候補ファイルを絞り、最後は通常の正規表現で検証する。<b>結果は ripgrep と同じで、速度だけが違う</b>。</li>
+          <li><b>効くのは大規模 × 高頻度。</b>10 万ファイル超で 15〜52 倍。逆に小規模・一回きり・マッチ数が膨大な検索では利得が薄い。</li>
+          <li><b>AI エージェントとの相性が本題。</b>速度はタスク時間に直結し、<code>-l</code>/<code>-m</code>/<code>-q</code> による出力制御はコンテキスト消費に直結する。Copilot CLI が実例。</li>
+          <li><b>作法は 3 つ。</b><code>--</code> を前置する／リテラルは <code>-F</code>／<b>index・serve・検索でフラグを揃える</b>。加えて索引の鮮度が要る場面は <code>--no-index</code>。</li>
+          <li><b>プラグイン化で「配布物」にする。</b>フックで常駐、Skill で作法、MCP で制約の強制、marketplace で配布。ドキュメントを実行可能な形にする作業。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>次の一歩</h3>
+        <ul class="small">
+          <li>手元の一番大きいリポジトリで <code>tgrep count-files .</code> → 規模を見る</li>
+          <li><code>tgrep serve . &amp;</code> を試し、<code>--stats</code> 付きで ripgrep と比べる</li>
+          <li>まず <code>.claude/skills/</code> に作法を書いて運用し、固まったらプラグインに移す</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><a href="https://github.com/microsoft/tgrep">microsoft/tgrep</a> — 本体リポジトリ。README にコマンド一覧とベンチマーク</li>
+        <li><a href="https://github.com/microsoft/tgrep/blob/main/AGENTS.md">tgrep/AGENTS.md</a> — エージェント向けの作法（<code>--</code> の前置、フラグ整合、鮮度、終了コード、ツールスキーマ）</li>
+        <li><a href="https://github.com/github/copilot-cli">github/copilot-cli</a> — tgrep を検索基盤として統合している実例</li>
+        <li><a href="https://github.com/BurntSushi/ripgrep">BurntSushi/ripgrep</a> — 比較対象。フラグと <code>--json</code> の仕様の原典</li>
+        <li><a href="https://code.claude.com/docs/en/plugins">Claude Code: Create plugins</a> — プラグインの作り方・テスト・移行</li>
+        <li><a href="https://code.claude.com/docs/en/plugins-reference">Plugins reference</a> — <code>plugin.json</code> スキーマ、<code>hooks.json</code>、<code>.mcp.json</code>、置換変数</li>
+        <li><a href="https://code.claude.com/docs/en/plugin-marketplaces">Plugin marketplaces</a> — <code>marketplace.json</code> と配布手順</li>
+        <li><a href="https://modelcontextprotocol.io/">modelcontextprotocol.io</a> — MCP 仕様</li>
+      </ul>
+      <p class="xs muted">本スライドは 2026-09-15 時点の上記リポジトリ・公式ドキュメントの記載に基づく。ベンチマーク値は tgrep README の掲載値であり、実測環境によって変わる。バージョン固有の仕様は各リンク先で最新を確認のこと。</p>
+    </div>
+  </div>
+</section>
+
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷/PDF</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>

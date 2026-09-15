@@ -3,31 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Redmine の UI を SPA で作る</title>
-<meta name="description" content="Redmine の UI 置き換え、別 Web サーバー経由の構成、Electron・Tauri・PWA によるデスクトップアプリ化を解説">
+<title>Redmine の UI を SPA で作るための技術</title>
+<meta name="description" content="Redmine の UI を SPA に置き換える方法、別の Web サーバー（BFF / リバースプロキシ）経由にする方法、デスクトップアプリ化する方法を、REST API の制約・認証・CORS・実装パターンの観点で整理した解説スライド">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
   :root {
-    --paper: #F5F8F5;
-    --paper-2: #E9F0E9;
-    --ink: #14231A;
-    --ink-2: #45564A;
-    --ink-3: #7C8B80;
-    --rule: #CBD8CD;
-    --pw: #1E7F2C;          /* Playwright green */
-    --pw-soft: #D8EEDA;
-    --ai: #2F6FBF;          /* MCP / AI blue */
+    --paper: #F8F6F4;
+    --paper-2: #EEE9E5;
+    --ink: #24191A;
+    --ink-2: #574A4B;
+    --ink-3: #8C7E7F;
+    --rule: #D9CFCC;
+    --pw: #B3261E;          /* Redmine red */
+    --pw-soft: #F4DAD7;
+    --ai: #2F6FBF;          /* SPA / frontend blue */
     --ai-soft: #D9E7F8;
-    --amber: #B7791F;
+    --amber: #B7791F;       /* BFF / server */
     --amber-soft: #FBEBC8;
     --red: #B4432F;
     --red-soft: #F6DAD5;
-    --term: #101B12;
-    --term-ink: #DCEEDF;
-    --term-dim: #7E9B85;
-    --term-key: #8FE09B;
+    --violet: #6B4FBB;      /* desktop */
+    --violet-soft: #E4DCF7;
+    --term: #1B1214;
+    --term-ink: #EEE1E0;
+    --term-dim: #9C8587;
+    --term-key: #F0938C;
     --term-str: #9EC9E0;
     --term-num: #F5C97A;
     --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
@@ -77,7 +79,7 @@
     font-variant-numeric: tabular-nums;
   }
   .slide::before {
-    content: "Redmine の UI を SPA で作る";
+    content: "Redmine の UI を SPA で作るための技術";
     position: absolute; left: 72px; bottom: 24px;
     font-family: var(--mono); font-size: 12px; color: var(--ink-3);
     letter-spacing: .04em;
@@ -109,10 +111,13 @@
 
   /* ---------- layout helpers ---------- */
   .cols { display: grid; gap: 26px; flex: 1; min-height: 0; }
+  .cols > * { min-width: 0; }
   .cols-2 { grid-template-columns: 1fr 1fr; }
   .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-4 { grid-template-columns: repeat(4, 1fr); }
   .cols-52 { grid-template-columns: 1.15fr 1fr; }
   .cols-25 { grid-template-columns: 1fr 1.25fr; }
+  .cols.gap-sm { gap: 16px; }
   .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
   .grow { flex: 1; min-height: 0; }
   .panel {
@@ -122,6 +127,7 @@
   .panel.ai { border-top: 3px solid var(--ai); }
   .panel.amber { border-top: 3px solid var(--amber); }
   .panel.red { border-top: 3px solid var(--red); }
+  .panel.violet { border-top: 3px solid var(--violet); }
   .tag {
     display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
     padding: 2px 8px; border-radius: 999px; background: var(--pw-soft); color: var(--pw); vertical-align: middle;
@@ -129,11 +135,10 @@
   .tag.ai { background: var(--ai-soft); color: var(--ai); }
   .tag.amber { background: var(--amber-soft); color: var(--amber); }
   .tag.red { background: var(--red-soft); color: var(--red); }
-  .good::marker { content: "○ "; color: var(--pw); }
-  .bad::marker { content: "△ "; color: var(--red); }
+  .tag.violet { background: var(--violet-soft); color: var(--violet); }
   ul.plusminus { list-style: none; padding-left: 1.4em; }
   ul.plusminus li { text-indent: -1.4em; }
-  ul.plusminus li.good::before { content: "○ "; color: var(--pw); font-weight: 700; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--ai); font-weight: 700; }
   ul.plusminus li.bad::before { content: "△ "; color: var(--red); font-weight: 700; }
 
   /* ---------- terminal ---------- */
@@ -148,6 +153,7 @@
   .term .d { color: var(--term-dim); }
   .term .c { color: var(--term-dim); font-style: italic; }
   .term.sm { font-size: 12px; }
+  .term.xs { font-size: 11.5px; line-height: 1.5; }
 
   /* ---------- tables ---------- */
   table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
@@ -155,6 +161,10 @@
   th { font-weight: 600; color: var(--ink-2); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
   tr:last-child td { border-bottom: none; }
   .tight td, .tight th { padding: 5px 8px; }
+  td.nw, th.nw { white-space: nowrap; }
+  .ok { color: var(--ai); font-weight: 600; }
+  .ng { color: var(--red); font-weight: 600; }
+  .so { color: var(--amber); font-weight: 600; }
 
   /* ---------- diagram ---------- */
   .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 10px; }
@@ -162,10 +172,12 @@
   .box .t { font-family: var(--display); font-weight: 700; font-size: 16px; margin-bottom: 4px; }
   .box.pw { border-color: var(--pw); background: var(--pw-soft); }
   .box.ai { border-color: var(--ai); background: var(--ai-soft); }
+  .box.amber { border-color: var(--amber); background: var(--amber-soft); }
+  .box.violet { border-color: var(--violet); background: var(--violet-soft); }
   .arrow { font-family: var(--mono); color: var(--ink-3); font-size: 12px; text-align: center; line-height: 1.3; align-self: center; }
   .arrow b { display: block; font-size: 18px; color: var(--pw); }
 
-  /* ---------- step flow (確実性手順) ---------- */
+  /* ---------- step flow ---------- */
   .steps { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
   .step { display: grid; grid-template-columns: 46px 220px 1fr; gap: 14px; align-items: start;
     background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 10px 16px; }
@@ -177,7 +189,7 @@
   /* ---------- cover ---------- */
   .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 80px; }
   .cover .eyebrow { color: var(--term-key); }
-  .cover h1 { color: #fff; font-size: 72px; }
+  .cover h1 { color: #fff; font-size: 64px; }
   .cover .lead { color: var(--term-ink); }
   .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 28px; }
   .cover .frame {
@@ -185,7 +197,7 @@
     font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
     border-left: 2px solid var(--pw); padding-left: 16px;
   }
-  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); } .cover .frame .c { font-style: italic; }
 
   /* ---------- nav ---------- */
   #hud {
@@ -210,154 +222,532 @@
     .slide.active { animation: in .18s ease-out; }
     @keyframes in { from { opacity: .4; } to { opacity: 1; } }
   }
-
-  .source { margin-top:auto; font-size:12px; line-height:1.5; color:var(--ink-2); }
-  .source a { margin-right:14px; }
-  .body-list { font-size:22px; line-height:1.8; }
-  .body-list li { margin:12px 0; }
-  .matrix { font-size:19px; line-height:1.6; }
-  .matrix th { font-size:15px; }
-  .matrix td,.matrix th { padding:13px 12px; }
-  .statement { font-size:29px; line-height:1.65; max-width:36em; }
-  .note { border-left:4px solid var(--pw); padding:12px 20px; background:var(--paper-2); font-size:20px; }
-  .split { display:grid; grid-template-columns:1fr 1fr; gap:36px; }
-  .split h3 { font-size:23px; margin-bottom:16px; }
-  .split p,.split li { font-size:20px; line-height:1.8; }
-  .path { font-family:var(--mono); font-size:23px; padding:22px 0; border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); }
-  .term.example { font-size:18px; line-height:1.65; margin:0; }
-  .refs { font-size:19px; line-height:1.9; }
-  @page { size:1280px 720px; margin:0; }
-  @media print { .slide { break-inside:avoid; } .slide:last-child { page-break-after:auto; } }
 </style>
 </head>
 <body>
 <div id="stage"><div class="deck" id="deck">
 
+<!-- 1 ─────────────────────────────────────────── -->
 <section class="slide cover">
-<p class="eyebrow">Architecture study / Issue #26</p>
-<h1>Redmine の UI を<br>SPA で作る</h1>
-<p class="lead">UI の置き換え・別 Web サーバー経由の構成・デスクトップアプリ化</p>
-<p class="meta"><span>2026-09-14</span><span>ysksm/slides</span><span>設計者・実装者向け</span></p>
+  <div class="frame"><span class="k">$</span> curl -H <span class="s">"X-Redmine-API-Key: $KEY"</span> \
+    https://redmine.example.com/issues.json?assigned_to_id=me
+{<span class="s">"issues"</span>: [...], <span class="s">"total_count"</span>: <span class="n">42</span>, <span class="s">"offset"</span>: <span class="n">0</span>, <span class="s">"limit"</span>: <span class="n">25</span>}
+<span class="c"># Redmine は REST API を持つ「ヘッドレス化できる」Rails アプリ</span>
+
+<span class="c"># 3 つの問い</span>
+<span class="k">1.</span> UI を SPA に置き換えるには？
+<span class="k">2.</span> 別の Web サーバー（BFF）を挟むには？
+<span class="k">3.</span> デスクトップアプリにするには？</div>
+  <p class="eyebrow">Architecture notes · ysksm/slides</p>
+  <h1>Redmine の UI を<br>SPA で作るための技術</h1>
+  <p class="lead">Rails 製の Redmine を「API サーバー」として扱い、UI を自前の SPA に置き換える方法、間に別の Web サーバー（BFF / リバースプロキシ）を挟む方法、そしてデスクトップアプリ化する方法を、制約と実装パターンの観点で整理する。</p>
+  <p class="meta"><span>2026-09-14</span><span>Redmine 5.x / 6.x · REST API</span><span>Issue #26</span></p>
 </section>
 
+<!-- 2 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">01 / 方針</p><h2>既存 Redmine を残し、よく使う画面から置き換える</h2>
-<p class="statement">チケット一覧・詳細・更新を SPA にする。<br>データと権限判定は Redmine を利用する。</p><ul class="body-list"><li>Web 版の出発点は、同一オリジンで配信する <b>SPA + BFF</b>。</li><li>管理・プラグイン固有画面は、既存 UI へのリンクを用意する。</li><li>デスクトップ版は、同じ UI に Electron / Tauri の通信層を組み合わせる。</li></ul><p class="note">前提：既存 Redmine を運用中。バージョン・認証基盤・導入プラグインは未指定。</p>
-<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://v2.tauri.app/start/">Tauri overview</a></p>
+  <p class="eyebrow">Summary</p>
+  <h2>結論を先に：3 つの問いへの答え</h2>
+  <div class="cols cols-3">
+    <div class="panel ai stack">
+      <h3>① UI の置き換え <span class="tag ai">SPA</span></h3>
+      <p class="small">Redmine の <b>REST API</b>（JSON）を使えば、チケット・プロジェクト・時間記録・Wiki など主要機能は SPA から操作できる。置き換えの粒度は 3 段階：<b>テーマ / プラグインで一部を差し替える</b> → <b>プラグイン内に SPA を同梱</b> → <b>完全分離した SPA</b>。</p>
+      <p class="xs muted">API に無い機能（ワークフロー・管理画面・リポジトリ閲覧など）は「Redmine 本体に飛ばす」か「プラグインで API を足す」。</p>
+    </div>
+    <div class="panel amber stack">
+      <h3>② 別 Web サーバー経由 <span class="tag amber">BFF / Proxy</span></h3>
+      <p class="small">ブラウザから Redmine の API を直接叩くと <b>CORS・API キーの扱い・N+1 呼び出し</b> で行き詰まる。同一オリジンに見せる <b>リバースプロキシ</b> を最低限、認証の変換・集約・キャッシュ・SSO まで担うなら <b>BFF（Backend for Frontend）</b> を置く。</p>
+      <p class="xs muted">Redmine 自体は改造しない。管理者キーと <code>X-Redmine-Switch-User</code> でユーザー代理も可能。</p>
+    </div>
+    <div class="panel violet stack">
+      <h3>③ デスクトップ化 <span class="tag violet">Tauri / Electron</span></h3>
+      <p class="small">①で作った SPA をそのまま <b>Tauri（v2）</b> か <b>Electron</b> に載せる。ネイティブ側の HTTP クライアントは CORS の制約を受けないため <b>Redmine に直接接続</b> でき、BFF 無しでも成立する。通知・トレイ・資格情報の安全な保存・自動更新が主な追加設計。</p>
+      <p class="xs muted">まず PWA で足りないかを確認。Redmine の画面をそのまま包む「ガワアプリ」も最小コストの選択肢。</p>
+    </div>
+  </div>
+  <p class="small muted">推奨する段階: <b>SPA + リバースプロキシ（同一オリジン）</b> で開始 → 認証・集約が必要になったら <b>BFF</b> → 同じ SPA を <b>Tauri</b> でデスクトップ配布（詳細はスライド 15）。</p>
 </section>
 
+<!-- 3 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">02 / UI 置き換え</p><h2>置き換える範囲で実装方式が変わる</h2>
-<table class="matrix"><thead><tr><th>方式</th><th>できること</th><th>保守上の論点</th></tr></thead><tbody><tr><td>テーマ</td><td>配色・余白・既存画面の外観調整</td><td>SPA 化のための API や画面遷移は別実装</td></tr><tr><td>Redmine プラグイン</td><td>独自ページ・メニュー・API を追加</td><td>本体・Rails・他プラグインとの互換性</td></tr><tr><td>独立 SPA + REST API</td><td>画面と配信を Redmine から分離</td><td>API にない操作の扱いを決める</td></tr><tr><td>本体ビュー改変 / fork</td><td>既存画面を広範囲に変更</td><td>アップグレード時に差分の追従が必要</td></tr></tbody></table><p class="note">本資料の提案：独立 SPA を基本にし、不足機能だけプラグインで補う。</p>
-<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Themes">Themes</a><a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a><a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a></p>
+  <p class="eyebrow">Baseline</p>
+  <h2>前提：Redmine のアーキテクチャと「置き換え可能な面」</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <ul>
+        <li>Redmine は <b>Ruby on Rails のモノリス</b>（GPLv2）。5.x は Rails 6.1、6.0（2024-11）は Rails 7.2 ベース。</li>
+        <li>画面は <b>ERB テンプレート + jQuery / jQuery UI</b> のサーバーサイド描画。SPA フレームワークは使っておらず、フロントの状態管理・ルーティングは持たない。</li>
+        <li>拡張点は <b>プラグイン</b>（Rails エンジン相当：ルート・コントローラ・モデルパッチ・<b>view hook</b>）と <b>テーマ</b>（CSS + <code>theme.js</code>）。</li>
+        <li>外部連携の公式窓口は <b>REST API</b>（XML / JSON）。管理画面で有効化が必要。UI にある機能の多くが API にもあるが、<b>全部ではない</b>。</li>
+        <li>参考：フォークの <b>OpenProject</b> は Rails バックエンド + Angular SPA + API v3（HAL+JSON）へ全面移行した実例。「Rails を API 化して UI を分離する」道の到達点として参照できる。</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="flow" style="grid-template-columns:1fr auto 1fr">
+        <div class="box"><div class="t">ブラウザ</div>ERB で描画された HTML + jQuery<br><span class="xs muted">セッション Cookie / CSRF トークン</span></div>
+        <div class="arrow"><b>⇄</b>HTML</div>
+        <div class="box pw"><div class="t">Redmine (Rails)</div>Controller → Model → DB<br><span class="xs muted">同じ Controller が <code>.json</code> / <code>.xml</code> で API 応答</span></div>
+      </div>
+      <div class="panel">
+        <h3>置き換えの 3 つの面</h3>
+        <table class="tight small">
+          <tr><td class="nw"><span class="tag ai">A</span> 画面の一部</td><td>テーマの JS / プラグインの view hook で特定画面に SPA 部品を注入</td></tr>
+          <tr><td class="nw"><span class="tag ai">B</span> 同居 SPA</td><td>プラグインが <code>/app/*</code> のような経路で SPA を配信。Redmine のセッション・認証をそのまま使える</td></tr>
+          <tr><td class="nw"><span class="tag ai">C</span> 完全分離</td><td>別オリジン / 別サーバーの SPA が REST API だけで動く。Redmine は「バックエンド」</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
 </section>
 
+<!-- 4 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">03 / API</p><h2>チケット画面と API の対応</h2>
-<table class="matrix"><thead><tr><th>画面・操作</th><th>API の例</th><th>UI 側の注意</th></tr></thead><tbody><tr><td>一覧・絞り込み</td><td><code>GET /issues.json</code></td><td>既定は未完了のみ。全状態は status_id=*</td></tr><tr><td>詳細・履歴</td><td><code>GET /issues/42.json</code></td><td>include=journals,attachments を指定</td></tr><tr><td>作成 / 更新</td><td><code>POST /issues.json</code><br><code>PUT /issues/42.json</code></td><td>必須項目・権限・ワークフローを確認</td></tr><tr><td>変更可能な状態</td><td><code>include=allowed_statuses</code></td><td>5.0.x 以降。利用者とチケットで変わる</td></tr></tbody></table><p class="note">全ステータス一覧と、今の利用者が遷移できる状態は区別する。</p>
-<p class="source">出典: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_Issues">Issues API</a></p>
+  <p class="eyebrow">Foundation · REST API</p>
+  <h2>土台：Redmine REST API の使い方と制約</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <table class="tight small">
+        <tr><th class="nw">項目</th><th>内容</th></tr>
+        <tr><td class="nw">有効化</td><td>管理 → 設定 → API → <b>「REST による Web サービスを有効にする」</b>。既定は無効</td></tr>
+        <tr><td class="nw">形式</td><td>URL 末尾を <code>.json</code> / <code>.xml</code>。<code>Content-Type</code> も合わせる</td></tr>
+        <tr><td class="nw">認証</td><td>① ヘッダー <code>X-Redmine-API-Key</code>（推奨） ② <code>?key=</code> ③ HTTP Basic（ID/PW、または API キー + 任意 PW）</td></tr>
+        <tr><td class="nw">ユーザー代理</td><td>管理者キー + <code>X-Redmine-Switch-User: login</code>（2.2 以降）。BFF から「本人として」操作できる</td></tr>
+        <tr><td class="nw">ページング</td><td><code>offset</code> / <code>limit</code>。既定 25、<b>上限 100</b>。応答に <code>total_count</code></td></tr>
+        <tr><td class="nw">関連取得</td><td><code>include=journals,attachments,relations,watchers,children,changesets,allowed_statuses</code></td></tr>
+        <tr><td class="nw">添付</td><td>① <code>POST /uploads.json</code>（<code>application/octet-stream</code>）でトークン取得 → ② チケット作成/更新時に <code>uploads: [{token,…}]</code></td></tr>
+        <tr><td class="nw">エラー</td><td>422 + <code>{"errors":[…]}</code>。403 は権限 / API 無効、401 は認証失敗</td></tr>
+      </table>
+      <p class="xs muted">出典: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Rest_api（公式 Wiki）</a>。資源ごとに Stable / Beta / Alpha の成熟度が明記されている。</p>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># 自分のチケット（未完了）を更新日時の新しい順に</span>
+<span class="k">GET</span> /issues.json?assigned_to_id=me&status_id=open
+      &sort=updated_on:desc&limit=100
+
+<span class="c"># 1 件 + 履歴・添付・関連</span>
+<span class="k">GET</span> /issues/123.json?include=journals,attachments
+
+<span class="c"># 更新（コメント付き）</span>
+<span class="k">PUT</span> /issues/123.json
+{ <span class="s">"issue"</span>: { <span class="s">"status_id"</span>: <span class="n">3</span>, <span class="s">"notes"</span>: <span class="s">"対応済み"</span> } }
+
+<span class="c"># 差分同期のための増分取得</span>
+<span class="k">GET</span> /issues.json?updated_on=%3E%3D2026-09-14T00:00Z
+
+<span class="c"># ログイン中ユーザーと API キー（Basic 認証で呼ぶ）</span>
+<span class="k">GET</span> /users/current.json → {"user": {"api_key": …}}</div>
+      <div class="panel red">
+        <h3>重要な仕様：API 呼び出しにセッションは使われない</h3>
+        <p class="small"><code>.json</code> / <code>.xml</code> の要求は <b>API リクエスト</b> として扱われ、ログイン Cookie ではなく API キー / Basic 認証で認証される。つまり「Redmine にログイン済みのブラウザから fetch」は<b>そのままでは通らない</b>。SPA は必ず <b>API キーをどこで持つか</b> を設計する必要がある。</p>
+      </div>
+    </div>
+  </div>
 </section>
 
+<!-- 5 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">04 / フロントエンド</p><h2>UI と接続先を分ける</h2>
-<p class="path">画面 &nbsp; / &nbsp; 業務操作 &nbsp; / &nbsp; Redmine 接続アダプター</p><table class="matrix"><thead><tr><th>層</th><th>技術候補</th><th>担当</th></tr></thead><tbody><tr><td>画面</td><td>React または Vue + TypeScript</td><td>一覧・編集フォーム・キーボード操作</td></tr><tr><td>ルート・データ取得</td><td>Router + query cache</td><td>URL と絞り込み、読込・失敗・再取得</td></tr><tr><td>ビルド・配信</td><td>Vite など</td><td>静的ファイルを Web / Desktop 向けに生成</td></tr><tr><td>接続アダプター</td><td>Web は BFF、Desktop は IPC</td><td>DTO 変換、認証情報、エラー処理を分離</td></tr></tbody></table><p class="small">採用候補の設計例。チームの既存経験を優先し、UI ライブラリは 1 系統にそろえる。</p>
-<p class="source">設計提案。参考: <a href="https://vite.dev/guide/static-deploy.html">Vite static deploy</a><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a></p>
+  <p class="eyebrow">Foundation · Coverage</p>
+  <h2>REST API のカバレッジ：SPA で作れる範囲を先に把握する</h2>
+  <div class="cols gap-sm" style="grid-template-columns:1.45fr 1fr">
+    <div class="stack">
+      <table class="tight xs">
+        <tr><th>資源</th><th class="nw">読み</th><th class="nw">書き</th><th>備考</th></tr>
+        <tr><td>Issues（チケット）</td><td class="ok">○</td><td class="ok">○</td><td>CRUD・ウォッチャー・関連・添付。一括編集は無い（1 件ずつ PUT）</td></tr>
+        <tr><td>Projects / Memberships / Versions</td><td class="ok">○</td><td class="ok">○</td><td>アーカイブ・閉鎖・再開は 5.0 以降</td></tr>
+        <tr><td>Users / Groups</td><td class="ok">○</td><td class="ok">○</td><td>一覧・作成は管理者のみ。<code>/users/current</code> は本人</td></tr>
+        <tr><td>Time entries</td><td class="ok">○</td><td class="ok">○</td><td>工数入力画面は SPA 化しやすい</td></tr>
+        <tr><td>Wiki pages / News / Files</td><td class="ok">○</td><td class="ok">○</td><td>Wiki は本文が生テキスト（下段の整形問題）</td></tr>
+        <tr><td>Queries（保存クエリ）</td><td class="ok">○</td><td class="ng">×</td><td>一覧のみ。<code>query_id</code> で issues に適用は可</td></tr>
+        <tr><td>Trackers / Statuses / Enumerations / Roles / Custom fields</td><td class="ok">○</td><td class="ng">×</td><td>マスタは参照のみ。フォームの選択肢生成に使う</td></tr>
+        <tr><td>Search</td><td class="ok">○</td><td>—</td><td>3.3 以降。横断検索</td></tr>
+        <tr><td>ワークフロー / 権限設定 / 管理画面</td><td class="ng">×</td><td class="ng">×</td><td>API 無し。状態遷移の可否は <code>include=allowed_statuses</code> で代替</td></tr>
+        <tr><td>リポジトリ閲覧 / ガント / カレンダー / マイページ</td><td class="ng">×</td><td class="ng">×</td><td>ガント・カレンダーは issues から<b>クライアント側で描画</b>できる</td></tr>
+        <tr><td>テキスト整形（Textile / Markdown → HTML）</td><td class="ng">×</td><td>—</td><td>プレビュー API 無し。マクロ・Wiki リンク・<code>#123</code> の再現が課題</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="panel ai">
+        <h3>足りない部分の埋め方（優先順）</h3>
+        <ol class="small">
+          <li><b>SPA 側で計算する</b>：ガント・カレンダー・集計は issues / versions から描ける。</li>
+          <li><b>プラグインで API を足す</b>：Rails コントローラに <code>accept_api_auth</code> を宣言し <code>.api.rsb</code> テンプレートで JSON を返す。Redmine 本体の <code>textilizable</code> を呼べば<b>整形済み HTML の API</b> も作れる。</li>
+          <li><b>Redmine 本体へ遷移する</b>：管理画面・ワークフローは SPA から本体の URL にリンクするだけにする。</li>
+          <li><b>HTML をスクレイピングする</b>：CSRF・レイアウト変更に弱い。最後の手段。</li>
+        </ol>
+      </div>
+      <div class="panel">
+        <h3>型と API 定義</h3>
+        <p class="small">公式の OpenAPI 定義は無い。コミュニティ製の定義や TypeScript クライアントはあるが版ずれに注意。実務では <b>使う資源だけ zod 等でスキーマを書き、応答を実行時検証</b> する方が安全。カスタムフィールド（<code>custom_fields: [{id, name, value}]</code>）は動的なので特に。</p>
+      </div>
+    </div>
+  </div>
 </section>
 
+<!-- 6 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">05 / 認証</p><h2>どの利用者の権限で API を呼ぶか</h2>
-<table class="matrix"><thead><tr><th>方式</th><th>認証情報の場所</th><th>適用条件</th></tr></thead><tbody><tr><td>利用者 API キーを直接送る</td><td>ブラウザの実行メモリ</td><td>小規模 PoC。再読込時の再入力を許容</td></tr><tr><td>BFF が利用者キーを保持</td><td>サーバーの秘密情報ストア</td><td>ブラウザには BFF のセッション Cookie</td></tr><tr><td>プラグイン + 既存セッション</td><td>Redmine のセッション</td><td>専用 API の認証・CSRF 対策を実装</td></tr><tr><td>管理者キー + 代理ユーザー</td><td>サーバーのみ</td><td>強い信頼境界。必要な場合に限定</td></tr></tbody></table><p class="note">SSO で BFF にログインしても、Redmine の権限は自動では引き継がれない。本人と Redmine アカウントの対応を検証する。</p>
-<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a><a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a></p>
+  <p class="eyebrow">① Replace the UI · Overview</p>
+  <h2>UI 置き換えの 3 方式：どこまで Redmine から離れるか</h2>
+  <div class="cols cols-3">
+    <div class="panel stack">
+      <h3><span class="tag ai">A</span> 部分注入（テーマ / プラグイン）</h3>
+      <p class="small">既存画面はそのまま。テーマの <code>javascripts/theme.js</code> や プラグインの view hook（<code>view_layouts_base_html_head</code> / <code>…_body_bottom</code>）で JS を読み込み、特定の要素に <b>React / Vue / Svelte の小さな島</b>（Islands）をマウントする。</p>
+      <ul class="plusminus small">
+        <li class="good">ログイン・権限・CSRF は Redmine のまま。導入が最も軽い</li>
+        <li class="good">1 画面ずつ段階的に改善できる</li>
+        <li class="bad">Redmine の DOM / jQuery と共存。本体更新で壊れやすい</li>
+        <li class="bad">API 呼び出しには結局 API キーが要る（後述）</li>
+      </ul>
+    </div>
+    <div class="panel stack">
+      <h3><span class="tag ai">B</span> プラグイン同居 SPA</h3>
+      <p class="small">プラグインがルート（例 <code>/app/*</code>）とコントローラを持ち、ビルド済み SPA の <code>index.html</code> を返す。SPA は同一オリジンで動くので <b>CORS 無し</b>。プラグイン側に<b>セッション認証で動く独自 JSON エンドポイント</b>を足せば API キー問題も消える。</p>
+      <ul class="plusminus small">
+        <li class="good">Redmine のログイン・SSO・権限をそのまま利用</li>
+        <li class="good">不足 API を同じプラグインで補える</li>
+        <li class="bad">Ruby / Rails の知識と Redmine 更新への追従が必要</li>
+        <li class="bad">配布・デプロイが Redmine 本体と一体になる</li>
+      </ul>
+    </div>
+    <div class="panel stack">
+      <h3><span class="tag ai">C</span> 完全分離 SPA</h3>
+      <p class="small">SPA は別リポジトリ・別ホスティング（静的配信）。Redmine とは <b>REST API のみ</b>で会話する。Redmine 側は無改造で、複数の Redmine インスタンスにも接続できる。デスクトップ化（③）と最も相性がよい。</p>
+      <ul class="plusminus small">
+        <li class="good">フロント技術を自由に選べる。Redmine 更新の影響が最小</li>
+        <li class="good">同じ SPA を Web / デスクトップ / モバイルへ展開</li>
+        <li class="bad">CORS・認証・API の穴を <b>自分で</b>解決する → ② の BFF が必要になりがち</li>
+        <li class="bad">API に無い機能は作れない、または本体へ飛ばす</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small muted">選び方：<b>既存運用を壊さず改善</b> → A。<b>Redmine 管理者 = 開発者</b> で Ruby も書ける → B。<b>SaaS 的に配布 / 複数 Redmine / デスクトップ</b> → C（+ BFF）。</p>
 </section>
 
+<!-- 7 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">06 / 別 Web サーバー</p><h2>リバースプロキシと BFF は役割が違う</h2>
-<p class="path">Browser &nbsp; → &nbsp; NGINX &nbsp; → &nbsp; BFF &nbsp; → &nbsp; Redmine</p><table class="matrix"><thead><tr><th>構成要素</th><th>役割</th><th>その要素だけでは解決しないこと</th></tr></thead><tbody><tr><td>NGINX</td><td>TLS 終端、静的 SPA 配信、パス振り分け</td><td>利用者ごとのキー管理・業務 API の合成</td></tr><tr><td>BFF（UI 専用のバックエンド）</td><td>セッション、利用者キー付与、応答整形</td><td>Redmine にない業務機能の自動生成</td></tr><tr><td>Redmine</td><td>データ保存、権限判定、業務ルール</td><td>新しい SPA のルーティングと表示</td></tr></tbody></table><p class="note">単純中継だけならプロキシでも構成可能。キー管理や SSO 連携が必要なら BFF を追加する。</p>
-<p class="source">設計提案。参考: <a href="https://nginx.org/en/docs/http/ngx_http_proxy_module.html">NGINX proxy module</a><a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a></p>
+  <p class="eyebrow">① Replace the UI · A / B</p>
+  <h2>方式 A・B の実装：テーマ・プラグインから SPA を差し込む</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term sm"><span class="c"># 方式 A: テーマ（public/themes/myspa/）</span>
+myspa/
+  stylesheets/application.css   <span class="c"># 本体 CSS を上書き</span>
+  javascripts/theme.js          <span class="c"># 自動で読み込まれる</span>
+  javascripts/islands.js        <span class="c"># Vite でビルドした SPA 部品</span>
+
+<span class="c">// theme.js — チケット一覧を島に置き換える例</span>
+<span class="k">document</span>.addEventListener(<span class="s">'DOMContentLoaded'</span>, () =&gt; {
+  <span class="k">const</span> host = document.querySelector(<span class="s">'#content .list.issues'</span>);
+  <span class="k">if</span> (host) mountIssueBoard(host, {
+    projectId: document.body.className.match(<span class="s">/project-(\S+)/</span>)?.[<span class="n">1</span>],
+  });
+});
+
+<span class="c"># 方式 B: プラグイン（plugins/redmine_spa/）</span>
+init.rb            <span class="c"># Redmine::Plugin.register :redmine_spa</span>
+config/routes.rb   <span class="c"># get 'app/*path', to: 'spa#index'</span>
+app/controllers/spa_controller.rb
+app/controllers/spa_api_controller.rb
+assets/javascripts/app.js   <span class="c"># ビルド済み SPA（配信経路は版で異なる）</span></div>
+    </div>
+    <div class="stack">
+      <div class="term xs"><span class="c"># spa_controller.rb — SPA の殻を返す</span>
+<span class="k">class</span> SpaController &lt; ApplicationController
+  before_action :require_login
+  <span class="k">def</span> index; render <span class="s">'spa/index'</span>, layout: <span class="k">false</span>; <span class="k">end</span>
+<span class="k">end</span>
+<span class="c"># spa_api_controller.rb — セッション + CSRF で動く JSON</span>
+<span class="k">class</span> SpaApiController &lt; ApplicationController
+  before_action :require_login, :find_project
+  <span class="k">def</span> board; render json: Issue.visible.open.where(project: @project); <span class="k">end</span>
+  <span class="k">def</span> render_text   <span class="c"># 本体に無い「整形 HTML」API</span>
+    render json: { html: textilizable(params[:text]) }
+  <span class="k">end</span>
+<span class="k">end</span></div>
+      <div class="panel">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li>独自エンドポイントは <b>API リクエスト扱いにしない</b>（<code>.json</code> 拡張子を付けない）と、セッション Cookie + CSRF トークン（<code>&lt;meta name="csrf-token"&gt;</code>）で認証できる。権限は <code>Issue.visible</code> / <code>allowed_to?</code> で必ず絞る。</li>
+          <li>アセット配信は Redmine 6.0 で変更（Propshaft）。<a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin_Tutorial</a> と対象版の手順を確認する。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
 </section>
 
+<!-- 8 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">07 / 配信設定</p><h2>同じ公開オリジンで SPA と BFF を配信する</h2>
-<pre class="term example"># TLS server ブロック内の抜粋。BFF は /api/* を受け付ける。
-root /srv/redmine-spa/dist;
-location /api/ {
-    proxy_pass http://127.0.0.1:3001;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-location / {
-    try_files $uri $uri/ /index.html;
-}</pre><p class="lead"><code>/issues/42</code> の直リンクは SPA に戻し、<code>/api/...</code> は BFF に送る。</p><p class="small">proxy_pass に URI 部分がないので /api/ を保持。既存 Redmine UI は別ホストで併用する設計例。TLS 設定などは research.md を参照。</p>
-<p class="source">設計提案。参考: <a href="https://nginx.org/en/docs/http/ngx_http_proxy_module.html">NGINX proxy module</a><a href="https://vite.dev/guide/static-deploy.html">Vite static deploy</a></p>
+  <p class="eyebrow">① Replace the UI · C</p>
+  <h2>方式 C の実装：完全分離 SPA の技術選定</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <table class="tight small">
+        <tr><th class="nw">層</th><th>選択肢と推奨</th></tr>
+        <tr><td class="nw">UI フレームワーク</td><td><b>React / Vue / Svelte</b> のいずれでも可。既存チームの習熟度で決める。Redmine 固有の理由は無い</td></tr>
+        <tr><td class="nw">ビルド</td><td><b>Vite</b>。静的出力（<code>dist/</code>）を nginx / S3 / プラグイン / Tauri で配信</td></tr>
+        <tr><td class="nw">サーバー状態</td><td><b>TanStack Query</b>（React / Vue / Svelte 版あり）。キャッシュ・再検証・楽観更新・オフライン再送。Redmine の <code>updated_on</code> フィルタと組み合わせて差分取得</td></tr>
+        <tr><td class="nw">ルーティング</td><td>Redmine の URL 構造（<code>/projects/:id/issues/:n</code>）に寄せると本体との相互リンクが楽</td></tr>
+        <tr><td class="nw">型 / 検証</td><td>zod 等で応答スキーマを定義。カスタムフィールド・enum（tracker/status）はサーバーから取得して動的に組む</td></tr>
+        <tr><td class="nw">テキスト</td><td>編集: <b>プレーン textarea + プレビュー</b>。表示: markdown-it / textile-js で近似、または BFF・プラグインの整形 API を使う</td></tr>
+        <tr><td class="nw">認証</td><td>ブラウザ直結なら「ユーザーが API キーを貼る」のみ現実的 → 通常は <b>BFF に委譲</b>（②）</td></tr>
+        <tr><td class="nw">テスト</td><td>Redmine 公式 Docker イメージを CI で起動し、実 API に対する E2E（Playwright）</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="panel ai">
+        <h3>Redmine 固有の設計上の注意</h3>
+        <ul class="small">
+          <li><b>ID とマスタの解決</b>：API は <code>status: {id, name}</code> のように ID 中心。トラッカー・ステータス・優先度・カスタムフィールドの定義を起動時に取得してキャッシュする。</li>
+          <li><b>プロジェクトごとの差</b>：使えるトラッカー・カスタムフィールド・モジュールがプロジェクト単位で違う。<code>GET /projects/:id.json?include=trackers,issue_custom_fields,enabled_modules</code>。</li>
+          <li><b>遷移可能ステータス</b>：ワークフロー API は無いので <code>include=allowed_statuses</code>（5.0 以降）で本人視点の選択肢を得る。</li>
+          <li><b>100 件上限</b>：一覧・エクスポートは <code>offset</code> ループ。大量なら BFF 側で並列化とキャッシュ。</li>
+          <li><b>添付</b>：2 段階アップロード。ダウンロードにも認証が要るので <code>&lt;img src&gt;</code> で直接参照できない → BFF 経由か Blob 化。</li>
+        </ul>
+      </div>
+      <p class="xs muted">Playwright については本リポジトリの <a href="../playwright-overview/index.html">Playwright 概要</a> を参照。</p>
+    </div>
+  </div>
 </section>
 
+<!-- 9 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">08 / CORS</p><h2>サーバーの設置場所より、ブラウザから見た URL が重要</h2>
-<table class="matrix"><thead><tr><th>ブラウザからの呼び出し</th><th>CORS</th><th>必要な設計</th></tr></thead><tbody><tr><td>https://tasks.example → 同じ /api/</td><td>クロスオリジンではない</td><td>Cookie・CSRF・BFF の認証は別途必要</td></tr><tr><td>https://tasks.example → https://redmine.example</td><td>クロスオリジン</td><td>許可 Origin・メソッド・ヘッダーを設定</td></tr><tr><td>BFF → Redmine</td><td>ブラウザの CORS 対象外</td><td>TLS・接続先制限・タイムアウトを設定</td></tr></tbody></table><p class="note">API キーヘッダーや JSON 更新では preflight が発生し得る。Cookie を使う場合、許可 Origin に <code>*</code> は使えない。</p><p class="small">別ホスト・別ポートは別オリジン。CORS は API の認証・認可を代替しない。</p>
-<p class="source">出典: <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS">MDN CORS</a></p>
+  <p class="eyebrow">① Replace the UI · Pitfalls</p>
+  <h2>ブラウザから直結したときに必ず当たる 4 つの壁</h2>
+  <div class="cols cols-4 gap-sm">
+    <div class="panel red stack">
+      <h3>1. CORS</h3>
+      <p class="small">Redmine は <code>Access-Control-Allow-*</code> ヘッダーを返さない。別オリジンの SPA からの <code>fetch</code> はプリフライトで失敗する。</p>
+      <p class="xs"><b>対処</b>: 同一オリジンにする（リバースプロキシ / 方式 B）、または Redmine 側に <code>rack-cors</code> を導入するプラグイン。JSONP（GET 限定・レガシー）は使わない。</p>
+    </div>
+    <div class="panel red stack">
+      <h3>2. API キーの置き場</h3>
+      <p class="small">API はセッションを見ないので SPA はキーを持つ必要がある。ブラウザの <code>localStorage</code> に置くと XSS で漏れる。</p>
+      <p class="xs"><b>対処</b>: BFF が Redmine の Basic 認証で <code>/users/current.json</code> を叩き、返る <code>api_key</code> を<b>サーバー側セッション</b>に保持。ブラウザは HttpOnly Cookie だけ持つ。</p>
+    </div>
+    <div class="panel red stack">
+      <h3>3. テキスト整形</h3>
+      <p class="small">説明・コメント・Wiki は Textile / Markdown の生テキストで返る。<code>#123</code>・<code>[[Wiki]]</code>・<code>{{macro}}</code>・添付画像の展開は Redmine 独自。</p>
+      <p class="xs"><b>対処</b>: 近似レンダラで妥協するか、プラグイン / BFF に「整形 API」を作る。書き込みは生テキストのままで問題ない。</p>
+    </div>
+    <div class="panel red stack">
+      <h3>4. N+1 と 100 件上限</h3>
+      <p class="small">かんばん 1 画面で「プロジェクト → ステータス → チケット → 担当者アバター」と往復が増える。<code>limit</code> は 100 まで。</p>
+      <p class="xs"><b>対処</b>: <code>include</code> の活用、マスタのキャッシュ、BFF での集約と並列取得、<code>updated_on</code> による差分更新。</p>
+    </div>
+  </div>
+  <div class="panel">
+    <p class="small">この 4 つはどれも <b>Redmine と SPA の間に「自分のサーバー」を置くと解ける</b>。それが ②「別 Web サーバー経由」の動機であり、①C を選ぶなら②はほぼ必須になる。逆に ①A / ①B（同一オリジン + セッション）なら 1・2 は最初から発生しない。</p>
+  </div>
 </section>
 
+<!-- 10 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">09 / API の不足</p><h2>プラグインで不足部分を小さく補う</h2>
-<div class="split"><div><h3>Redmine 内で追加するもの</h3><ul><li>SPA の入口とメニュー</li><li>標準 API にない操作の専用エンドポイント</li><li>画面で必要な入力候補の取得</li></ul></div><div><h3>実装時に維持するもの</h3><ul><li>プロジェクトと利用者の認可</li><li>既存の検証・履歴・通知処理</li><li>セッション認証時の CSRF 防御</li></ul></div></div><p class="note">DB への直接書き込みは避ける。Redmine 内のモデル操作でも、権限・履歴・通知が成立する経路を明示してテストする。</p><p class="small">既存 HTML の DOM 置換は、マークアップ変更への追従が必要。長期運用では専用ページを優先する。</p>
-<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a></p>
+  <p class="eyebrow">② Via another web server · Why</p>
+  <h2>別 Web サーバーを挟む理由：薄いプロキシから BFF まで</h2>
+  <div class="cols" style="grid-template-columns:1.3fr 1fr">
+    <div class="stack">
+      <table class="tight small">
+        <tr><th class="nw">段階</th><th>担うこと</th></tr>
+        <tr><td class="nw"><span class="tag amber">L0</span> 静的配信</td><td>SPA の <code>dist/</code> を配るだけ。API は Redmine に直結（CORS の対処が必要）<br><span class="xs muted">S3 / GitHub Pages / nginx</span></td></tr>
+        <tr><td class="nw"><span class="tag amber">L1</span> リバースプロキシ</td><td><code>/</code> → SPA、<code>/api/*</code> → Redmine に転送。<b>同一オリジン化で CORS 消滅</b>。TLS 終端・gzip・キャッシュヘッダー<br><span class="xs muted">nginx / Caddy / Traefik（設定ファイルのみ）</span></td></tr>
+        <tr><td class="nw"><span class="tag amber">L2</span> 認証ゲートウェイ</td><td>ログイン画面を持ち、Redmine の資格情報 or SSO で認証。<b>API キーをサーバー側に隠し</b>、転送時にヘッダー付与<br><span class="xs muted">Node（Hono / Fastify）/ Go / .NET</span></td></tr>
+        <tr><td class="nw"><span class="tag amber">L3</span> BFF</td><td>画面単位の集約 API、整形 API、キャッシュ、レート制限、Webhook 代替のポーリング、監査ログ<br><span class="xs muted">同上 + Redis 等</span></td></tr>
+        <tr><td class="nw"><span class="tag amber">L4</span> フルスタック</td><td>SPA と BFF を同一フレームワークに統合。SSR も可能<br><span class="xs muted">Next.js / Nuxt / SvelteKit / Remix</span></td></tr>
+      </table>
+      <p class="xs muted">L1 までは設定ファイルだけ。L2 以降で初めて「自分のアプリケーションコード」が生まれる。必要になるまで段階を上げない。</p>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="c"># L1: nginx で同一オリジン化する最小構成</span>
+server {
+  listen 443 ssl;
+  server_name tracker.example.com;
+  location / {                 <span class="c"># SPA</span>
+    root /srv/spa/dist;
+    try_files $uri /index.html;
+  }
+  location /api/ {             <span class="c"># Redmine へ転送</span>
+    proxy_pass https://redmine.internal/;
+    proxy_set_header Host redmine.internal;
+    <span class="c"># L2 以降はここでキーを付与する</span>
+    <span class="c"># proxy_set_header X-Redmine-API-Key $key;</span>
+  }
+}</div>
+      <div class="panel amber">
+        <h3>Redmine 側で追加する設定は「ほぼ無し」</h3>
+        <p class="small">REST API を有効化するだけ。Switch-User を使うなら管理者ユーザーの API キーを 1 つ発行して BFF に渡す。Redmine 本体のコードは触らない。<b>Redmine 更新に対する耐性</b>が ② の最大の利点。</p>
+      </div>
+    </div>
+  </div>
 </section>
 
+<!-- 11 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">10 / 書き込み</p><h2>更新・添付は成功以外の経路も設計する</h2>
-<div class="split"><div><h3>チケット更新</h3><pre class="term example">PUT /issues/42.json
-Content-Type: application/json
-
-{&quot;issue&quot;:{&quot;notes&quot;:&quot;確認しました&quot;}}</pre></div><div><h3>添付は 2 段階</h3><ol><li><code>POST /uploads.json</code> にファイル本体を送信</li><li>返却された token をチケットの uploads に指定</li></ol></div></div><ul class="body-list"><li>入力不備の <b>422</b> をフォームに表示し、権限不足・再認証と分ける。</li><li>送信結果が不明なときは再取得して確認する。作成・コメントの自動再送は重複に注意。</li></ul><p class="small">同時編集の扱いは実機で確認し、変更通知・再読込・競合表示を設計する。</p>
-<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a><a href="https://www.redmine.org/projects/redmine/wiki/Rest_Issues">Issues API</a></p>
+  <p class="eyebrow">② Via another web server · Auth</p>
+  <h2>BFF の認証設計：Redmine の資格情報をブラウザに出さない</h2>
+  <div class="flow">
+    <div class="box ai"><div class="t">ブラウザ（SPA）</div>HttpOnly な <b>自前セッション Cookie</b> だけを持つ<br><span class="xs muted">API キーも Redmine パスワードも保持しない</span></div>
+    <div class="arrow"><b>⇄</b>同一オリジン<br>JSON</div>
+    <div class="box amber"><div class="t">BFF</div>セッション ⇄ Redmine ユーザーの対応表<br><span class="xs muted">本人の API キー、または管理者キー + Switch-User</span></div>
+    <div class="arrow"><b>⇄</b>X-Redmine-API-Key<br>(+ X-Redmine-Switch-User)</div>
+    <div class="box pw"><div class="t">Redmine</div>権限判定は Redmine が行う<br><span class="xs muted">BFF は権限を再実装しない</span></div>
+  </div>
+  <div class="cols cols-2">
+    <div class="panel amber">
+      <h3>パターン 1：本人の API キーを預かる <span class="tag amber">推奨</span></h3>
+      <ol class="small">
+        <li>SPA のログイン画面で Redmine の ID / パスワードを受け取る。</li>
+        <li>BFF が Basic 認証で <code>GET /users/current.json</code> → 成功なら <code>api_key</code> を得る。</li>
+        <li>API キーだけを暗号化してサーバー側セッションに保存。パスワードは捨てる。</li>
+        <li>以後の呼び出しは <code>X-Redmine-API-Key</code> を付けて転送。<b>権限は本人のまま</b>。</li>
+      </ol>
+      <p class="xs muted">Redmine の LDAP 認証もそのまま効く（Basic → <code>User.try_to_login</code>）。二要素認証を有効にしたユーザーは Basic でのパスワード認証が通らないため、API キー入力の経路も用意する。</p>
+    </div>
+    <div class="panel amber">
+      <h3>パターン 2：SSO + 管理者キーで代理 <span class="tag amber">Switch-User</span></h3>
+      <ol class="small">
+        <li>BFF が OIDC / SAML で社内 IdP にログインさせる（Redmine には無い機能）。</li>
+        <li>IdP のユーザー ID → Redmine のログイン名を対応付け。無ければ <code>POST /users.json</code> で自動作成。</li>
+        <li>管理者キー + <code>X-Redmine-Switch-User: &lt;login&gt;</code> で <b>そのユーザーとして</b> API を呼ぶ。</li>
+      </ol>
+      <p class="xs muted">管理者キーは BFF だけが持つ最重要秘密。漏れると全ユーザーになりすませるため、シークレット管理・監査ログ・IP 制限を必須にする。存在しない / ロック中ユーザーを指定すると 412 が返る。</p>
+    </div>
+  </div>
 </section>
 
+<!-- 12 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">11 / デスクトップ</p><h2>PWA・Electron・Tauri の比較</h2>
-<table class="matrix"><thead><tr><th>方式</th><th>適した条件</th><th>実装・運用の負担</th></tr></thead><tbody><tr><td>PWA</td><td>Web 配信中心、アプリ風の起動で足りる</td><td>manifest・HTTPS。OS / ブラウザ差を確認</td></tr><tr><td>Electron</td><td>Node.js 資産や統一した描画環境を使いたい</td><td>Chromium を同梱。更新と IPC の管理</td></tr><tr><td>Tauri 2</td><td>OS の WebView と Rust 側処理を使いたい</td><td>Rust のビルド環境、OS ごとの表示検証</td></tr></tbody></table><p class="note">アプリ化だけではオフライン更新や同期は増えない。必要ならキャッシュ・更新キュー・競合解決を別途実装する。</p>
-<p class="source">設計提案。参考: <a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable">MDN PWA installability</a><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://v2.tauri.app/start/">Tauri overview</a></p>
+  <p class="eyebrow">② Via another web server · BFF design</p>
+  <h2>BFF が担う「Redmine に無いもの」：集約・整形・更新検知</h2>
+  <div class="cols gap-sm" style="grid-template-columns:1.25fr 1fr 1fr">
+    <div class="panel stack">
+      <h3>画面単位の集約 API</h3>
+      <p class="small">かんばん 1 画面 = <code>GET /bff/projects/:id/board</code>。BFF が Redmine へ <b>並列</b>に <code>issues</code>（ステータス別・100 件ずつ）、<code>memberships</code>、<code>issue_statuses</code> を取り、SPA が欲しい形に整えて 1 応答で返す。</p>
+      <div class="term xs"><span class="c">// Hono の例</span>
+app.get(<span class="s">'/bff/projects/:id/board'</span>, <span class="k">async</span> c =&gt; {
+  <span class="k">const</span> rm = redmineFor(c);  <span class="c">// セッションのキー付き</span>
+  <span class="k">const</span> id = c.req.param(<span class="s">'id'</span>);
+  <span class="k">const</span> [statuses, issues, members] =
+    <span class="k">await</span> Promise.all([
+      rm.get(<span class="s">'/issue_statuses.json'</span>),
+      rm.pages(<span class="s">'/issues.json'</span>,
+        { project_id: id, status_id: <span class="s">'open'</span> }),
+      rm.get(<span class="s">`/projects/${id}/memberships.json`</span>),
+    ]);
+  <span class="k">return</span> c.json(toBoard(statuses, issues, members))
+})</div>
+    </div>
+    <div class="panel stack">
+      <h3>整形 API とファイル中継</h3>
+      <ul class="small">
+        <li><b>整形</b>：markdown-it + Redmine 風の拡張（<code>#123</code> リンク、<code>[[page]]</code>、添付画像 URL の書き換え）。厳密さが要るならプラグイン側で <code>textilizable</code> を公開し BFF から呼ぶ。</li>
+        <li><b>添付</b>：<code>/bff/attachments/:id</code> が API キー付きで取得しストリーム返却。<code>&lt;img&gt;</code> から直接参照できる。アップロードは <code>/uploads.json</code> へ中継。</li>
+        <li><b>キャッシュ</b>：マスタ（トラッカー・ステータス・ユーザー）は数分〜数十分。ETag は BFF が付ける。</li>
+      </ul>
+    </div>
+    <div class="panel stack">
+      <h3>更新検知（Webhook は無い）</h3>
+      <ul class="small">
+        <li><b>ポーリング</b>：BFF が <code>updated_on=&gt;=前回</code> で定期取得し、変更を SSE / WebSocket で SPA に配る。ユーザー数によらず Redmine への負荷は一定。</li>
+        <li><b>Webhook プラグイン</b>：サードパーティ製を Redmine に入れ、BFF が受ける。即時だが Redmine 側改造が発生。</li>
+        <li><b>削除</b>は更新日時で拾えない。定期的な ID 突き合わせが必要。</li>
+      </ul>
+      <p class="xs muted">DB 直読みは権限ロジック（<code>Issue.visible</code>）の再実装になるため、<b>書き込みは絶対に、読み取りも原則避ける</b>。</p>
+    </div>
+  </div>
 </section>
 
+<!-- 13 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">12 / Electron</p><h2>Renderer に API キーを渡さない構成</h2>
-<p class="path">SPA Renderer &nbsp; → &nbsp; preload / IPC &nbsp; → &nbsp; main &nbsp; → &nbsp; Redmine</p><ul class="body-list"><li>同梱した UI を表示し、preload で <code>listIssues()</code> などの操作だけ公開する。</li><li>main 側でキーを取り出し、接続先・引数・IPC の送信元を検証する。</li><li><code>nodeIntegration: false</code>、<code>contextIsolation: true</code>、sandbox を維持する。</li><li>キー保存には safeStorage 等を検討。Linux の <code>basic_text</code> では永続保存を避ける。</li></ul><p class="small">任意 URL を受け取る汎用 fetch の公開は避け、許可した Redmine への業務操作に限定する。</p>
-<p class="source">設計提案。参考: <a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://www.electronjs.org/docs/latest/tutorial/security">Electron security</a><a href="https://www.electronjs.org/docs/latest/api/safe-storage">Electron safeStorage</a></p>
+  <p class="eyebrow">③ Desktop · Options</p>
+  <h2>デスクトップ化の選択肢：PWA・ガワアプリ・Electron・Tauri</h2>
+  <table class="tight small" style="font-size:13.5px">
+    <tr><th class="nw">方式</th><th>仕組み</th><th>配布物</th><th>向く場面</th><th>注意点</th></tr>
+    <tr><td class="nw"><span class="tag violet">PWA</span></td><td>SPA に <code>manifest</code> + Service Worker を追加。ブラウザの「インストール」でウィンドウアプリ化</td><td class="nw">なし（URL）</td><td>まず試す価値がある。オフライン閲覧・ホーム画面起動だけなら十分</td><td>OS 通知・トレイ・ファイル連携は限定的。Redmine に直結する場合 CORS は残る</td></tr>
+    <tr><td class="nw"><span class="tag violet">ガワアプリ</span></td><td>Electron / Tauri のウィンドウで <b>Redmine 本体の URL</b> を開くだけ</td><td class="nw">数 MB〜150 MB</td><td>SPA を作らずに「専用アプリ感」「通知」「ログイン維持」が欲しい</td><td>UI は Redmine のまま。JS 注入で多少の改善は可能</td></tr>
+    <tr><td class="nw"><span class="tag violet">Electron</span></td><td>Chromium + Node.js を同梱。SPA を <code>file://</code> / 内蔵サーバーから読み込む</td><td class="nw">150 MB 前後〜</td><td>実績・情報量最大。Node のライブラリ資産をそのまま使いたい</td><td>サイズとメモリ。Chromium 追従のための定期更新。セキュリティ設定（<code>contextIsolation</code>）を誤らない</td></tr>
+    <tr><td class="nw"><span class="tag violet">Tauri v2</span></td><td>Rust 製コア + OS の WebView（WebView2 / WKWebView / WebKitGTK）。バックエンド処理は Rust か JS プラグイン</td><td class="nw">数 MB〜十数 MB</td><td>軽量・省メモリ・署名や更新の仕組みが公式。iOS / Android も同コードで</td><td>WebView が OS 依存で描画差が出る（特に Linux）。Rust を少し書く場面がある</td></tr>
+  </table>
+  <div class="cols cols-2">
+    <div class="panel violet">
+      <h3>決め方</h3>
+      <p class="small">①C の SPA がある前提なら <b>Tauri</b> が第一候補：バイナリが小さく、<code>@tauri-apps/plugin-http</code> により <b>CORS を気にせず Redmine に直結</b>できるので、デスクトップ版だけは BFF 無しでも成立する。Node 依存のライブラリが必須、または既存 Electron 資産がある場合のみ Electron。</p>
+    </div>
+    <div class="panel">
+      <h3>Web 版と共通化する構成</h3>
+      <p class="small">SPA は <code>RedmineClient</code> のような <b>抽象化層</b>を 1 つ持ち、Web ビルドでは <code>fetch → BFF</code>、デスクトップビルドでは <code>Tauri http → Redmine 直</code> に差し替える。画面コードは共通。接続先 URL と資格情報の入力画面だけがデスクトップ固有。</p>
+    </div>
+  </div>
 </section>
 
+<!-- 14 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">13 / Tauri</p><h2>Rust 側に通信と秘密情報をまとめる</h2>
-<p class="path">SPA WebView &nbsp; → &nbsp; invoke &nbsp; → &nbsp; Rust command &nbsp; → &nbsp; Redmine</p><ul class="body-list"><li>WebView は画面を担当し、Rust command が利用者キーを付けて API を呼ぶ。</li><li>capabilities / permissions で呼び出せる機能を制限する。独自 command の引数も検証する。</li><li>HTTP plugin を使う場合は接続先スコープを限定する。キーを JS に返さない。</li><li>Stronghold などの保管先と、解除用パスワード・鍵の管理を設計する。</li></ul><p class="note">ネイティブ側の HTTP はブラウザ CORS の制約外。通信をネイティブへ移しても、認証や接続先検証は必要。</p>
-<p class="source">設計提案。参考: <a href="https://v2.tauri.app/start/">Tauri overview</a><a href="https://v2.tauri.app/security/capabilities/">Tauri capabilities</a><a href="https://v2.tauri.app/plugin/http-client/">Tauri HTTP client</a><a href="https://v2.tauri.app/plugin/stronghold/">Tauri Stronghold</a></p>
+  <p class="eyebrow">③ Desktop · Design</p>
+  <h2>デスクトップ固有の設計項目（Tauri / Electron 対比）</h2>
+  <table class="tight xs">
+    <tr><th class="nw">項目</th><th>設計方針</th><th class="nw">Tauri v2</th><th class="nw">Electron</th></tr>
+    <tr><td class="nw">Redmine への接続</td><td>ネイティブ側 HTTP を使い CORS を回避。ユーザーが URL と API キー（またはID/PW → キー取得）を入力</td><td><code>plugin-http</code>（許可 URL を capability で限定）</td><td><code>net</code> モジュール / main プロセスの fetch</td></tr>
+    <tr><td class="nw">資格情報の保存</td><td>API キーは <b>OS のキーチェーン</b>へ。平文の設定ファイルに書かない</td><td><code>keyring</code> クレート / <code>plugin-stronghold</code></td><td><code>safeStorage</code>（OS 資格情報ストアで暗号化）</td></tr>
+    <tr><td class="nw">自己署名証明書</td><td>社内 Redmine は自己署名 / 社内 CA が多い。OS の証明書ストアを信頼する方針にし、無条件で検証を切らない</td><td>OS の TLS スタックに従う（<code>reqwest</code>）</td><td><code>certificate-error</code> イベントで CA を明示許可</td></tr>
+    <tr><td class="nw">通知・トレイ</td><td>担当チケットの更新を <code>updated_on</code> ポーリングで検知し OS 通知。トレイに未読数</td><td><code>plugin-notification</code> / <code>tray-icon</code></td><td><code>Notification</code> / <code>Tray</code></td></tr>
+    <tr><td class="nw">オフライン</td><td>直近のチケットをローカル DB にキャッシュ。書き込みはキューに積み、復帰後 PUT（競合は <code>updated_on</code> で検出）</td><td><code>plugin-sql</code>（SQLite）/ <code>plugin-store</code></td><td>better-sqlite3 / electron-store</td></tr>
+    <tr><td class="nw">ディープリンク</td><td><code>redmine://issues/123</code> を OS に登録し、チャットからアプリを開く</td><td><code>plugin-deep-link</code></td><td><code>setAsDefaultProtocolClient</code></td></tr>
+    <tr><td class="nw">自動更新・署名</td><td>macOS は公証、Windows は Authenticode 必須（無署名は警告で配布不能に近い）。更新サーバーは静的 JSON で足りる</td><td><code>plugin-updater</code>（署名鍵付き）</td><td>electron-updater</td></tr>
+    <tr><td class="nw">セキュリティ境界</td><td>WebView 側の JS からネイティブ機能へは<b>最小権限</b>。Redmine の生テキストを HTML 化して表示する箇所は必ずサニタイズ</td><td>capabilities / permissions で API 単位に許可</td><td><code>contextIsolation: true</code> + preload で公開 API を絞る</td></tr>
+  </table>
+  <p class="xs muted">出典: <a href="https://v2.tauri.app/">Tauri v2 ドキュメント</a> / <a href="https://www.electronjs.org/docs/latest">Electron ドキュメント</a>。プラグイン名・API 名は 2026-09 時点。</p>
 </section>
 
+<!-- 15 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">14 / 配布</p><h2>Web と Desktop で共通化する範囲</h2>
-<table class="matrix"><thead><tr><th>共通化するもの</th><th>環境ごとに実装するもの</th></tr></thead><tbody><tr><td>一覧・詳細・編集 UI、入力検証</td><td>Web：BFF セッション / Desktop：ネイティブ通信</td></tr><tr><td>業務操作と DTO、表示エラー</td><td>Web：URL ルート / Desktop：deep link の受け口</td></tr><tr><td>画面・API 契約のテスト</td><td>Desktop：OS ごとのビルド・署名・更新配布</td></tr></tbody></table><p class="note">Web UI をウィンドウで開く方式は着手しやすい。同梱 SPA は版を固定できるが、配布と更新の仕組みが必要になる。</p><p class="lead">PWA では manifest と HTTPS を用意し、対象環境のインストール条件を確認する。</p>
-<p class="source">設計提案。参考: <a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://www.electronjs.org/docs/latest/tutorial/security">Electron security</a><a href="https://v2.tauri.app/start/">Tauri overview</a><a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable">MDN PWA installability</a></p>
+  <p class="eyebrow">Roadmap</p>
+  <h2>推奨構成と段階的な進め方</h2>
+  <div class="steps">
+    <div class="step"><div class="no">0</div><div class="name">API の棚卸し <span class="tag">1〜2 日</span></div><div class="desc">対象 Redmine で REST API を有効化し、作りたい画面ごとに「必要な資源 → API の有無」を表にする（スライド 5）。<b>API に無い機能が主目的なら SPA 化の前に方式 B（プラグイン）を検討</b>する。</div></div>
+    <div class="step"><div class="no">1</div><div class="name">SPA + リバースプロキシ <span class="tag ai">①C</span> <span class="tag amber">②L1</span></div><div class="desc">Vite + 任意のフレームワーク + TanStack Query。nginx で同一オリジン化し、開発中は Vite の <code>server.proxy</code> で同じ形にする。認証はいったん「API キーを貼る」で進め、<b>1 画面（自分のチケット一覧 / かんばん）を最後まで作る</b>。</div></div>
+    <div class="step"><div class="no">2</div><div class="name">BFF を導入 <span class="tag amber">②L2〜L3</span></div><div class="desc">ログイン（本人キー預かり）→ 添付中継 → 集約 API → 整形 API の順に足す。Node（Hono / Fastify）か既存チームの言語。Redmine は無改造のまま。</div></div>
+    <div class="step"><div class="no">3</div><div class="name">不足 API をプラグインで補完 <span class="tag">①B の技法</span></div><div class="desc">整形の厳密さ・ワークフロー情報・一括更新など BFF では埋まらないものだけ、小さな Redmine プラグインで <code>accept_api_auth</code> 付きエンドポイントを追加。プラグインは「API を足す」役割に限定し UI は持たせない。</div></div>
+    <div class="step"><div class="no">4</div><div class="name">デスクトップ配布 <span class="tag violet">③ Tauri</span></div><div class="desc">同じ SPA を Tauri に載せる。<code>RedmineClient</code> の実装を Tauri http に差し替え、資格情報はキーチェーンへ。通知・トレイ・ディープリンク・自動更新の順に追加。署名の準備（Apple Developer / コードサイニング証明書）は早めに着手。</div></div>
+  </div>
+  <p class="small muted">やらないこと：Redmine の DB 直接参照、Redmine 本体コードの改造、ブラウザ <code>localStorage</code> への API キー保存、管理者キーのクライアント配布。</p>
 </section>
 
+<!-- 16 ─────────────────────────────────────────── -->
 <section class="slide">
-<p class="eyebrow">15 / 導入手順</p><h2>PoC で確認してから、書き込み範囲を広げる</h2>
-<table class="matrix"><thead><tr><th>段階</th><th>実施すること</th><th>完了条件</th></tr></thead><tbody><tr><td>1. 環境確認</td><td>バージョン、認証、プラグイン、API 有効化</td><td>必要操作と未対応操作の一覧がある</td></tr><tr><td>2. 読み取り</td><td>一覧・検索・詳細を SPA で表示</td><td>異なる権限の利用者で可視性が一致</td></tr><tr><td>3. 書き込み</td><td>コメント・状態変更・添付</td><td>履歴・通知・入力エラー・重複を確認</td></tr><tr><td>4. 展開</td><td>BFF 配信、必要なら Desktop を追加</td><td>直リンク・再認証・更新・復旧を確認</td></tr></tbody></table><p class="note">既存 UI への導線を残し、問題時は SPA の利用を止められる構成にする。</p>
-
-</section>
-
-<section class="slide">
-<p class="eyebrow">16 / 選択条件</p><h2>最初の構成を決めるための判断表</h2>
-<table class="matrix"><thead><tr><th>要件・制約</th><th>第一候補</th><th>事前に確認すること</th></tr></thead><tbody><tr><td>Redmine 本体を変更したくない</td><td>独立 SPA + REST API</td><td>必要な操作を標準 API がカバーするか</td></tr><tr><td>社内 Web と SSO を統合したい</td><td>同一オリジン SPA + BFF</td><td>本人の対応付けと利用者キーの管理</td></tr><tr><td>既存ログインと独自機能を使いたい</td><td>Redmine プラグイン</td><td>専用 API の認可・互換性</td></tr><tr><td>OS 連携・端末内処理が必要</td><td>Electron または Tauri</td><td>配布対象 OS と鍵・更新の運用</td></tr><tr><td>Web と同じ機能をアプリ風に起動</td><td>PWA</td><td>対象ブラウザの対応条件</td></tr></tbody></table>
-<p class="source">設計提案。参考: <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a><a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a><a href="https://v2.tauri.app/start/">Tauri overview</a><a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable">MDN PWA installability</a></p>
-</section>
-
-<section class="slide">
-<p class="eyebrow">参考資料</p><h2>Web / Redmine の参考資料</h2>
-<ul class="refs"><li><a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a></li><li><a href="https://www.redmine.org/projects/redmine/wiki/Rest_Issues">Issues API</a></li><li><a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a></li><li><a href="https://www.redmine.org/projects/redmine/wiki/Themes">Themes</a></li><li><a href="https://nginx.org/en/docs/http/ngx_http_proxy_module.html">NGINX proxy module</a></li><li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS">MDN CORS</a></li><li><a href="https://vite.dev/guide/static-deploy.html">Vite static deploy</a></li></ul><p class="small">調査日：2026-09-14。仕様は公式資料、構成の推奨は本資料の設計提案。対象 Redmine での接続検証は未実施。詳細と確認項目は同梱 research.md を参照。</p>
-
-</section>
-
-<section class="slide">
-<p class="eyebrow">参考資料</p><h2>Desktop の参考資料</h2>
-<ul class="refs"><li><a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a></li><li><a href="https://www.electronjs.org/docs/latest/tutorial/security">Electron security</a></li><li><a href="https://www.electronjs.org/docs/latest/api/safe-storage">Electron safeStorage</a></li><li><a href="https://v2.tauri.app/start/">Tauri overview</a></li><li><a href="https://v2.tauri.app/security/capabilities/">Tauri capabilities</a></li><li><a href="https://v2.tauri.app/plugin/http-client/">Tauri HTTP client</a></li><li><a href="https://v2.tauri.app/plugin/stronghold/">Tauri Stronghold</a></li><li><a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable">MDN PWA installability</a></li></ul><p class="small">調査日：2026-09-14。仕様は公式資料、構成の推奨は本資料の設計提案。対象 Redmine での接続検証は未実施。詳細と確認項目は同梱 research.md を参照。</p>
-
+  <p class="eyebrow">Wrap-up</p>
+  <h2>まとめと参考資料</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel pw">
+        <h3>要点</h3>
+        <ul class="small">
+          <li><b>Redmine は REST API を持つ Rails モノリス</b>。主要機能はヘッドレスに使えるが、API に無い機能とテキスト整形の再現が SPA 化の限界を決める。</li>
+          <li>UI 置き換えは <b>A 部分注入 / B プラグイン同居 / C 完全分離</b>。Redmine からの距離と引き換えに、認証・CORS・API の穴を自分で埋めることになる。</li>
+          <li><b>API 呼び出しはセッションを使わない</b>。API キーをブラウザに置かないために、C を選ぶなら <b>別 Web サーバー（BFF）</b> が事実上必須。まずはリバースプロキシで同一オリジン化。</li>
+          <li>デスクトップは <b>同じ SPA を Tauri に載せる</b>。ネイティブ HTTP で CORS を回避でき、資格情報はキーチェーンへ。PWA やガワアプリで足りるかを先に確認。</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>判断の軸</h3>
+        <ul class="small">
+          <li>Ruby を書ける & Redmine を管理している → B が最短</li>
+          <li>複数 Redmine / 社外配布 / デスクトップ → C + BFF + Tauri</li>
+          <li>既存画面を少し良くしたいだけ → A（テーマ + Islands）</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><a href="https://www.redmine.org/projects/redmine/wiki/Rest_api">Redmine REST API</a> — 認証・形式・資源一覧と成熟度・JSONP・User Impersonation</li>
+        <li><a href="https://www.redmine.org/projects/redmine/wiki/Rest_Issues">Rest_Issues</a> / <a href="https://www.redmine.org/projects/redmine/wiki/Rest_api#Attaching-files">Attaching files</a> — フィルタ・include・添付の 2 段階アップロード</li>
+        <li><a href="https://www.redmine.org/projects/redmine/wiki/Plugin_Tutorial">Plugin Tutorial</a> / <a href="https://www.redmine.org/projects/redmine/wiki/Hooks">Hooks</a> / <a href="https://www.redmine.org/projects/redmine/wiki/Themes">Themes</a> — 方式 A・B の拡張点</li>
+        <li><a href="https://github.com/redmine/redmine">redmine/redmine</a> — <code>app/controllers/application_controller.rb</code>（<code>find_current_user</code> / <code>api_request?</code> / <code>accept_api_auth</code>）が認証仕様の一次情報</li>
+        <li><a href="https://github.com/cyu/rack-cors">rack-cors</a> — Rails に CORS ヘッダーを足す標準的な手段</li>
+        <li><a href="https://tanstack.com/query/latest">TanStack Query</a> / <a href="https://vite.dev/">Vite</a> — SPA 側の中核ツール</li>
+        <li><a href="https://v2.tauri.app/">Tauri v2</a> / <a href="https://www.electronjs.org/docs/latest">Electron</a> — デスクトップ化。プラグイン（http / notification / updater / deep-link / stronghold）</li>
+        <li><a href="https://www.openproject.org/">OpenProject</a> — Redmine フォークが Rails + Angular SPA に移行した実例</li>
+      </ul>
+      <p class="xs muted">本スライドは 2026-09-14 時点の公式ドキュメント・ソースに基づく。Redmine の API 仕様は版により差があるため、対象インスタンスの版で <code>/issues.json</code> 等を実際に叩いて確認すること。</p>
+    </div>
+  </div>
 </section>
 
 </div></div>
