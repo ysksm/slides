@@ -6,6 +6,7 @@
 
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
+| [Yocto ビルドホストの構築手順 — ディストリビューションの選択とインストール](yocto-build-host/index.html) | 18 | 手書き HTML | [#40](https://github.com/ysksm/slides/issues/40) |
 | [Playwright 活用方法 — 画面遷移図・デグレ防止・ローカライズ資料](playwright-practices/index.html) | 18 | 手書き HTML | [#34](https://github.com/ysksm/slides/issues/34) |
 | [Oxlint で独自の Lint ルールを作る — JS プラグイン実践](oxlint-custom-rules/index.html) | 21 | 手書き HTML | [#33](https://github.com/ysksm/slides/issues/33) |
 | [Yocto 入門 — macOS/VM で作る Raspberry Pi・ルーター・x86_64 の Linux イメージ](yocto-intro/index.html) | 20 | 手書き HTML | [#32](https://github.com/ysksm/slides/issues/32) |
@@ -22,6 +23,14 @@
 | [Claude Code コマンド一覧](claude-code-commands/index.html) | 201（6 デッキ） | Marp（`src/*.md` から生成） | [#2](https://github.com/ysksm/slides/issues/2) |
 | [tsc --lsp 徹底調査](antigravity-tsc-lsp-research/index.html) | 20 | 手書き HTML + 実証コード | [#1](https://github.com/ysksm/slides/issues/1) |
 | [tsc --lsp 調査報告（初版）](tsc-lsp/index.html) | 16 | 手書き HTML | [#1](https://github.com/ysksm/slides/issues/1) |
+
+### [Yocto ビルドホストの構築手順 — ディストリビューションの選択とインストール](yocto-build-host/index.html)
+
+[Yocto 入門](yocto-intro/index.html)の付録として、ビルドホストに使う Linux ディストリビューションの選び方と、インストールから最初のビルドが通るまでの手順だけを単独で扱う解説スライド（全 18 枚）。サポート対象ディストロの選定基準とリリースとの対応、候補の比較、ベアメタル / VM / WSL 2 / コンテナの選択、ディスクとファイルシステムの設計、インストール直後の初期設定、ホスト依存パッケージ、`buildtools-tarball` による救済、`core-image-minimal` での動作確認と運用チューニングまでを収録。
+
+- `yocto-build-host/index.html` を開き、← → / Space で移動、Home / End で最初・最後、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#9` など）でスライド番号を直接指定可能
+- 詳細: [yocto-build-host/README.md](yocto-build-host/README.md)
 
 ### [Playwright 活用方法 — 画面遷移図・デグレ防止・ローカライズ資料](playwright-practices/index.html)
 
@@ -168,6 +177,7 @@ TypeScript 7 の Go ネイティブ言語サーバー `tsc --lsp` のアーキ�
 
 ```
 slides/
+├── yocto-build-host/              # Yocto ビルドホストの構築手順（ディストロ選定・インストール・動作確認）
 ├── playwright-practices/          # Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）
 ├── oxlint-custom-rules/           # Oxlint で独自の Lint ルールを作る（JS プラグイン実践）
 ├── yocto-intro/                   # Yocto 入門（macOS/VM で作る Raspberry Pi・ルーター・x86_64 イメージ）
@@ -210,13 +220,13 @@ slides/
 | 一覧表示 | `O` | Marp 製以外 |
 | 発表者ノート | `N` | `antigravity-tsc-lsp-research` |
 | 全画面 | `F` | すべて |
-| 印刷 / PDF | `P` | `playwright-practices`、`oxlint-custom-rules`、`yocto-intro`、`redmine-ui-spa-2`、`tgrep-overview`、`redmine-ui-spa`、`playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
+| 印刷 / PDF | `P` | `yocto-build-host`、`playwright-practices`、`oxlint-custom-rules`、`yocto-intro`、`redmine-ui-spa-2`、`tgrep-overview`、`redmine-ui-spa`、`playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
 
 ※ Marp 製の `claude-code-commands` では `P` はプレゼンターモードです。`tsc-lsp`（初版）は `P` に未対応のため、ブラウザの印刷機能を使ってください。
 
 ## ビルド
 
-手書き HTML のスライド（`playwright-practices` / `oxlint-custom-rules` / `yocto-intro` / `redmine-ui-spa-2` / `tgrep-overview` / `redmine-ui-spa` / `npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
+手書き HTML のスライド（`yocto-build-host` / `playwright-practices` / `oxlint-custom-rules` / `yocto-intro` / `redmine-ui-spa-2` / `tgrep-overview` / `redmine-ui-spa` / `npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
 
 Marp 製の `claude-code-commands` のみ、ソース（`src/*.md`）を編集したら再生成が必要です。
 

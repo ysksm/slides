@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>slides — 調査報告・解説スライド集</title>
-<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）、Oxlint で独自の Lint ルールを作る、Yocto 入門（Raspberry Pi・ルーター・x86_64 のイメージ作り）、Redmine の UI を SPA で作る（構成・導入編）、tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、Redmine の UI を SPA で作るための技術、npm 不具合・脆弱性の時系列集計、自動実装 × AI（DDD フロントエンドの generate 設計）、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
+<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。Yocto ビルドホストの構築手順（ディストロ選定・インストール）、Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）、Oxlint で独自の Lint ルールを作る、Yocto 入門（Raspberry Pi・ルーター・x86_64 のイメージ作り）、Redmine の UI を SPA で作る（構成・導入編）、tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、Redmine の UI を SPA で作るための技術、npm 不具合・脆弱性の時系列集計、自動実装 × AI（DDD フロントエンドの generate 設計）、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、Playwright 概要、Claude Code コマンド一覧、tsc --lsp 徹底調査。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -267,6 +267,25 @@
 
   <main>
     <ul class="decks">
+
+      <li class="deck">
+        <a href="yocto-build-host/index.html">
+          <h2>Yocto ビルドホストの構築手順 — ディストリビューションの選択とインストール</h2>
+          <p>
+            Yocto 入門の付録として、ビルドホストに使う Linux ディストリビューションの選び方と、インストールから最初のビルドが通るまでの手順だけを扱います。
+            サポート対象ディストロの選定基準、ベアメタル / VM / WSL 2 / コンテナの選択、ディスクとファイルシステムの設計、ホスト依存パッケージ、<code>core-image-minimal</code> での動作確認まで。
+          </p>
+          <div class="meta">
+            <span class="tag tag-count">18 枚</span>
+            <span class="tag tag-kind">HTML</span>
+            <span class="tag tag-issue">Issue #40</span>
+          </div>
+        </a>
+        <p class="sub">
+          <a href="https://github.com/ysksm/slides/blob/main/yocto-build-host/README.md">README</a>
+          <a href="https://docs.yoctoproject.org/ref-manual/system-requirements.html">System Requirements</a>
+        </p>
+      </li>
 
       <li class="deck">
         <a href="playwright-practices/index.html">
