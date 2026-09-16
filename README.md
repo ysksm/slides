@@ -18,6 +18,7 @@
 | [組み込み Linux](#embedded) | `embedded` | 2 | Yocto Project による組み込み Linux ディストリビューションづくり。 |
 | [セキュリティ・データ](#security) | `security` | 1 | 脆弱性情報の収集・分類と、時系列での可視化の設計。 |
 | [プログラミング言語・入門](#language) | `language` | 2 | 言語そのものを手を動かして学ぶハンズオン。 |
+| [OS・カーネル](#os) | `os` | 1 | Linux カーネルなど OS の仕組みを、実際に動かして確かめる解説。 |
 
 <a id="ai"></a>
 
@@ -109,6 +110,16 @@ Yocto Project による組み込み Linux ディストリビューションづ�
 |---|---:|---|---|
 | [Go 言語チュートリアル ハンズオン ① 基礎編](go-tutorial-basics/index.html) | 20 | 手書き HTML | [#45](https://github.com/ysksm/slides/issues/45) |
 | [Go 言語チュートリアル ハンズオン ② 応用編](go-tutorial-advanced/index.html) | 19 | 手書き HTML | [#45](https://github.com/ysksm/slides/issues/45) |
+
+<a id="os"></a>
+
+### OS・カーネル
+
+Linux カーネルなど OS の仕組みを、実際に動かして確かめる解説。
+
+| スライド | 枚数 | 形式 | 関連 Issue |
+|---|---:|---|---|
+| [動かして確かめる Linux のしくみ — プロセス・メモリ・I/O・コンテナの実験ノート](linux-internals-lab/index.html) | 20 | 手書き HTML + 実験スクリプト | [#49](https://github.com/ysksm/slides/issues/49) |
 
 ## 各スライドの詳細
 
@@ -279,6 +290,15 @@ Yocto Project で組み込み Linux ディストリビューションを「自�
 - URL のハッシュ（`#9` など）でスライド番号を直接指定可能
 - 詳細: [go-tutorial-advanced/README.md](go-tutorial-advanced/README.md)
 
+### [動かして確かめる Linux のしくみ — プロセス・メモリ・I/O・コンテナの実験ノート](linux-internals-lab/index.html)
+
+Linux カーネルの中核機能（システムコール、プロセス、スケジューラ、仮想メモリ、ページキャッシュ、デバイス、ファイルシステム、ブロック層、仮想化、コンテナ、cgroup）を「問い → 実験 → 仕組み」の順に、実際に実行したコマンドと出力から読み解く解説スライド（全 20 枚）。全体を「多重化・隔離・階層化」の 3 語で貫き、最後に 1 回の `read()` が通る道で全部をつなげる。`strace` によるシステムコールの観察、`taskset` / `nice` による CPU 分配、`mmap` のデマンドページングと `fork` の Copy on Write、`dd` で見るページキャッシュの効果など、再現用の実験スクリプトを同梱。
+
+- `linux-internals-lab/index.html` を開き、← → / Space で移動、Home / End で最初・最後、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#9` など）でスライド番号を直接指定可能
+- [実験スクリプト](linux-internals-lab/lab/): スライド内の実験を再現する `loop.py` / `ctx.py` / `mmap_demand.py` / `fork_cow.py` / `pagecache.sh`
+- 詳細: [linux-internals-lab/README.md](linux-internals-lab/README.md)
+
 ## リポジトリ構成
 
 ```
@@ -312,6 +332,8 @@ slides/
 ├── npm-vulnerability-trends/      # [security] npm 不具合・脆弱性の時系列集計（設計提案）
 ├── go-tutorial-basics/            # [language] Go 言語チュートリアル ハンズオン ① 基礎編
 ├── go-tutorial-advanced/          # [language] Go 言語チュートリアル ハンズオン ② 応用編
+├── linux-internals-lab/           # [os] 動かして確かめる Linux のしくみ（プロセス・メモリ・I/O・コンテナの実験ノート）
+│   └── lab/                       #   実験スクリプト（loop.py / ctx.py / mmap_demand.py / fork_cow.py / pagecache.sh）
 ├── index.html                     # GitHub Pages のトップページ（カテゴリ + 検索つきの目次）
 ├── .nojekyll                      # Pages で Jekyll 処理を無効化
 └── .github/workflows/             # GitHub Pages デプロイワークフロー
@@ -328,13 +350,13 @@ slides/
 | 一覧表示 | `O` | Marp 製以外 |
 | 発表者ノート | `N` | `antigravity-tsc-lsp-research` |
 | 全画面 | `F` | すべて |
-| 印刷 / PDF | `P` | `playwright-practices`、`oxlint-custom-rules`、`go-tutorial-basics`、`go-tutorial-advanced`、`yocto-build-host`、`yocto-intro`、`redmine-ui-spa-2`、`tgrep-overview`、`redmine-ui-spa`、`playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
+| 印刷 / PDF | `P` | `linux-internals-lab`、`playwright-practices`、`oxlint-custom-rules`、`go-tutorial-basics`、`go-tutorial-advanced`、`yocto-build-host`、`yocto-intro`、`redmine-ui-spa-2`、`tgrep-overview`、`redmine-ui-spa`、`playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
 
 ※ Marp 製の `claude-code-commands` では `P` はプレゼンターモードです。`tsc-lsp`（初版）は `P` に未対応のため、ブラウザの印刷機能を使ってください。
 
 ## ビルド
 
-手書き HTML のスライド（`playwright-practices` / `oxlint-custom-rules` / `go-tutorial-basics` / `go-tutorial-advanced` / `yocto-build-host` / `yocto-intro` / `redmine-ui-spa-2` / `tgrep-overview` / `redmine-ui-spa` / `npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
+手書き HTML のスライド（`linux-internals-lab` / `playwright-practices` / `oxlint-custom-rules` / `go-tutorial-basics` / `go-tutorial-advanced` / `yocto-build-host` / `yocto-intro` / `redmine-ui-spa-2` / `tgrep-overview` / `redmine-ui-spa` / `npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
 
 Marp 製の `claude-code-commands` のみ、ソース（`src/*.md`）を編集したら再生成が必要です。
 

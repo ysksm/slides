@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>slides — 調査報告・解説スライド集</title>
-<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。カテゴリ（AI エージェント運用 / AI × 自動生成・設計 / テスト・品質 / 開発ツール・言語基盤 / Web アプリ開発 / 組み込み Linux / セキュリティ・データ / プログラミング言語・入門）とキーワード検索で探せます。Claude Code コマンド一覧、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、自動実装 × AI（DDD フロントエンドの generate 設計）、自動実装と AI の組み合わせ、Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）、Playwright 概要、Oxlint で独自の Lint ルールを作る、tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、tsc --lsp 徹底調査、Redmine の UI を SPA で作る（技術編・構成/導入編）、Yocto 入門、Yocto ビルドホストの構築手順、npm 不具合・脆弱性の時系列集計、Go 言語チュートリアル ハンズオン（基礎編・応用編）。">
+<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。カテゴリ（AI エージェント運用 / AI × 自動生成・設計 / テスト・品質 / 開発ツール・言語基盤 / Web アプリ開発 / 組み込み Linux / セキュリティ・データ / プログラミング言語・入門 / OS・カーネル）とキーワード検索で探せます。Claude Code コマンド一覧、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、自動実装 × AI（DDD フロントエンドの generate 設計）、自動実装と AI の組み合わせ、Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）、Playwright 概要、Oxlint で独自の Lint ルールを作る、tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、tsc --lsp 徹底調査、Redmine の UI を SPA で作る（技術編・構成/導入編）、Yocto 入門、Yocto ビルドホストの構築手順、npm 不具合・脆弱性の時系列集計、Go 言語チュートリアル ハンズオン（基礎編・応用編）、動かして確かめる Linux のしくみ（プロセス・メモリ・I/O・コンテナの実験ノート）。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -489,6 +489,7 @@
         <li><button class="chip" type="button" data-cat="embedded" aria-pressed="false">組み込み Linux <span class="n"></span></button></li>
         <li><button class="chip" type="button" data-cat="security" aria-pressed="false">セキュリティ・データ <span class="n"></span></button></li>
         <li><button class="chip" type="button" data-cat="language" aria-pressed="false">プログラミング言語・入門 <span class="n"></span></button></li>
+        <li><button class="chip" type="button" data-cat="os" aria-pressed="false">OS・カーネル <span class="n"></span></button></li>
       </ul>
 
       <p class="count" id="count" role="status" aria-live="polite"></p>
@@ -939,6 +940,36 @@
             <p class="sub">
               <a href="https://github.com/ysksm/slides/blob/main/go-tutorial-advanced/README.md">README</a>
               <a href="https://go.dev/doc/tutorial/">go.dev チュートリアル</a>
+            </p>
+          </li>
+
+        </ul>
+      </section>
+
+      <section class="cat" data-cat="os">
+        <h2 class="cat-head">OS・カーネル <span class="cat-n"></span></h2>
+        <p class="cat-desc">Linux カーネルなど OS の仕組みを、実際に動かして確かめる解説。</p>
+        <ul class="decks">
+
+          <li class="deck" data-cat="os" data-keywords="linux kernel カーネル os プロセス スケジューラ scheduler eevdf 仮想メモリ virtual memory page cache ページキャッシュ copy on write strace vfs ext4 block layer kvm virtio namespace container コンテナ docker cgroup systemd 試して理解">
+            <a href="linux-internals-lab/index.html">
+              <h3>動かして確かめる Linux のしくみ — プロセス・メモリ・I/O・コンテナの実験ノート</h3>
+              <p>
+                システムコール、プロセス、スケジューラ、仮想メモリ、ページキャッシュ、デバイス、ファイルシステム、ブロック層、仮想化、コンテナ、cgroup を
+                「問い → 実験 → 仕組み」の順に、実際に実行したコマンドと出力から読み解きます。
+                全体を「多重化・隔離・階層化」の 3 語で貫き、最後に 1 回の read() が通る道で全部をつなげます。実験スクリプトを同梱。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">OS・カーネル</span>
+                <span class="tag tag-count">20 枚</span>
+                <span class="tag tag-kind">HTML + 実験スクリプト</span>
+                <span class="tag tag-issue">Issue #49</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/linux-internals-lab/README.md">README</a>
+              <a href="https://github.com/ysksm/slides/tree/main/linux-internals-lab/lab">実験スクリプト</a>
+              <a href="https://docs.kernel.org/">The Linux Kernel documentation</a>
             </p>
           </li>
 
