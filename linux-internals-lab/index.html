@@ -291,7 +291,7 @@
         <h3>各スライドの型</h3>
         <ul class="small">
           <li><b>問い</b>: 「なぜ 2 プロセスにすると遅くなる？」のような素朴な疑問から始める。</li>
-          <li><b>実験</b>: 追加インストールなしで動く道具（<code>/proc</code>・<code>/sys</code>・<code>strace</code>・<code>taskset</code>・<code>nice</code>・<code>dd</code>・<code>free</code>・数行の Python）で観察する。出力は本資料の作成環境で実際に得たもの。</li>
+          <li><b>実験</b>: 追加インストールなしで動く道具（<code>/proc</code>・<code>/sys</code>・<code>strace</code>・<code>taskset</code>・<code>nice</code>・<code>dd</code>・<code>free</code>・数行の Python）で観察する。出力は本資料の作成環境で実際に得たもの。スクリプトは同梱の <code>lab/</code> にある。</li>
           <li><b>仕組み</b>: 出力の理由をカーネルの機能で説明し、出典（man ページ・カーネル文書）を示す。</li>
         </ul>
       </div>
@@ -419,7 +419,7 @@ Threads: <span class="n">1</span></div>
   <div class="cols cols-52">
     <div class="stack">
       <p class="q">1 つの CPU に 2 つの計算プロセスを載せると何が起きる？</p>
-      <div class="term sm"><span class="c"># loop.py: 3,000 万回の足し算をして、経過時間と CPU 時間を出す</span>
+      <div class="term sm"><span class="c"># lab/loop.py: 3,000 万回の足し算をして、経過時間と CPU 時間を出す</span>
 <span class="k">$</span> taskset -c 0 python3 loop.py
 経過 <span class="n">2.52</span>s  CPU <span class="n">2.52</span>s                 <span class="c"># 1 プロセス / 1 CPU</span>
 
@@ -471,7 +471,7 @@ Threads: <span class="n">1</span></div>
 経過 <span class="n">4.11</span>s  CPU <span class="n">2.34</span>s     <span class="c"># nice 19 : 相手が終わるまで待たされた</span>
 
 <span class="c"># /proc/PID/status の *_ctxt_switches に交代回数が残る</span></div>
-      <div class="term sm"><span class="c"># 自分が何回「強制交代」させられたかを終了時に読む</span>
+      <div class="term sm"><span class="c"># lab/ctx.py: 自分が何回「強制交代」させられたかを終了時に読む</span>
 <span class="k">$</span> taskset -c 0 python3 ctx.py                <span class="c"># 単独</span>
 経過 <span class="n">2.21</span>s  voluntary=0  nonvoluntary=<span class="n">2</span>
 <span class="k">$</span> taskset -c 0 python3 ctx.py &amp; taskset -c 0 python3 ctx.py
@@ -487,7 +487,7 @@ Threads: <span class="n">1</span></div>
         <h3>スケジューラの要点</h3>
         <ul class="small">
           <li><b>コンテキストスイッチ</b>: タイマ割り込みや I/O 待ちを契機に、実行中プロセスのレジスタを保存し、次のプロセスのものを復元する。数マイクロ秒。</li>
-          <li><b>公平さの基準は「使った CPU 時間」</b>: 一番使っていないプロセスを次に選ぶ（仮想実行時間）。Linux 6.6 以降の既定は <b>EEVDF</b>（それ以前は CFS）。</li>
+          <li><b>公平さの基準は「使った CPU 時間」（仮想実行時間）</b>: 6.5 までの CFS は最小のものを選ぶ。6.6 以降の <b>EEVDF</b> は、平均より使っていない「適格」なタスクに絞り、その中で<b>仮想締切が最も早い</b>ものを選ぶ（短いスライスの要求ほど早く回ってくる）。</li>
           <li><b>nice 値</b> −20〜19 は CPU 時間の<b>重み</b>。nice 19 は nice 0 に対しておよそ 1/70 の重みで、実験のとおり相手がいる間はほぼ動けない。</li>
           <li><b>I/O 待ちのプロセスは対象外</b>: 状態 S/D は CPU を要求していない。CPU 100% の犯人は R 状態のプロセス。</li>
           <li><b>負荷分散</b>: CPU ごとに実行キューを持ち、偏りを定期的に均す。<code>taskset</code> はそれを禁じる指示。</li>
@@ -551,7 +551,7 @@ Threads: <span class="n">1</span></div>
   <div class="cols cols-2">
     <div class="stack">
       <p class="q">1 GiB を確保したらメモリは 1 GiB 減る？</p>
-      <div class="term sm"><span class="c"># mmap で 1 GiB を確保 → 1 ページごとに 1 バイト書く</span>
+      <div class="term sm"><span class="c"># lab/mmap_demand.py: mmap で 1 GiB を確保 → 1 ページごとに 1 バイト書く</span>
 確保前              VmSize    13956 kB  VmRSS    <span class="n">7760</span> kB
 1 GiB 確保直後      VmSize <span class="n">1062532</span> kB  VmRSS    <span class="n">8148</span> kB  <span class="h">← 増えない</span>
 全ページに書込後    VmSize 1062532 kB  VmRSS <span class="n">1056724</span> kB  <span class="h">← ここで 1 GiB</span></div>
@@ -562,7 +562,7 @@ Threads: <span class="n">1</span></div>
     </div>
     <div class="stack">
       <p class="q">fork した子はメモリのコピーを持つ？</p>
-      <div class="term sm"><span class="c"># 親が 256 MiB を確保して触る → fork → 子が全ページに書く</span>
+      <div class="term sm"><span class="c"># lab/fork_cow.py: 親が 256 MiB を確保 → fork → 子が全ページに書く</span>
 起動直後            AnonPages = <span class="n">237</span> MiB   <span class="c">(システム全体)</span>
 親: 256MiB 確保     AnonPages = <span class="n">493</span> MiB
 子: fork 直後       AnonPages = <span class="n">493</span> MiB   <span class="h">← +0：コピーなし</span>
@@ -591,7 +591,7 @@ data = bytearray(256 &lt;&lt; 20); anon(<span class="s">'親'</span>)
 <!-- 10 ─────────────────────────────────────────── -->
 <section class="slide">
   <p class="eyebrow">Memory · pressure</p>
-  <h2>メモリが足りなくなると：回収 → スワップ → OOM killer の順に手荒くなる</h2>
+  <h2>メモリ不足：回収（キャッシュ破棄とスワップ）で足りなければ OOM killer</h2>
   <div class="cols cols-52">
     <div class="stack">
       <p class="q"><code>free</code> の「free が少ない」は本当に危険？</p>
@@ -599,7 +599,6 @@ data = bytearray(256 &lt;&lt; 20); anon(<span class="s">'親'</span>)
         total   used   free   shared  buff/cache  available
 Mem:     15Gi  500Mi   15Gi     11Mi       355Mi       <span class="n">15Gi</span>
 Swap:      0B     0B     0B
-
 <span class="k">$</span> grep -E '^(MemAvailable|Cached|Dirty|AnonPages)' /proc/meminfo
 MemAvailable:  15.4 GiB   <span class="c"># 回収できる分を含めた「実質の空き」</span>
 Cached:        <span class="n">149</span> MiB   <span class="c"># ページキャッシュ（捨てられる）</span>
@@ -607,28 +606,28 @@ Dirty:           0 kB     <span class="c"># まだディスクに書いていな
 AnonPages:     <span class="n">237</span> MiB   <span class="c"># プロセスのヒープ・スタック（捨てられない）</span></div>
       <div class="panel us">
         <h3>読み方</h3>
-        <p class="small"><b>free</b> は「誰も使っていない」量で、健全なサーバーほど小さい（空きはキャッシュに使うのが正しい）。危険度は <b>available</b> で判断する。<b>buff/cache</b> はファイルのキャッシュで、必要ならすぐ回収される。</p>
+        <p class="small"><b>free</b> は「誰も使っていない」量で、健全なサーバーほど小さい（空きはキャッシュに使うのが正しい）。危険度は <b>available</b> で判断する。<b>buff/cache</b> は必要ならすぐ回収される。</p>
       </div>
       <table class="tight xs">
         <tr><th><code>vmstat 1</code> の列</th><th>意味</th><th>こうなったら</th></tr>
-        <tr><td class="lbl">si / so</td><td>スワップイン / アウト (KiB/s)</td><td>0 でなければ段階 2 に入っている</td></tr>
-        <tr><td class="lbl">cache ↓ + wa ↑</td><td>キャッシュが縮み I/O 待ちが増加</td><td>段階 1 が効かなくなりつつある</td></tr>
-        <tr><td class="lbl">dmesg の "Out of memory"</td><td>OOM killer 発動</td><td>段階 3。上限設定か負荷の見直し</td></tr>
+        <tr><td class="lbl">cache ↓ + wa ↑</td><td>キャッシュが縮み I/O 待ち増</td><td>回収が回り、読み直しが増えている</td></tr>
+        <tr><td class="lbl">si / so</td><td>スワップイン / アウト</td><td>匿名ページも回収中。性能急落の前兆</td></tr>
+        <tr><td class="lbl">dmesg "Out of memory"</td><td>OOM killer 発動</td><td>回収では足りない。上限か負荷を見直す</td></tr>
       </table>
     </div>
     <div class="stack">
       <div class="panel kn">
-        <h3>不足時にカーネルがすること（軽い順）</h3>
+        <h3>不足時にカーネルがすること</h3>
         <ol class="small">
-          <li><b>ページキャッシュの回収</b>: ディスクに同じ内容があるページ（Cached）を捨てる。Dirty なら先に書き出す。ほぼ無料。</li>
-          <li><b>スワップアウト</b>: 捨てられない匿名ページ（AnonPages）をスワップ領域に退避。ここから性能が急落する。スワップなし構成では省略。</li>
-          <li><b>OOM killer</b>: それでも足りなければ、消費量とスコア（<code>oom_score_adj</code>）からプロセスを選んで <code>SIGKILL</code>。<code>dmesg</code> に "Out of memory: Killed process" が残る。</li>
+          <li><b>回収 (reclaim)</b>: <b>ファイルページ</b>（Cached。Dirty なら書き出してから捨てる）と<b>匿名ページ</b>（AnonPages。スワップへ退避）の 2 本の LRU から、使われていないものを追い出す。両者の傾きが <code>vm.swappiness</code>。固定の順番ではなく同じ処理の中で両方が対象。</li>
+          <li><b>スワップなし</b>（本環境）: 匿名ページは退避先がなく、回収できるのはファイルページだけ。</li>
+          <li><b>OOM killer</b>: 回収しても足りないとき、消費量とスコア（<code>oom_score_adj</code>）でプロセスを選び <code>SIGKILL</code>。<code>dmesg</code> に "Out of memory" が残る。</li>
         </ol>
       </div>
       <div class="panel amber">
         <h3>関係する設定・現象</h3>
         <ul class="xs">
-          <li><code>vm.swappiness</code>: 1 と 2 のどちらを優先するかの傾き。</li>
+          <li><code>vm.swappiness</code>: 0〜200。大きいほど匿名ページの退避を厭わない。</li>
           <li><code>vm.overcommit_memory</code>: 物理より多い予約を許すか。デマンドページングがあるから通常は許す。</li>
           <li><b>Transparent Huge Pages</b>: 2 MiB ページで TLB ミスを減らす。DB では無効化推奨が多い。</li>
         </ul>
@@ -661,6 +660,7 @@ AnonPages:     <span class="n">237</span> MiB   <span class="c"># プロセス�
     <div class="stack">
       <p class="q">同じファイルを 2 回読むと 2 回目は速い？</p>
       <div class="term sm"><span class="k">$</span> dd if=/dev/urandom of=big.bin bs=1M count=512; sync
+<span class="k">$</span> echo 3 &gt; /proc/sys/vm/drop_caches   <span class="c"># 書き込みで入った分を捨てる (root)</span>
 <span class="k">$</span> grep Cached /proc/meminfo
 Cached:  <span class="n">149056</span> kB
 <span class="k">$</span> dd if=big.bin of=/dev/null bs=1M      <span class="c"># 1 回目</span>
@@ -671,7 +671,7 @@ Cached:  <span class="n">673632</span> kB                      <span class="h">�
 536870912 bytes copied, 0.089 s, <span class="n">6.0 GB/s</span>  <span class="h">← 2 倍</span></div>
       <div class="panel kn">
         <h3>ページキャッシュ</h3>
-        <p class="small">ディスクから読んだデータをカーネルが<b>メモリに残しておく</b>領域。2 回目はディスクに行かずメモリから <code>read</code> が返るので速い。この環境では 1 回目も速い（ホスト側にもキャッシュがある）が、Cached が正確に 512 MiB 増えている。<code>echo 3 &gt; /proc/sys/vm/drop_caches</code> で捨てられる（root）。</p>
+        <p class="small">ディスクから読んだデータをカーネルが<b>メモリに残しておく</b>領域。2 回目はディスクに行かずメモリから <code>read</code> が返るので速い。<code>sync</code> は Dirty を書き出すだけでキャッシュは残るので、基準を取る前に <code>drop_caches</code> で捨てている。この環境では 1 回目も速い（ホスト側にもキャッシュがある）が、Cached が正確に 512 MiB 増えている。</p>
       </div>
     </div>
   </div>
@@ -693,7 +693,7 @@ Cached:  <span class="n">673632</span> kB                      <span class="h">�
       </div>
       <div class="panel red">
         <h3>答え：安全ではない</h3>
-        <p class="small">既定では最長 <code>dirty_expire_centisecs</code>（30 秒）まで、あるいは Dirty が <code>dirty_background_ratio</code>（10 %）に達するまでメモリに留まる。停電すればその分は消える。永続を保証したい箇所では <b><code>fsync()</code></b>（DB・エディタ・git はやっている）か <code>sync</code>。</p>
+        <p class="small">Dirty ページは <code>dirty_background_ratio</code>（10 %）に達するか、書いてから <code>dirty_expire_centisecs</code>（30 秒）を超えて定期ライトバック（5 秒周期）に拾われるまでメモリに留まる。30 秒は「書き出し対象になる目安」で、永続化の期限ではない。停電すればその分は消える。永続を保証したい箇所では <b><code>fsync()</code></b>（DB・エディタ・git はやっている）か <code>sync</code>。</p>
       </div>
     </div>
     <div class="stack">
@@ -705,7 +705,7 @@ Writeback:    0 kB       <span class="c"># いままさにデバイスへ送っ�
          vm.dirty_expire_centisecs
 vm.dirty_background_ratio = <span class="n">10</span>    <span class="c"># 背景で書き出し開始</span>
 vm.dirty_ratio = <span class="n">20</span>               <span class="c"># 超えると write() 自体を待たせる</span>
-vm.dirty_expire_centisecs = <span class="n">3000</span>  <span class="c"># 30 秒で必ず書き出す</span></div>
+vm.dirty_expire_centisecs = <span class="n">3000</span>  <span class="c"># 30 秒超の Dirty が定期書き出しの対象</span></div>
       <div class="panel kn">
         <h3>遅延のご利益と代償</h3>
         <ul class="small">
@@ -797,9 +797,9 @@ ext2  ext3  ext4  squashfs  erofs  fuseblk</div>
       </div>
       <table class="tight xs">
         <tr><th>FS</th><th>特徴</th><th>向く場面</th></tr>
-        <tr><td class="lbl">ext4</td><td>ジャーナリング、枯れている、ほぼ全ディストロ既定</td><td>汎用</td></tr>
+        <tr><td class="lbl">ext4</td><td>ジャーナリング、枯れている、Debian / Ubuntu 系の既定</td><td>汎用</td></tr>
         <tr><td class="lbl">XFS</td><td>大容量・並列 I/O に強い、縮小不可</td><td>大規模データ、RHEL 既定</td></tr>
-        <tr><td class="lbl">Btrfs</td><td>Copy on Write、スナップショット、チェックサム</td><td>ロールバック、自己修復</td></tr>
+        <tr><td class="lbl">Btrfs</td><td>Copy on Write、スナップショット、チェックサム</td><td>ロールバック、Fedora / openSUSE 既定</td></tr>
         <tr><td class="lbl">tmpfs</td><td>メモリ上、再起動で消える</td><td><code>/tmp</code>, <code>/dev/shm</code></td></tr>
         <tr><td class="lbl">overlayfs</td><td>複数ディレクトリを重ねて 1 つに見せる</td><td>コンテナイメージ（スライド 17）</td></tr>
       </table>
@@ -947,18 +947,19 @@ cgroup ipc mnt net pid time user uts</div>
   <div class="cols cols-52">
     <div class="stack">
       <p class="q">Kubernetes の <code>limits.cpu: 500m</code> はカーネルのどこに届く？</p>
-      <div class="term sm"><span class="c"># cgroup v2 はディレクトリ木。作れば設定ファイルが生える（root）</span>
-<span class="k">$</span> mkdir /sys/fs/cgroup/lab
-<span class="k">$</span> echo <span class="s">"50000 100000"</span> &gt; /sys/fs/cgroup/lab/cpu.max
-<span class="c">#   100 ms ごとに最大 50 ms → CPU 0.5 個分（= 500m）</span>
-<span class="k">$</span> echo <span class="s">"256M"</span> &gt; /sys/fs/cgroup/lab/memory.max
-<span class="k">$</span> echo $$ &gt; /sys/fs/cgroup/lab/cgroup.procs   <span class="c"># このシェルを所属させる</span>
+      <div class="term sm"><span class="c"># cgroup v2 はディレクトリ木（root で操作。unified 構成の例）</span>
+<span class="k">$</span> mount -t cgroup2                          <span class="c"># v2 の場所を確認</span>
+cgroup2 on <span class="n">/sys/fs/cgroup</span> type cgroup2 (rw,…)  <span class="c"># hybrid なら …/unified</span>
+<span class="k">$</span> cd /sys/fs/cgroup
+<span class="k">$</span> echo <span class="s">"+cpu +memory"</span> &gt; cgroup.subtree_control  <span class="c"># 子へ委譲。これで初めて</span>
+<span class="k">$</span> mkdir lab                                <span class="c"># lab/cpu.max 等が現れる</span>
+<span class="k">$</span> echo <span class="s">"50000 100000"</span> &gt; lab/cpu.max       <span class="c"># 100 ms 中 50 ms = 500m</span>
+<span class="k">$</span> echo <span class="s">"256M"</span> &gt; lab/memory.max
+<span class="k">$</span> echo $$ &gt; lab/cgroup.procs               <span class="c"># このシェルを所属させる</span>
 <span class="k">$</span> python3 loop.py
-経過 <span class="n">≈ 5.0</span>s  CPU <span class="n">≈ 2.5</span>s     <span class="c"># 半分の時間しか CPU を貰えない</span>
-
-<span class="k">$</span> cat /sys/fs/cgroup/lab/memory.events   <span class="c"># 超過時の記録</span>
-oom_kill 1                                <span class="c"># 256M を超えると殺される</span></div>
-      <p class="xs muted">本環境は cgroup v1/v2 混在のハイブリッド構成で root 権限が要るため、この操作は手順と期待値を示している。<code>cat /proc/self/cgroup</code> で自分の所属を確認できる。</p>
+経過 <span class="n">≈ 5.0</span>s  CPU <span class="n">≈ 2.5</span>s                <span class="c"># 半分の時間しか CPU を貰えない</span>
+<span class="k">$</span> grep oom_kill lab/memory.events          <span class="c"># 256M 超で殺された回数</span></div>
+      <p class="xs muted">本環境は v1/v2 混在の hybrid 構成（v2 は <code>/sys/fs/cgroup/unified</code> で、委譲されたコントローラも限られる）のため未実行で、手順と期待値を示している。<code>cat /proc/self/cgroup</code> で自分の所属を確認できる。</p>
       <table class="tight xs">
         <tr><th></th><th>cgroup v1</th><th>cgroup v2（2016〜、現在の既定）</th></tr>
         <tr><td class="lbl">木</td><td>コントローラごとに別の木</td><td>単一の木にすべてのコントローラ</td></tr>
