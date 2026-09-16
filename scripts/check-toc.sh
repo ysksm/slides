@@ -2,8 +2,7 @@
 # 目次（ルート README.md / index.html）とデッキディレクトリの整合を確認する。
 #   - main にある全デッキ（<deck>/index.html を持つディレクトリ）が README の表と index.html のカードに載っているか
 #   - README の表の枚数が実際の <section class="slide"> の数と一致するか（手書き HTML デッキのみ）
-#   - カテゴリ: index.html のセクション・カードの data-category が scripts/categories.tsv にあり、
-#     README で同じデッキの行が対応するカテゴリ見出し（### 表示名）の下にあるか
+#   - 全デッキがカテゴリに割り当てられ、README と index.html でカテゴリごとの本数が一致するか
 #   - index.html / README.md 内の相対リンク先が存在するか
 # 問題があれば 1 で終了する。update-toc Skill と CI から使う。
 set -u
@@ -20,29 +19,6 @@ for d in */; do
   case "$d" in .*|scripts|node_modules) continue ;; esac
   [ -f "$d/index.html" ] && decks+=("$d")
 done
-
-# ---- カテゴリ定義（id<TAB>表示名<TAB>説明。# 始まりと空行は無視。bash 3.2 でも動くよう連想配列は使わない）----
-cat_file=scripts/categories.tsv
-[ -f "$cat_file" ] || fail "$cat_file が無い"
-cat_ids() { [ -f "$cat_file" ] && grep -v '^#' "$cat_file" | grep -v '^$' | cut -f1; }
-cat_label() { [ -f "$cat_file" ] && grep -v '^#' "$cat_file" | awk -F'\t' -v id="$1" '$1 == id { print $2; exit }'; }
-
-# index.html: <section class="cat" data-category="..."> の一覧
-index_sections=$(grep -o '<section class="cat" data-category="[^"]*"' index.html | sed -E 's/.*data-category="([^"]*)"/\1/')
-# index.html: デッキ → カードの data-category（<li class="deck" ...> の次に出る href="<deck>/index.html" で対応付ける）
-index_cat_of() {
-  awk -v deck="$1" '
-    /<li class="deck"/ { cat = ""; if (match($0, /data-category="[^"]*"/)) { cat = substr($0, RSTART + 15, RLENGTH - 16) } inli = 1; next }
-    inli && index($0, "href=\"" deck "/index.html\"") { print cat; exit }
-  ' index.html
-}
-# README.md: デッキの表の行が、どの「### 見出し」の下にあるか
-readme_heading_of() {
-  awk -v deck="$1" '
-    /^### / { h = substr($0, 5); sub(/[ \t]+$/, "", h) }
-    index($0, "](" deck "/index.html) |") { print h; exit }
-  ' README.md
-}
 
 note "== 登録状況 =="
 for d in "${decks[@]}"; do
@@ -67,28 +43,32 @@ for d in "${decks[@]}"; do
 done
 
 note "== カテゴリ =="
-for s in $index_sections; do
-  [ -n "$(cat_label "$s")" ] || fail "index.html のセクション data-category=\"$s\" が $cat_file に無い"
-done
-for id in $(cat_ids); do
-  label=$(cat_label "$id")
-  printf '%s\n' "$index_sections" | grep -qx "$id" || fail "index.html にカテゴリ \"$id\"（${label}）のセクションが無い"
-  grep -q "^### ${label}\$" README.md || fail "README.md にカテゴリ見出し「### ${label}」が無い"
+cats=$(grep -o '<section class="cat" data-cat="[a-z-]*"' index.html | sed -E 's/.*data-cat="([a-z-]*)"/\1/')
+if [ -z "$cats" ]; then
+  fail "index.html にカテゴリ（<section class=\"cat\" data-cat=...>）が無い"
+fi
+for c in $cats; do
+  grep -q "class=\"chip\" type=\"button\" data-cat=\"$c\"" index.html || fail "カテゴリ ${c} の絞り込みチップが index.html に無い"
+  grep -q "| \`$c\` |" README.md || fail "カテゴリ ${c} が README のカテゴリ表に無い"
+  n_html=$(grep -c "class=\"deck\" data-cat=\"$c\"" index.html)
+  n_md=$(awk -v key="$c" '
+    $0 == "<a id=\"" key "\"></a>" { in_block = 1; next }
+    in_block && (/^<a id=/ || /^## /) { in_block = 0 }
+    in_block && /^\| \[/ { n++ }
+    END { print n + 0 }
+  ' README.md)
+  if [ "$n_html" -eq "$n_md" ] && [ "$n_html" -gt 0 ]; then
+    ok "${c}: ${n_html} 本"
+  else
+    fail "${c}: index.html は ${n_html} 本、README は ${n_md} 本"
+  fi
 done
 for d in "${decks[@]}"; do
-  icat=$(index_cat_of "$d")
-  ilabel=$(cat_label "$icat")
-  rhead=$(readme_heading_of "$d")
-  if [ -z "$icat" ]; then
-    fail "${d}: index.html のカードに data-category が無い"
-  elif [ -z "$ilabel" ]; then
-    fail "${d}: index.html の data-category=\"$icat\" が $cat_file に無い"
-  elif [ -z "$rhead" ]; then
-    fail "${d}: README.md の表の行が無い"
-  elif [ "$rhead" != "$ilabel" ]; then
-    fail "${d}: index.html は「${ilabel}」、README.md は「${rhead}」の下にある"
-  else
-    ok "${d}: ${ilabel}（$icat）"
+  c=$(grep -B1 "href=\"$d/index.html\"" index.html | sed -nE 's/.*class="deck" data-cat="([a-z-]*)".*/\1/p' | head -1)
+  if [ -z "$c" ]; then
+    fail "${d} のカードに data-cat（カテゴリ）が無い"
+  elif ! printf '%s\n' "$cats" | grep -qx "$c"; then
+    fail "${d} のカテゴリ ${c} は index.html に定義されていない"
   fi
 done
 
