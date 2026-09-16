@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Go 言語チュートリアル ハンズオン ① 基礎編 — Hello, World からモジュール・テスト・ワークスペースまで</title>
+<meta name="description" content="go.dev の公式チュートリアル（Getting started / Create a module / Multi-module workspaces / Working with JSON）を、手を動かしながら進めるハンズオン形式のスライド。各ステップのコマンド・コード・実行結果を検証済みの内容で示す">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F4F8FA;
+    --paper-2: #E5EEF2;
+    --ink: #10232B;
+    --ink-2: #3F565F;
+    --ink-3: #7A8E96;
+    --rule: #C9D8DF;
+    --go: #007D9C;          /* Go blue */
+    --go-soft: #D5EDF4;
+    --go-2: #00ADD8;
+    --amber: #B0741A;       /* hands-on */
+    --amber-soft: #F8E9C9;
+    --green: #2E7D4F;       /* ok */
+    --green-soft: #D9EDE1;
+    --red: #B4432F;
+    --red-soft: #F6DAD5;
+    --term: #0F1E24;
+    --term-ink: #DCE9ED;
+    --term-dim: #7E969E;
+    --term-key: #79D3EE;
+    --term-str: #F2C97D;
+    --term-num: #A5E3A0;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--term);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+  /* ---------- stage ---------- */
+  #stage { position: fixed; inset: 0; padding: 16px; }
+  /* deck はレイアウト上 1280x720 のまま transform で縮小する。グリッド/フレックスの
+     中央寄せはコンテナより大きい要素だと start 寄せに落ちてスライドが画面外に出るため、
+     ビューポート中央に絶対配置し、fit() が縮小後サイズの半分だけ戻す。 */
+  .deck {
+    width: 1280px; height: 720px;
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: 0 0;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 44px 64px 56px;
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 64px; bottom: 22px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "Go 言語チュートリアル ハンズオン ① 基礎編 — go.dev/doc/tutorial";
+    position: absolute; left: 64px; bottom: 22px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  /* ---------- type ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--go); margin: 0;
+  }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 58px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0; }
+  .lead { font-size: 19px; color: var(--ink-2); max-width: 48em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code, dd code, h3 code {
+    background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: .92em;
+  }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--go); }
+  b, strong { font-weight: 600; }
+  a { color: var(--go); text-decoration: none; border-bottom: 1px solid var(--go-soft); }
+
+  /* ---------- layout helpers ---------- */
+  .cols { display: grid; gap: 22px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.15fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.25fr; }
+  .cols-code { grid-template-columns: 0.9fr 1.1fr; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .cols > *, .stack > * { min-width: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel {
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px;
+  }
+  .panel.go { border-top: 3px solid var(--go); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.green { border-top: 3px solid var(--green); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .panel.handson { background: #FFFBF1; border-color: #EBD9A8; border-left: 4px solid var(--amber); }
+  .panel.handson h3 { color: var(--amber); }
+  .panel.handson h3::before { content: "▶ "; }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+    padding: 1px 8px; border-radius: 999px; background: var(--go-soft); color: var(--go);
+    vertical-align: middle; margin-left: 6px; text-transform: uppercase;
+  }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.green { background: var(--green-soft); color: var(--green); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  ul.plusminus { list-style: none; padding-left: 1.4em; }
+  ul.plusminus li { text-indent: -1.4em; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--green); font-weight: 700; }
+  ul.plusminus li.bad::before { content: "△ "; color: var(--red); font-weight: 700; }
+
+  /* ---------- terminal / code ---------- */
+  .term {
+    background: var(--term); color: var(--term-ink); border-radius: 8px;
+    padding: 12px 16px; font-family: var(--mono); font-size: 12px; line-height: 1.42;
+    overflow: hidden; white-space: pre; tab-size: 4; min-width: 0;
+  }
+  .term .o { white-space: pre-wrap; word-break: break-all; }
+  .term .k { color: var(--term-key); }
+  .term .s { color: var(--term-str); }
+  .term .n { color: var(--term-num); }
+  .term .d { color: var(--term-dim); }
+  .term .c { color: var(--term-dim); font-style: italic; }
+  .term .o { color: #fff; }
+  .term .err { color: #F19A8C; }
+  .term .ok { color: var(--term-num); }
+  .term .f { color: #8FB4FF; font-weight: 500; }
+  .term.sm { font-size: 11.5px; }
+  .term.xs { font-size: 11px; line-height: 1.38; }
+  .term .title { display: block; color: var(--term-dim); font-size: 11px; letter-spacing: .08em; margin-bottom: 4px; }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 4px 8px; }
+  td.nw { white-space: nowrap; }
+
+  /* ---------- diagram ---------- */
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 10px; }
+  .box { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+  .box .t { font-family: var(--display); font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+  .box.go { border-color: var(--go); background: var(--go-soft); }
+  .box.amber { border-color: var(--amber); background: var(--amber-soft); }
+  .arrow { font-family: var(--mono); color: var(--ink-3); font-size: 12px; text-align: center; line-height: 1.3; align-self: center; }
+  .arrow b { display: block; font-size: 18px; color: var(--go); }
+
+  /* ---------- step list ---------- */
+  .steps { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+  .step { display: grid; grid-template-columns: 42px 250px 1fr; gap: 12px; align-items: start;
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 8px 14px; }
+  .step .no { font-family: var(--display); font-weight: 900; font-size: 24px; color: var(--go); line-height: 1.2; }
+  .step .name { font-family: var(--display); font-weight: 700; font-size: 15px; line-height: 1.4; }
+  .step .desc { font-size: 13px; color: var(--ink-2); }
+  .step.done { border-color: var(--green); }
+  .step.done .no { color: var(--green); }
+
+  /* ---------- cover ---------- */
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 80px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; font-size: 64px; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 28px; }
+  .cover .frame {
+    position: absolute; right: 72px; top: 56px; width: 470px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--go-2); padding-left: 16px;
+  }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); } .cover .frame .c { color: var(--term-dim); font-style: italic; }
+
+  /* ---------- nav ---------- */
+  #hud {
+    position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7;
+  }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--go); outline-offset: 2px; }
+
+  /* ---------- overview & print ---------- */
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────── -->
+<section class="slide cover">
+  <div class="frame"><span class="k">$</span> go mod init example/hello
+go: creating new go.mod: module example/hello
+
+<span class="k">$</span> cat hello.go
+<span class="k">package</span> main
+
+<span class="k">import</span> <span class="s">"fmt"</span>
+
+<span class="k">func</span> main() {
+    fmt.Println(<span class="s">"Hello, World!"</span>)
+}
+
+<span class="k">$</span> go run .
+Hello, World!
+
+<span class="k">$</span> go test -v
+=== RUN   TestHelloName
+--- PASS: TestHelloName (0.00s)
+<span class="n">PASS</span></div>
+  <p class="eyebrow">Hands-on · ysksm/slides · ① 基礎編</p>
+  <h1>Go 言語チュートリアル<br>ハンズオン ① 基礎編</h1>
+  <p class="lead">go.dev の公式チュートリアルを、手を動かしながら順に進める。Hello, World → モジュールの作成と呼び出し → エラー処理・テスト・ビルド → マルチモジュールワークスペース → JSON まで。全コマンドと出力は実際に実行して確認済み。</p>
+  <p class="meta"><span>2026-09-15</span><span>go.dev/doc/tutorial</span><span>Go 1.27 時点</span></p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Roadmap</p>
+  <h2>公式チュートリアルの全体像と、この 2 本のデッキの対応</h2>
+  <div class="cols cols-52">
+    <div class="stack">
+      <table class="tight small">
+        <tr><th style="width:36px">#</th><th>go.dev/doc/tutorial の項目</th><th style="width:110px">デッキ</th><th style="width:70px">枚</th></tr>
+        <tr><td>1</td><td>Getting started（Hello, World・外部パッケージ）</td><td><span class="tag amber">① 基礎編</span></td><td>4–5</td></tr>
+        <tr><td>2</td><td>Create a module（7 パート：モジュール・呼び出し・エラー・乱数・map・テスト・ビルド）</td><td><span class="tag amber">① 基礎編</span></td><td>6–14</td></tr>
+        <tr><td>3</td><td>Multi-module workspaces</td><td><span class="tag amber">① 基礎編</span></td><td>15–16</td></tr>
+        <tr><td>4</td><td>Working with JSON</td><td><span class="tag amber">① 基礎編</span></td><td>17–18</td></tr>
+        <tr><td>5</td><td>Accessing a relational database</td><td><span class="tag">② 応用編</span></td><td></td></tr>
+        <tr><td>6</td><td>Developing a RESTful API with Go and Gin</td><td><span class="tag">② 応用編</span></td><td></td></tr>
+        <tr><td>7</td><td>Getting started with generics</td><td><span class="tag">② 応用編</span></td><td></td></tr>
+        <tr><td>8</td><td>Getting started with fuzzing</td><td><span class="tag">② 応用編</span></td><td></td></tr>
+        <tr><td>9–10</td><td>govulncheck（CLI / VS Code Go）</td><td><span class="tag">② 応用編</span></td><td></td></tr>
+        <tr><td>11</td><td>A Tour of Go（対話型の言語入門）</td><td class="muted">対象外（各自で）</td><td></td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="panel handson">
+        <h3>ハンズオンの進め方</h3>
+        <ul class="small">
+          <li>各スライドの <b>▶ やってみよう</b> のコマンドを、上から順にそのまま打つ。</li>
+          <li>コードは <b>写経</b> する（コピーでもよいが、打つと構文が身につく）。</li>
+          <li>実行結果が黒い枠の内容と一致するか確認してから次へ。</li>
+          <li>①基礎編は通しで <b>約 90 分</b>。②応用編は 1 項目ずつ独立して進められる。</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>前提と検証環境</h3>
+        <ul class="small">
+          <li>何らかの言語でのプログラミング経験（関数・ループ・配列）。</li>
+          <li>最新版は <b>Go 1.27.1</b>（2026-09-01）。本デッキのコマンドと出力は go1.24.7 と go1.27.1（Linux）で実行して確認した。</li>
+          <li>ターミナル（Linux / macOS のシェル、Windows は PowerShell か cmd）と好みのエディタ（VS Code + Go 拡張を推奨）。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Step 0 · Install</p>
+  <h2>準備：Go のインストールと動作確認</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう：インストール（go.dev/doc/install）</h3>
+        <ul class="small">
+          <li><b>Linux</b>：<a href="https://go.dev/dl/">go.dev/dl</a> から <code>go1.27.1.linux-amd64.tar.gz</code> を取得し、右の手順で <code>/usr/local/go</code> へ展開して PATH を通す。</li>
+          <li><b>macOS</b>：<code>.pkg</code> を開いてウィザードに従う（<code>/usr/local/go</code> に入り、PATH も設定される）。</li>
+          <li><b>Windows</b>：<code>.msi</code> を開いてウィザードに従う。新しいコマンドプロンプトで <code>go version</code>。</li>
+          <li>いずれも最後に <b><code>$(go env GOPATH)/bin</code> を PATH に追加</b>（<code>go install</code> したコマンドを使うため。14 枚目で必要になる）。</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>知っておくと楽なこと</h3>
+        <ul class="small">
+          <li><b>ツールチェーンの自動切替</b>（Go 1.21+）：go.mod や依存が要求する版が手元より新しいと、<code>go</code> コマンドが必要な版を自動でダウンロードして使う（<code>GOTOOLCHAIN</code> で制御）。古い Go でもチュートリアルは通る。</li>
+          <li>VS Code なら拡張機能「Go」を入れ、初回に案内される <code>gopls</code> 等のツールをインストールしておく。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term"><span class="c"># Linux: 既存の Go を消してから展開（root か sudo で）</span>
+<span class="k">$</span> rm -rf /usr/local/go &amp;&amp; \
+  tar -C /usr/local -xzf go1.27.1.linux-amd64.tar.gz
+
+<span class="c"># ~/.profile などに追記して、シェルを開き直す</span>
+export PATH=$PATH:/usr/local/go/bin
+export PATH=<span class="s">"$PATH:$(go env GOPATH)/bin"</span>
+
+<span class="c"># 動作確認</span>
+<span class="k">$</span> go version
+go version go1.27.1 linux/amd64
+
+<span class="k">$</span> go env GOPATH GOMODCACHE
+/home/gopher/go
+/home/gopher/go/pkg/mod
+
+<span class="c"># 古い版のままでも、必要なら自動で新しい版が使われる</span>
+<span class="k">$</span> go mod tidy
+go: toolchain upgrade needed to resolve golang.org/x/text/language
+go: golang.org/x/text@v0.42.0 requires go &gt;= 1.26.0;
+    switching to go1.26.8
+go: downloading go1.26.8 (linux/amd64)</div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 1 · Getting started (1/2)</p>
+  <h2>Hello, World：モジュールを作って最初のコードを動かす</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li>ホームに <code>hello</code> ディレクトリを作って移動（Windows は <code>cd %HOMEPATH%</code>）。</li>
+          <li><code>go mod init example/hello</code> で <b>モジュール</b>を初期化。<code>go.mod</code> ができる。</li>
+          <li><code>hello.go</code> を作って右のコードを書く。</li>
+          <li><code>go run .</code> で実行。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>コードの読み方</h3>
+        <ul class="small">
+          <li><b><code>package main</code></b>：実行可能プログラムのパッケージ名は必ず <code>main</code>。</li>
+          <li><b><code>import "fmt"</code></b>：標準ライブラリの書式付き入出力パッケージを取り込む。</li>
+          <li><b><code>func main()</code></b>：エントリポイント。<code>main</code> パッケージの <code>main</code> 関数から実行が始まる。</li>
+          <li><b>モジュール</b>＝関連するパッケージの集まりで、<code>go.mod</code> がその名前（モジュールパス）と Go の版、依存を記録する。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term"><span class="k">$</span> cd &amp;&amp; mkdir hello &amp;&amp; cd hello
+<span class="k">$</span> go mod init example/hello
+go: creating new go.mod: module example/hello
+
+<span class="k">$</span> cat go.mod
+module example/hello
+
+go 1.27
+
+<span class="title">hello.go</span><span class="k">package</span> main
+
+<span class="k">import</span> <span class="s">"fmt"</span>
+
+<span class="k">func</span> <span class="f">main</span>() {
+    fmt.Println(<span class="s">"Hello, World!"</span>)
+}
+
+<span class="k">$</span> go run .
+<span class="o">Hello, World!</span></div>
+  </div>
+</section>
+
+<!-- 5 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 1 · Getting started (2/2)</p>
+  <h2>外部パッケージを呼ぶ：go mod tidy と go.sum</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><a href="https://pkg.go.dev/search?q=quote">pkg.go.dev</a> でパッケージを探す。ここでは <code>rsc.io/quote</code> の <code>Go()</code> 関数を使う。</li>
+          <li><code>hello.go</code> に <code>import "rsc.io/quote"</code> を追加し、<code>quote.Go()</code> を出力する。</li>
+          <li><code>go mod tidy</code> で依存を解決し、<code>go.mod</code> と <code>go.sum</code> を更新。</li>
+          <li><code>go run .</code>。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>ここで起きていること</h3>
+        <ul class="small">
+          <li><b><code>go mod tidy</code></b>：import 文から必要なモジュールを探し、モジュールプロキシ（proxy.golang.org）から取得して <code>go.mod</code> の <code>require</code> に記録する。</li>
+          <li><b><code>go.sum</code></b>：取得したモジュールのチェックサム。改ざん・差し替えを検出する。<b>両方ともコミットする</b>。</li>
+          <li><code>// indirect</code> は直接 import していない推移的依存。</li>
+          <li>取得物は <code>GOMODCACHE</code> に置かれ、他プロジェクトと共有される。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">hello.go</span><span class="k">package</span> main
+
+<span class="k">import</span> <span class="s">"fmt"</span>
+
+<span class="k">import</span> <span class="s">"rsc.io/quote"</span>
+
+<span class="k">func</span> <span class="f">main</span>() {
+    fmt.Println(quote.Go())
+}
+
+<span class="k">$</span> go mod tidy
+go: finding module for package rsc.io/quote
+go: downloading rsc.io/quote v1.5.2
+go: found rsc.io/quote in rsc.io/quote v1.5.2
+
+<span class="k">$</span> cat go.mod
+module example/hello
+
+go 1.27
+
+require rsc.io/quote v1.5.2
+
+require (
+    golang.org/x/text v0.0.0-20170915032832-14c0d48ead0c <span class="c">// indirect</span>
+    rsc.io/sampler v1.3.0 <span class="c">// indirect</span>
+)
+
+<span class="k">$</span> go run .
+<span class="o">Don't communicate by sharing memory, share memory by communicating.</span></div>
+  </div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 2 · Create a module · overview</p>
+  <h2>「モジュールを作る」チュートリアルの全体像（7 パート）</h2>
+  <div class="flow" style="grid-template-columns: 1fr auto 1fr;">
+    <div class="box go"><div class="t">greetings/ <span class="tag">ライブラリ</span></div><code>example.com/greetings</code><br><span class="xs muted">他のプログラムから呼ばれる関数 <code>Hello</code> / <code>Hellos</code> を持つ。テストもここに書く</span></div>
+    <div class="arrow"><b>←</b>import<br>replace ../greetings</div>
+    <div class="box amber"><div class="t">hello/ <span class="tag amber">実行プログラム</span></div><code>example.com/hello</code><br><span class="xs muted"><code>package main</code>。greetings を呼び出して結果を表示する。<code>go build</code> / <code>go install</code> の対象</span></div>
+  </div>
+  <div class="steps">
+    <div class="step"><div class="no">1</div><div class="name">モジュールを作る</div><div class="desc"><code>go mod init</code>、パッケージ、エクスポートされる関数名、<code>:=</code>、<code>fmt.Sprintf</code></div></div>
+    <div class="step"><div class="no">2</div><div class="name">別モジュールから呼ぶ</div><div class="desc">未公開モジュールをローカルパスで参照する <code>go mod edit -replace</code></div></div>
+    <div class="step"><div class="no">3</div><div class="name">エラーを返して処理する</div><div class="desc">多値返却 <code>(string, error)</code>、<code>errors.New</code>、<code>if err != nil</code>、<code>log.Fatal</code></div></div>
+    <div class="step"><div class="no">4</div><div class="name">ランダムな挨拶を返す</div><div class="desc">スライス、<code>math/rand</code>、非公開関数</div></div>
+    <div class="step"><div class="no">5</div><div class="name">複数人に挨拶する</div><div class="desc"><code>map</code>、<code>for … range</code>、後方互換を保った関数追加</div></div>
+    <div class="step"><div class="no">6</div><div class="name">テストを追加する</div><div class="desc"><code>_test.go</code>、<code>testing</code> パッケージ、<code>go test</code>、わざと壊して失敗を見る</div></div>
+    <div class="step"><div class="no">7</div><div class="name">コンパイルしてインストールする</div><div class="desc"><code>go build</code>、<code>go install</code>、<code>go list -f '{{.Target}}'</code>、PATH / <code>GOBIN</code></div></div>
+  </div>
+</section>
+
+<!-- 7 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 2 · Part 1/7</p>
+  <h2>greetings モジュールを作る</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li>ホームに <code>greetings</code> ディレクトリを作り、<code>go mod init example.com/greetings</code>。</li>
+          <li><code>greetings.go</code> に右のコードを書く。まだ実行はしない（<code>main</code> が無いので実行できない）。</li>
+        </ol>
+        <p class="xs muted">モジュールパスは公開するなら実際のリポジトリの場所（<code>github.com/you/greetings</code> など）にする。今回は例なので <code>example.com/</code>。</p>
+      </div>
+      <div class="panel go">
+        <h3>コードの読み方</h3>
+        <ul class="small">
+          <li><b><code>package greetings</code></b>：関連する関数をまとめる単位。ディレクトリ 1 つ＝パッケージ 1 つ。</li>
+          <li><b>大文字で始まる名前は公開（exported）</b>：<code>Hello</code> は他パッケージから呼べる。小文字なら非公開。</li>
+          <li><b><code>func Hello(name string) string</code></b>：引数 <code>name</code>（string 型）を取り、string を返す。型は名前の後ろに書く。</li>
+          <li><b><code>:=</code></b>：宣言と初期化を同時に行い、型は右辺から推論。<code>var message string = …</code> の短縮形。</li>
+          <li><b><code>fmt.Sprintf</code></b>：<code>%v</code> に値を埋め込んだ文字列を返す（<code>Printf</code> は表示、<code>Sprintf</code> は文字列を返す）。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term"><span class="k">$</span> cd &amp;&amp; mkdir greetings &amp;&amp; cd greetings
+<span class="k">$</span> go mod init example.com/greetings
+go: creating new go.mod: module example.com/greetings
+
+<span class="title">greetings/greetings.go</span><span class="k">package</span> greetings
+
+<span class="k">import</span> <span class="s">"fmt"</span>
+
+<span class="c">// Hello returns a greeting for the named person.</span>
+<span class="k">func</span> <span class="f">Hello</span>(name <span class="k">string</span>) <span class="k">string</span> {
+    <span class="c">// Return a greeting that embeds the name in a message.</span>
+    message := fmt.Sprintf(<span class="s">"Hi, %v. Welcome!"</span>, name)
+    <span class="k">return</span> message
+}
+
+<span class="title">ディレクトリ構成（この後 hello/ を隣に作る）</span>&lt;home&gt;/
+ ├── greetings/
+ │    ├── go.mod
+ │    └── greetings.go
+ └── hello/          <span class="c">← 次のパートで作る</span></div>
+  </div>
+</section>
+
+<!-- 8 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 2 · Part 2/7</p>
+  <h2>別モジュールから呼び出す：go mod edit -replace</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>greetings</code> の隣に <code>hello</code> を作り、<code>go mod init example.com/hello</code>。</li>
+          <li><code>hello.go</code> に右のコードを書く（<code>package main</code>）。</li>
+          <li><code>go mod edit -replace example.com/greetings=../greetings</code> で、<b>まだ公開していないモジュールをローカルのパスに置き換える</b>。</li>
+          <li><code>go mod tidy</code> → <code>go.mod</code> に <code>require</code> が追加される。</li>
+          <li><code>go run .</code>。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li>import は <b>モジュールパス + パッケージのディレクトリ</b>。今回はモジュール直下なので <code>example.com/greetings</code>。</li>
+          <li><code>replace</code> ディレクティブは開発中の一時措置。公開後は <code>go get</code> して外す。</li>
+          <li>擬似バージョン <code>v0.0.0-00010101000000-000000000000</code> は「タグが無いローカルモジュール」の印。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="k">$</span> cd .. &amp;&amp; mkdir hello &amp;&amp; cd hello
+<span class="k">$</span> go mod init example.com/hello
+
+<span class="title">hello/hello.go</span><span class="k">package</span> main
+
+<span class="k">import</span> (
+    <span class="s">"fmt"</span>
+
+    <span class="s">"example.com/greetings"</span>
+)
+
+<span class="k">func</span> <span class="f">main</span>() {
+    message := greetings.Hello(<span class="s">"Gladys"</span>)
+    fmt.Println(message)
+}
+
+<span class="k">$</span> go mod edit -replace example.com/greetings=../greetings
+<span class="k">$</span> go mod tidy
+<span class="k">$</span> cat go.mod
+module example.com/hello
+
+go 1.27
+
+replace example.com/greetings =&gt; ../greetings
+
+require example.com/greetings v0.0.0-00010101000000-000000000000
+
+<span class="k">$</span> go run .
+<span class="o">Hi, Gladys. Welcome!</span></div>
+  </div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 2 · Part 3/7</p>
+  <h2>エラーを返して処理する：多値返却と <code>if err != nil</code></h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>greetings.go</code> の <code>Hello</code> を右上のように変更：戻り値を <code>(string, error)</code> にし、名前が空なら <code>errors.New</code> でエラーを返す。</li>
+          <li><code>hello.go</code> を右下のように変更：2 つの戻り値を受け取り、<code>err != nil</code> なら <code>log.Fatal</code> で終了。わざと <code>Hello("")</code> を渡す。</li>
+          <li><code>hello</code> ディレクトリで <code>go run .</code>。</li>
+        </ol>
+      </div>
+      <div class="term sm"><span class="k">$</span> go run .
+<span class="err">greetings: empty name</span>
+exit status 1</div>
+      <div class="panel go">
+        <h3>Go のエラー処理の流儀</h3>
+        <ul class="small">
+          <li>例外を投げない。<b>エラーは普通の値</b>として最後の戻り値で返し、呼び出し側が <code>if err != nil</code> で毎回判定する。</li>
+          <li>成功時はエラーに <code>nil</code> を返す。</li>
+          <li><code>log.SetPrefix</code> / <code>log.SetFlags(0)</code> で出力の接頭辞と、日時などの付加情報を制御。<code>log.Fatal</code> は表示して <code>exit status 1</code>。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="title">greetings/greetings.go（抜粋。"errors" を import に追加）</span><span class="k">func</span> <span class="f">Hello</span>(name <span class="k">string</span>) (<span class="k">string</span>, <span class="k">error</span>) {
+    <span class="c">// If no name was given, return an error with a message.</span>
+    <span class="k">if</span> name == <span class="s">""</span> {
+        <span class="k">return</span> <span class="s">""</span>, errors.New(<span class="s">"empty name"</span>)
+    }
+    message := fmt.Sprintf(<span class="s">"Hi, %v. Welcome!"</span>, name)
+    <span class="k">return</span> message, <span class="k">nil</span>
+}</div>
+      <div class="term sm"><span class="title">hello/hello.go（抜粋。"log" を import に追加）</span><span class="k">func</span> <span class="f">main</span>() {
+    log.SetPrefix(<span class="s">"greetings: "</span>)
+    log.SetFlags(0)
+
+    message, err := greetings.Hello(<span class="s">""</span>)
+    <span class="k">if</span> err != <span class="k">nil</span> {
+        log.Fatal(err)
+    }
+    fmt.Println(message)
+}</div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 2 · Part 4/7</p>
+  <h2>ランダムな挨拶を返す：スライスと math/rand</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>greetings.go</code> に <code>math/rand</code> を import し、非公開関数 <code>randomFormat</code> を追加。<code>Hello</code> は <code>fmt.Sprintf(randomFormat(), name)</code> で書式を差し替える。</li>
+          <li><code>hello.go</code> の呼び出しを <code>Hello("Gladys")</code> に戻す。</li>
+          <li><code>go run .</code> を <b>何回か</b>実行し、挨拶が変わることを確認。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li><b>スライス</b> <code>[]string{…}</code>：長さが可変の配列ビュー。<code>len()</code> で長さ。</li>
+          <li><code>rand.Intn(n)</code> は 0 以上 n 未満の乱数。<b>Go 1.20 以降はシード不要</b>（自動でランダム初期化される。古い記事の <code>rand.Seed(time.Now().UnixNano())</code> は不要）。</li>
+          <li>小文字始まりの <code>randomFormat</code> はパッケージ内からしか呼べない。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">greetings/greetings.go（抜粋）</span><span class="k">import</span> (
+    <span class="s">"errors"</span>
+    <span class="s">"fmt"</span>
+    <span class="s">"math/rand"</span>
+)
+
+<span class="k">func</span> <span class="f">Hello</span>(name <span class="k">string</span>) (<span class="k">string</span>, <span class="k">error</span>) {
+    <span class="k">if</span> name == <span class="s">""</span> {
+        <span class="k">return</span> name, errors.New(<span class="s">"empty name"</span>)
+    }
+    <span class="c">// Create a message using a random format.</span>
+    message := fmt.Sprintf(randomFormat(), name)
+    <span class="k">return</span> message, <span class="k">nil</span>
+}
+
+<span class="c">// randomFormat returns one of a set of greeting messages.</span>
+<span class="k">func</span> <span class="f">randomFormat</span>() <span class="k">string</span> {
+    formats := []<span class="k">string</span>{
+        <span class="s">"Hi, %v. Welcome!"</span>,
+        <span class="s">"Great to see you, %v!"</span>,
+        <span class="s">"Hail, %v! Well met!"</span>,
+    }
+    <span class="k">return</span> formats[rand.Intn(len(formats))]
+}
+
+<span class="k">$</span> go run .
+<span class="o">Great to see you, Gladys!</span>
+<span class="k">$</span> go run .
+<span class="o">Hail, Gladys! Well met!</span></div>
+  </div>
+</section>
+
+<!-- 11 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 2 · Part 5/7</p>
+  <h2>複数人に挨拶する：map と for … range</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>greetings.go</code> に <code>Hellos</code> 関数を追加（<code>Hello</code> は変更しない＝<b>既存の呼び出し元を壊さない</b>）。</li>
+          <li><code>hello.go</code> で名前のスライスを作り、<code>greetings.Hellos(names)</code> を呼ぶ。</li>
+          <li><code>go run .</code>。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li><b>map</b> <code>map[string]string</code>：キー→値の連想配列。<code>make</code> で生成し、<code>messages[name] = message</code> で代入。</li>
+          <li><b><code>for _, name := range names</code></b>：range はインデックスと値を返す。使わない方は <code>_</code>（ブランク識別子）で捨てる。</li>
+          <li>途中でエラーが出たら <code>nil, err</code> を返して中断。</li>
+          <li>map の表示順は不定（<code>fmt.Println</code> はキーでソートして表示する）。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term"><span class="title">greetings/greetings.go（追加分）</span><span class="c">// Hellos returns a map that associates each of the named people</span>
+<span class="c">// with a greeting message.</span>
+<span class="k">func</span> <span class="f">Hellos</span>(names []<span class="k">string</span>) (<span class="k">map</span>[<span class="k">string</span>]<span class="k">string</span>, <span class="k">error</span>) {
+    messages := make(<span class="k">map</span>[<span class="k">string</span>]<span class="k">string</span>)
+    <span class="k">for</span> _, name := <span class="k">range</span> names {
+        message, err := Hello(name)
+        <span class="k">if</span> err != <span class="k">nil</span> {
+            <span class="k">return</span> <span class="k">nil</span>, err
+        }
+        messages[name] = message
+    }
+    <span class="k">return</span> messages, <span class="k">nil</span>
+}
+
+<span class="title">hello/hello.go（main の中）</span>    names := []<span class="k">string</span>{<span class="s">"Gladys"</span>, <span class="s">"Samantha"</span>, <span class="s">"Darrin"</span>}
+
+    messages, err := greetings.Hellos(names)
+    <span class="k">if</span> err != <span class="k">nil</span> {
+        log.Fatal(err)
+    }
+    fmt.Println(messages)
+
+<span class="k">$</span> go run .
+<span class="o">map[Darrin:Hi, Darrin. Welcome! Gladys:Great to see you, Gladys! Samantha:Hail, Samantha! Well met!]</span></div>
+  </div>
+</section>
+
+<!-- 12 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 2 · Part 6/7</p>
+  <h2>テストを追加する：<code>_test.go</code> と go test</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>greetings</code> ディレクトリに <code>greetings_test.go</code> を作り、右のコードを書く。</li>
+          <li><code>go test</code>、次に <code>go test -v</code>。</li>
+          <li><b>わざと壊す</b>：<code>Hello</code> の <code>message := fmt.Sprintf(randomFormat(), name)</code> を <code>fmt.Sprint(randomFormat())</code> に変えて <code>go test</code>。失敗を確認したら元に戻す。</li>
+        </ol>
+      </div>
+      <div class="term xs"><span class="k">$</span> go test
+<span class="ok">PASS</span>
+ok      example.com/greetings   0.002s
+
+<span class="k">$</span> go test -v
+=== RUN   TestHelloName
+--- PASS: TestHelloName (0.00s)
+=== RUN   TestHelloEmpty
+--- PASS: TestHelloEmpty (0.00s)
+<span class="ok">PASS</span>
+ok      example.com/greetings   0.002s
+
+<span class="c"># Hello を壊した後</span>
+<span class="k">$</span> go test
+<span class="err">--- FAIL: TestHelloName (0.00s)</span>
+    greetings_test.go:15: Hello("Gladys") = "Great to see you, %v!", &lt;nil&gt;,
+        want match for `\bGladys\b`, nil
+<span class="err">FAIL</span>    example.com/greetings   0.002s</div>
+    </div>
+    <div class="stack">
+      <div class="term xs"><span class="title">greetings/greetings_test.go</span><span class="k">package</span> greetings
+
+<span class="k">import</span> (
+    <span class="s">"regexp"</span>
+    <span class="s">"testing"</span>
+)
+
+<span class="c">// TestHelloName calls greetings.Hello with a name, checking</span>
+<span class="c">// for a valid return value.</span>
+<span class="k">func</span> <span class="f">TestHelloName</span>(t *testing.T) {
+    name := <span class="s">"Gladys"</span>
+    want := regexp.MustCompile(<span class="s">`\b`</span>+name+<span class="s">`\b`</span>)
+    msg, err := Hello(<span class="s">"Gladys"</span>)
+    <span class="k">if</span> !want.MatchString(msg) || err != <span class="k">nil</span> {
+        t.Errorf(<span class="s">`Hello("Gladys") = %q, %v, want match for %#q, nil`</span>,
+            msg, err, want)
+    }
+}
+
+<span class="c">// TestHelloEmpty calls greetings.Hello with an empty string,</span>
+<span class="c">// checking for an error.</span>
+<span class="k">func</span> <span class="f">TestHelloEmpty</span>(t *testing.T) {
+    msg, err := Hello(<span class="s">""</span>)
+    <span class="k">if</span> msg != <span class="s">""</span> || err == <span class="k">nil</span> {
+        t.Errorf(<span class="s">`Hello("") = %q, %v, want "", error`</span>, msg, err)
+    }
+}</div>
+      <p class="xs muted">規約：ファイル名は <code>*_test.go</code>、関数は <code>TestXxx(t *testing.T)</code>。<code>t.Errorf</code> は失敗を記録して続行、<code>t.Fatalf</code> は即中断。テストは同じパッケージに置くので非公開関数も呼べる。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 13 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 2 · Part 7/7</p>
+  <h2>コンパイルとインストール：go build / go install</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう（hello ディレクトリで）</h3>
+        <ol class="small">
+          <li><code>go build</code> → カレントに実行ファイル <code>hello</code>（Windows は <code>hello.exe</code>）ができる。実行する。</li>
+          <li><code>go list -f '{{.Target}}'</code> で <code>go install</code> の配置先を確認。</li>
+          <li>その親ディレクトリ（通常 <code>$HOME/go/bin</code>）を PATH に追加、または <code>go env -w GOBIN=…</code> で配置先を変える。</li>
+          <li><code>go install</code> → どのディレクトリからでも <code>hello</code> で実行できる。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li><code>go run</code> は毎回ビルドして実行する開発用。配布するなら <code>go build</code> で<b>依存も含めた単一バイナリ</b>を作る。</li>
+          <li><code>go install</code> は <code>go build</code> + 配置。<code>go install パッケージ@バージョン</code> で公開ツールも入る（②応用編の <code>govulncheck</code> で使う）。</li>
+          <li>別 OS 向けは <code>GOOS=windows GOARCH=amd64 go build</code> のようにクロスコンパイルできる。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term"><span class="k">$</span> go build
+<span class="k">$</span> ./hello
+<span class="o">map[Darrin:Hi, Darrin. Welcome! Gladys:Hail, Gladys! Well met! Samantha:Hail, Samantha! Well met!]</span>
+
+<span class="c"># インストール先を調べる</span>
+<span class="k">$</span> go list -f <span class="s">'{{.Target}}'</span>
+/home/gopher/go/bin/hello
+
+<span class="c"># PATH に追加（Linux / macOS。Windows は set PATH=%PATH%;C:\path\to\bin）</span>
+<span class="k">$</span> export PATH=$PATH:/home/gopher/go/bin
+
+<span class="c"># または配置先そのものを変える</span>
+<span class="k">$</span> go env -w GOBIN=/path/to/your/bin
+
+<span class="k">$</span> go install
+<span class="k">$</span> cd /tmp &amp;&amp; hello
+<span class="o">map[Darrin:Great to see you, Darrin! Gladys:Hi, Gladys. Welcome! Samantha:Hail, Samantha! Well met!]</span>
+
+<span class="c"># 作った実行ファイルは Go ランタイム込みの静的バイナリ</span>
+<span class="k">$</span> ls -la hello
+-rwxr-xr-x 1 gopher gopher 2.3M hello</div>
+  </div>
+</section>
+
+<!-- 14 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Checkpoint</p>
+  <h2>ここまでで身についた Go の基本要素</h2>
+  <div class="cols" style="grid-template-columns: 1fr;">
+    <table class="tight small">
+      <tr><th style="width:170px">要素</th><th style="width:300px">書き方</th><th>意味・注意</th><th style="width:60px">枚</th></tr>
+      <tr><td><b>モジュール</b></td><td><code>go mod init example.com/greetings</code></td><td>パッケージの集合と依存の単位。<code>go.mod</code> + <code>go.sum</code> をコミットする</td><td>4, 7</td></tr>
+      <tr><td><b>パッケージ</b></td><td><code>package greetings</code> / <code>package main</code></td><td>ディレクトリ単位。実行プログラムは <code>main</code> パッケージの <code>main</code> 関数</td><td>4, 7</td></tr>
+      <tr><td><b>公開 / 非公開</b></td><td><code>Hello</code> / <code>randomFormat</code></td><td>大文字始まりだけが他パッケージから見える。修飾子は無い</td><td>7, 10</td></tr>
+      <tr><td><b>短い変数宣言</b></td><td><code>message := fmt.Sprintf(…)</code></td><td>関数内のみ。型は推論。<b>宣言して未使用はコンパイルエラー</b></td><td>7</td></tr>
+      <tr><td><b>多値返却とエラー</b></td><td><code>func Hello(name string) (string, error)</code></td><td>エラーは値。<code>if err != nil { return … }</code> を毎回書く</td><td>9</td></tr>
+      <tr><td><b>スライス</b></td><td><code>[]string{"a", "b"}</code>, <code>len(s)</code>, <code>append</code></td><td>可変長配列のビュー。関数には参照的に渡る</td><td>10</td></tr>
+      <tr><td><b>map</b></td><td><code>make(map[string]string)</code>, <code>m[k] = v</code></td><td>順序は不定。存在確認は <code>v, ok := m[k]</code></td><td>11</td></tr>
+      <tr><td><b>for range</b></td><td><code>for i, v := range xs { … }</code></td><td>唯一のループ構文 <code>for</code>。不要な値は <code>_</code></td><td>11</td></tr>
+      <tr><td><b>テスト</b></td><td><code>greetings_test.go</code> / <code>func TestXxx(t *testing.T)</code></td><td><code>go test [-v]</code>。フレームワーク不要で標準に付属</td><td>12</td></tr>
+      <tr><td><b>ビルドと配布</b></td><td><code>go build</code> / <code>go install</code> / <code>GOOS=… GOARCH=…</code></td><td>単一バイナリ。<code>$(go env GOPATH)/bin</code> を PATH に</td><td>13</td></tr>
+      <tr><td><b>依存の追加</b></td><td><code>import "rsc.io/quote"</code> → <code>go mod tidy</code></td><td>プロキシ経由で取得。ローカル参照は <code>replace</code></td><td>5, 8</td></tr>
+    </table>
+  </div>
+  <p class="small muted">言語仕様を体系的に押さえたくなったら <a href="https://go.dev/tour/">A Tour of Go</a>（対話型、日本語版あり）と <a href="https://go.dev/doc/effective_go">Effective Go</a> へ。ここから先は「複数モジュールを同時に開発する」ワークスペースと、標準ライブラリでの JSON 処理。</p>
+</section>
+
+<!-- 15 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 3 · Multi-module workspaces (1/2)</p>
+  <h2>ワークスペース：複数モジュールを replace なしで同時に開発する</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li>ホームに <code>workspace/hello</code> を作り、<code>go mod init example.com/hello</code>。</li>
+          <li><code>go get golang.org/x/example/hello/reverse</code> で依存を追加し、右の <code>hello.go</code> を書いて <code>go run .</code> → <code>olleH</code>。</li>
+          <li><code>workspace</code> に戻り、<code>go work init ./hello</code> → <code>go.work</code> ができる。</li>
+          <li>ワークスペースのルートから <code>go run ./hello</code> で実行できる。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>go.work とは</h3>
+        <ul class="small">
+          <li>Go 1.18 で導入。<code>use</code> に列挙したローカルのモジュールを、<b>依存解決の際に main モジュール扱い</b>にする。</li>
+          <li>Part 2 の <code>replace</code> と違い <b>各モジュールの <code>go.mod</code> を汚さない</b>。ライブラリと利用側を同時に直すときに便利。</li>
+          <li>通常 <code>go.work</code> は<b>コミットしない</b>（開発者ごとのローカル設定）。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="k">$</span> cd &amp;&amp; mkdir -p workspace/hello &amp;&amp; cd workspace/hello
+<span class="k">$</span> go mod init example.com/hello
+<span class="k">$</span> go get golang.org/x/example/hello/reverse
+go: added golang.org/x/example/hello v0.0.0-20250915201037-7f05d217867b
+
+<span class="title">workspace/hello/hello.go</span><span class="k">package</span> main
+
+<span class="k">import</span> (
+    <span class="s">"fmt"</span>
+
+    <span class="s">"golang.org/x/example/hello/reverse"</span>
+)
+
+<span class="k">func</span> <span class="f">main</span>() {
+    fmt.Println(reverse.String(<span class="s">"Hello"</span>))
+}
+
+<span class="k">$</span> go run .
+<span class="o">olleH</span>
+
+<span class="c"># ワークスペースを作る</span>
+<span class="k">$</span> cd .. &amp;&amp; go work init ./hello
+<span class="k">$</span> cat go.work
+go 1.27
+
+use ./hello
+
+<span class="k">$</span> go run ./hello
+<span class="o">olleH</span></div>
+  </div>
+</section>
+
+<!-- 16 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 3 · Multi-module workspaces (2/2)</p>
+  <h2>依存先モジュールを clone してワークスペースで書き換える</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう（workspace ディレクトリで）</h3>
+        <ol class="small">
+          <li><code>git clone https://go.googlesource.com/example</code>（GitHub ミラー <code>github.com/golang/example</code> でも可）。</li>
+          <li><code>go work use ./example/hello</code> で <code>go.work</code> に追加。</li>
+          <li><code>example/hello/reverse/int.go</code> を新規作成し、<code>Int</code> 関数を追加。</li>
+          <li><code>hello.go</code> で <code>reverse.Int(24601)</code> も表示するよう変更。</li>
+          <li><code>go run ./hello</code> → 手元で加えた <code>Int</code> が、<b>公開版ではなく clone した方から解決</b>されて動く。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>その他の go work コマンド</h3>
+        <table class="tight xs">
+          <tr><td class="nw"><code>go work use [-r] dir</code></td><td>モジュールを追加（<code>-r</code> で再帰）。存在しないものは削除</td></tr>
+          <tr><td class="nw"><code>go work edit</code></td><td><code>go mod edit</code> と同様に <code>go.work</code> を編集</td></tr>
+          <tr><td class="nw"><code>go work sync</code></td><td>ワークスペースの解決結果を各モジュールの <code>go.mod</code> に反映</td></tr>
+        </table>
+        <p class="xs muted">完成したら <code>example/hello</code> 側を公開（タグ付け）し、<code>hello</code> の <code>go.mod</code> を新バージョンに更新して <code>go.work</code> を外すのが本来の流れ。</p>
+      </div>
+    </div>
+    <div class="term"><span class="k">$</span> git clone https://go.googlesource.com/example
+Cloning into 'example'...
+<span class="k">$</span> go work use ./example/hello
+<span class="k">$</span> cat go.work
+go 1.27
+
+use (
+    ./example/hello
+    ./hello
+)
+
+<span class="title">workspace/example/hello/reverse/int.go（新規）</span><span class="k">package</span> reverse
+
+<span class="k">import</span> <span class="s">"strconv"</span>
+
+<span class="c">// Int returns the decimal reversal of the integer i.</span>
+<span class="k">func</span> <span class="f">Int</span>(i <span class="k">int</span>) <span class="k">int</span> {
+    i, _ = strconv.Atoi(String(strconv.Itoa(i)))
+    <span class="k">return</span> i
+}
+
+<span class="title">workspace/hello/hello.go（main の中）</span>    fmt.Println(reverse.String(<span class="s">"Hello"</span>), reverse.Int(24601))
+
+<span class="k">$</span> go run ./hello
+<span class="o">olleH 10642</span></div>
+  </div>
+</section>
+
+<!-- 17 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 4 · Working with JSON (1/2)</p>
+  <h2>JSON：構造体 ⇄ JSON の変換（Marshal / Unmarshal）</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>json</code> ディレクトリで <code>go mod init example/json</code>。</li>
+          <li>右の <code>main.go</code> を書いて <code>go run .</code>。</li>
+          <li>フィールド名を小文字（<code>name</code>）にして再実行 → JSON に出なくなる。<b>公開フィールドだけ</b>が対象。</li>
+          <li><code>Name string `json:"name"`</code> のように<b>構造体タグ</b>を付けてキー名を変えてみる。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>v1 と v2（Go 1.27 時点）</h3>
+        <ul class="small">
+          <li>公式チュートリアルは <b><code>encoding/json/v2</code></b> で書かれている。Go 1.25 で実験導入、<b>1.27 で標準の <code>encoding/json</code> も v2 実装ベース</b>になり、<code>GOEXPERIMENT</code> 指定なしで <code>encoding/json/v2</code> を import できる。</li>
+          <li><code>Marshal</code> / <code>Unmarshal</code> の使い方は v1 と同じ。v2 は <code>MarshalWrite</code> / <code>UnmarshalRead</code>（io.Writer / io.Reader 直結）や、既定で大文字小文字を区別するキー照合などが違う。</li>
+          <li>Go 1.24 以前では <code>"encoding/json"</code> に読み替えれば右の例はそのまま動く（<code>MarshalWrite</code> を除く）。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">json/main.go</span><span class="k">package</span> main
+
+<span class="k">import</span> (
+    <span class="s">"encoding/json/v2"</span>   <span class="c">// Go 1.24 以前は "encoding/json"</span>
+    <span class="s">"fmt"</span>
+    <span class="s">"time"</span>
+)
+
+<span class="k">type</span> <span class="f">Message</span> <span class="k">struct</span> {
+    Name <span class="k">string</span>
+    Body <span class="k">string</span>
+    Time time.Time
+}
+
+<span class="k">func</span> <span class="f">main</span>() {
+    m := Message{<span class="s">"Alice"</span>, <span class="s">"Hello"</span>, time.Date(2011, 1, 25, 0, 0, 0, 0, time.UTC)}
+    b, err := json.Marshal(m)        <span class="c">// Go の値 → JSON バイト列</span>
+    <span class="k">if</span> err != <span class="k">nil</span> { panic(err) }
+    fmt.Println(<span class="k">string</span>(b))
+
+    <span class="k">var</span> m2 Message
+    err = json.Unmarshal(b, &amp;m2)    <span class="c">// JSON → Go の値（ポインタを渡す）</span>
+    <span class="k">if</span> err != <span class="k">nil</span> { panic(err) }
+    fmt.Printf(<span class="s">"%+v\n"</span>, m2)
+}
+
+<span class="k">$</span> go run .
+<span class="o">{"Name":"Alice","Body":"Hello","Time":"2011-01-25T00:00:00Z"}
+{Name:Alice Body:Hello Time:2011-01-25 00:00:00 +0000 UTC}</span></div>
+  </div>
+</section>
+
+<!-- 18 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Tutorial 4 · Working with JSON (2/2)</p>
+  <h2>構造の分からない JSON：<code>any</code> と型スイッチ、ストリーム、カスタム変換</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li>右のコードを <code>main</code> に追加して実行。JSON の数値は <b><code>float64</code></b>、配列は <code>[]any</code>、オブジェクトは <code>map[string]any</code> になることを確認。</li>
+          <li>同じ JSON を <code>type FamilyMember struct { Name string; Age int; Parents []string }</code> に <code>Unmarshal</code> してみる（型が決まっているならこちらが普通）。</li>
+          <li><code>json.MarshalWrite(os.Stdout, m)</code> で標準出力に直接書き出す（v2）。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>覚えておくこと</h3>
+        <ul class="small">
+          <li>変換できないもの：チャネル・関数・複素数、循環参照。map のキーは文字列（または整数）。</li>
+          <li>ポインタフィールドは指す先の値として出力、<code>nil</code> なら <code>null</code>。JSON に無いキーはゼロ値のまま。</li>
+          <li>独自の表現にしたいときは <code>MarshalJSONTo(*jsontext.Encoder)</code> / <code>UnmarshalJSONFrom(*jsontext.Decoder)</code> を実装（v1 では <code>MarshalJSON() ([]byte, error)</code>）。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">main に追加</span>    raw := []<span class="k">byte</span>(<span class="s">`{"Name":"Wednesday","Age":6,"Parents":["Gomez","Morticia"]}`</span>)
+    <span class="k">var</span> f <span class="k">any</span>
+    <span class="k">if</span> err := json.Unmarshal(raw, &amp;f); err != <span class="k">nil</span> { panic(err) }
+
+    <span class="k">for</span> k, v := <span class="k">range</span> f.(<span class="k">map</span>[<span class="k">string</span>]<span class="k">any</span>) {   <span class="c">// 型アサーション</span>
+        <span class="k">switch</span> vv := v.(<span class="k">type</span>) {                <span class="c">// 型スイッチ</span>
+        <span class="k">case</span> <span class="k">string</span>:
+            fmt.Println(k, <span class="s">"is string"</span>, vv)
+        <span class="k">case</span> <span class="k">float64</span>:
+            fmt.Println(k, <span class="s">"is float64"</span>, vv)
+        <span class="k">case</span> []<span class="k">any</span>:
+            fmt.Println(k, <span class="s">"is an array:"</span>)
+            <span class="k">for</span> i, u := <span class="k">range</span> vv {
+                fmt.Println(i, u)
+            }
+        <span class="k">default</span>:
+            fmt.Println(k, <span class="s">"is of a type I don't know how to handle"</span>)
+        }
+    }
+    json.MarshalWrite(os.Stdout, m)   <span class="c">// io.Writer へ直接（"os" を import）</span>
+
+<span class="k">$</span> go run .
+<span class="o">Name is string Wednesday
+Age is float64 6
+Parents is an array:
+0 Gomez
+1 Morticia
+{"Name":"Alice","Body":"Hello","Time":"2011-01-25T00:00:00Z"}</span></div>
+  </div>
+</section>
+
+<!-- 19 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Troubleshooting</p>
+  <h2>ハンズオンでよくつまずく所と対処</h2>
+  <div class="cols" style="grid-template-columns: 1fr;">
+    <table class="tight small">
+      <tr><th style="width:360px">症状</th><th>原因と対処</th></tr>
+      <tr><td><code>declared and not used: names</code></td><td>Go は未使用の変数・import をコンパイルエラーにする。消すか使う。import は VS Code の Go 拡張（<code>goimports</code>）が保存時に自動整理する</td></tr>
+      <tr><td><code>no required module provides package …; to add it: go get …</code></td><td>import を書いたのに <code>go.mod</code> に無い。<code>go mod tidy</code>（または <code>go get .</code>）を実行</td></tr>
+      <tr><td><code>hello: command not found</code>（<code>go install</code> 後）</td><td><code>$(go env GOPATH)/bin</code> が PATH に無い。3 枚目の PATH 設定をして<b>シェルを開き直す</b></td></tr>
+      <tr><td><code>go: toolchain upgrade needed … switching to go1.26.8</code></td><td>正常。依存が新しい Go を要求したので自動で取得している。ネットワークが無い環境では <code>GOTOOLCHAIN=local</code> にして依存の版を下げる</td></tr>
+      <tr><td><code>package example.com/greetings is not in std</code></td><td><code>replace</code> または <code>go.work</code> の設定漏れ。8 枚目の <code>go mod edit -replace</code> か 15 枚目の <code>go work use</code> を確認</td></tr>
+      <tr><td><code>go: cannot find main module</code></td><td><code>go.mod</code> のあるディレクトリ（またはその配下）で実行していない。<code>cd</code> し直す</td></tr>
+      <tr><td>プロキシ環境で <code>go mod tidy</code> が固まる</td><td><code>HTTPS_PROXY</code> を設定。社内モジュールは <code>GOPRIVATE=github.com/yourorg/*</code> でプロキシ・チェックサム DB を迂回</td></tr>
+      <tr><td>テストが <code>no test files</code></td><td>ファイル名が <code>_test.go</code> で終わっていない、または <code>package</code> 名が違う</td></tr>
+      <tr><td>Windows で <code>./hello</code> が動かない</td><td>実行ファイル名は <code>hello.exe</code>。PowerShell なら <code>.\hello.exe</code></td></tr>
+    </table>
+  </div>
+  <p class="small muted">迷ったら <code>go help &lt;command&gt;</code>、環境は <code>go env</code>、依存の理由は <code>go mod why -m &lt;module&gt;</code>、静的チェックは <code>go vet ./...</code>。</p>
+</section>
+
+<!-- 20 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Wrap-up</p>
+  <h2>まとめ・次のステップ・参考資料</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel go">
+        <h3>①基礎編で通ったこと</h3>
+        <ul class="small">
+          <li>モジュール（<code>go mod init</code> / <code>tidy</code> / <code>go.sum</code>）と外部パッケージの取り込み。</li>
+          <li>ライブラリと実行プログラムを分けて作り、<code>replace</code> または <code>go.work</code> で<b>公開前にローカルで結合</b>する。</li>
+          <li>Go 流のエラー処理（値として返す）、スライス・map・range、標準の <code>testing</code>。</li>
+          <li><code>go build</code> / <code>go install</code> で単一バイナリに。</li>
+          <li><code>encoding/json</code>（v2）で構造体と JSON を相互変換。</li>
+        </ul>
+      </div>
+      <div class="panel handson">
+        <h3>次にやること</h3>
+        <ul class="small">
+          <li><b>②応用編</b>：データベースアクセス、Gin で REST API、ジェネリクス、ファジング、govulncheck。</li>
+          <li><a href="https://go.dev/tour/">A Tour of Go</a> で構造体・メソッド・インターフェース・goroutine / channel を補う（本チュートリアル群では扱わない）。</li>
+          <li>自分の小さな CLI を <code>go build</code> して配布してみる。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><a href="https://go.dev/doc/tutorial/">Tutorials</a> — 公式チュートリアル一覧（本デッキの出典）</li>
+        <li><a href="https://go.dev/doc/tutorial/getting-started">Get started with Go</a> / <a href="https://go.dev/doc/tutorial/create-module">Create a Go module</a>（7 パート）</li>
+        <li><a href="https://go.dev/doc/tutorial/workspaces">Multi-module workspaces</a> / <a href="https://go.dev/doc/tutorial/json">Working with JSON</a></li>
+        <li><a href="https://go.dev/doc/install">Download and install</a> — インストール手順</li>
+        <li><a href="https://go.dev/doc/go1.27">Go 1.27 Release Notes</a> — <code>encoding/json</code> の v2 実装化、ジェネリックメソッドなど</li>
+        <li><a href="https://go.dev/doc/toolchain">Go toolchains</a> — ツールチェーンの自動切替と <code>GOTOOLCHAIN</code></li>
+        <li><a href="https://go.dev/ref/mod">Go Modules Reference</a> — <code>go.mod</code> / <code>replace</code> / <code>go.work</code> の仕様</li>
+        <li><a href="https://pkg.go.dev/">pkg.go.dev</a> — パッケージ検索とドキュメント</li>
+        <li><a href="https://go.dev/doc/effective_go">Effective Go</a> — 慣用的な書き方</li>
+      </ul>
+      <p class="xs muted">本デッキは 2026-09-15 時点の go.dev の内容に基づく。コマンド出力は go1.24.7 / go1.27.1（Linux）で実行したもので、モジュールの版番号や乱数の結果は実行時期・環境で変わる。</p>
+    </div>
+  </div>
+</section>
+
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷/PDF</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>

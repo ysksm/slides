@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Go 言語チュートリアル ハンズオン ② 応用編 — データベース・REST API・ジェネリクス・ファジング・govulncheck</title>
+<meta name="description" content="go.dev の公式チュートリアル後半（Accessing a relational database / RESTful API with Gin / Generics / Fuzzing / govulncheck）を、手を動かしながら進めるハンズオン形式のスライド。各ステップのコマンド・コード・実行結果を検証済みの内容で示す">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F4F8FA;
+    --paper-2: #E5EEF2;
+    --ink: #10232B;
+    --ink-2: #3F565F;
+    --ink-3: #7A8E96;
+    --rule: #C9D8DF;
+    --go: #007D9C;          /* Go blue */
+    --go-soft: #D5EDF4;
+    --go-2: #00ADD8;
+    --amber: #B0741A;       /* hands-on */
+    --amber-soft: #F8E9C9;
+    --green: #2E7D4F;       /* ok */
+    --green-soft: #D9EDE1;
+    --red: #B4432F;
+    --red-soft: #F6DAD5;
+    --term: #0F1E24;
+    --term-ink: #DCE9ED;
+    --term-dim: #7E969E;
+    --term-key: #79D3EE;
+    --term-str: #F2C97D;
+    --term-num: #A5E3A0;
+    --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--term);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+  /* ---------- stage ---------- */
+  #stage { position: fixed; inset: 0; padding: 16px; }
+  /* deck はレイアウト上 1280x720 のまま transform で縮小する。グリッド/フレックスの
+     中央寄せはコンテナより大きい要素だと start 寄せに落ちてスライドが画面外に出るため、
+     ビューポート中央に絶対配置し、fit() が縮小後サイズの半分だけ戻す。 */
+  .deck {
+    width: 1280px; height: 720px;
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: 0 0;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 44px 64px 56px;
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex; }
+  .slide::after {
+    content: attr(data-n) " / " attr(data-total);
+    position: absolute; right: 64px; bottom: 22px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .slide::before {
+    content: "Go 言語チュートリアル ハンズオン ② 応用編 — go.dev/doc/tutorial";
+    position: absolute; left: 64px; bottom: 22px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    letter-spacing: .04em;
+  }
+  .slide.cover::before, .slide.cover::after { display: none; }
+
+  /* ---------- type ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--go); margin: 0;
+  }
+  h1 { font-family: var(--display); font-weight: 900; font-size: 58px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--display); font-weight: 700; font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0; }
+  .lead { font-size: 19px; color: var(--ink-2); max-width: 48em; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12.5px; }
+  code, .mono { font-family: var(--mono); }
+  p code, li code, td code, th code, dd code, h3 code {
+    background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: .92em;
+  }
+  ul, ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--go); }
+  b, strong { font-weight: 600; }
+  a { color: var(--go); text-decoration: none; border-bottom: 1px solid var(--go-soft); }
+
+  /* ---------- layout helpers ---------- */
+  .cols { display: grid; gap: 22px; flex: 1; min-height: 0; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-52 { grid-template-columns: 1.15fr 1fr; }
+  .cols-25 { grid-template-columns: 1fr 1.25fr; }
+  .cols-code { grid-template-columns: 0.9fr 1.1fr; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .cols > *, .stack > * { min-width: 0; }
+  .grow { flex: 1; min-height: 0; }
+  .panel {
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px;
+  }
+  .panel.go { border-top: 3px solid var(--go); }
+  .panel.amber { border-top: 3px solid var(--amber); }
+  .panel.green { border-top: 3px solid var(--green); }
+  .panel.red { border-top: 3px solid var(--red); }
+  .panel.handson { background: #FFFBF1; border-color: #EBD9A8; border-left: 4px solid var(--amber); }
+  .panel.handson h3 { color: var(--amber); }
+  .panel.handson h3::before { content: "▶ "; }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+    padding: 1px 8px; border-radius: 999px; background: var(--go-soft); color: var(--go);
+    vertical-align: middle; margin-left: 6px; text-transform: uppercase;
+  }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.green { background: var(--green-soft); color: var(--green); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  ul.plusminus { list-style: none; padding-left: 1.4em; }
+  ul.plusminus li { text-indent: -1.4em; }
+  ul.plusminus li.good::before { content: "○ "; color: var(--green); font-weight: 700; }
+  ul.plusminus li.bad::before { content: "△ "; color: var(--red); font-weight: 700; }
+
+  /* ---------- terminal / code ---------- */
+  .term {
+    background: var(--term); color: var(--term-ink); border-radius: 8px;
+    padding: 12px 16px; font-family: var(--mono); font-size: 12px; line-height: 1.42;
+    overflow: hidden; white-space: pre; tab-size: 4; min-width: 0;
+  }
+  .term .o { white-space: pre-wrap; word-break: break-all; }
+  .term .k { color: var(--term-key); }
+  .term .s { color: var(--term-str); }
+  .term .n { color: var(--term-num); }
+  .term .d { color: var(--term-dim); }
+  .term .c { color: var(--term-dim); font-style: italic; }
+  .term .o { color: #fff; }
+  .term .err { color: #F19A8C; }
+  .term .ok { color: var(--term-num); }
+  .term .f { color: #8FB4FF; font-weight: 500; }
+  .term.sm { font-size: 11.5px; }
+  .term.xs { font-size: 11px; line-height: 1.38; }
+  .term .title { display: block; color: var(--term-dim); font-size: 11px; letter-spacing: .08em; margin-bottom: 4px; }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .tight td, .tight th { padding: 4px 8px; }
+  td.nw { white-space: nowrap; }
+
+  /* ---------- diagram ---------- */
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 10px; }
+  .box { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+  .box .t { font-family: var(--display); font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+  .box.go { border-color: var(--go); background: var(--go-soft); }
+  .box.amber { border-color: var(--amber); background: var(--amber-soft); }
+  .arrow { font-family: var(--mono); color: var(--ink-3); font-size: 12px; text-align: center; line-height: 1.3; align-self: center; }
+  .arrow b { display: block; font-size: 18px; color: var(--go); }
+
+  /* ---------- step list ---------- */
+  .steps { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+  .step { display: grid; grid-template-columns: 42px 250px 1fr; gap: 12px; align-items: start;
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 8px 14px; }
+  .step .no { font-family: var(--display); font-weight: 900; font-size: 24px; color: var(--go); line-height: 1.2; }
+  .step .name { font-family: var(--display); font-weight: 700; font-size: 15px; line-height: 1.4; }
+  .step .desc { font-size: 13px; color: var(--ink-2); }
+  .step.done { border-color: var(--green); }
+  .step.done .no { color: var(--green); }
+
+  /* ---------- cover ---------- */
+  .cover { background: var(--term); color: var(--term-ink); justify-content: flex-end; padding-bottom: 80px; }
+  .cover .eyebrow { color: var(--term-key); }
+  .cover h1 { color: #fff; font-size: 64px; }
+  .cover .lead { color: var(--term-ink); }
+  .cover .meta { font-family: var(--mono); font-size: 13px; color: var(--term-dim); display: flex; gap: 28px; }
+  .cover .frame {
+    position: absolute; right: 72px; top: 56px; width: 470px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--term-dim); line-height: 1.55; white-space: pre;
+    border-left: 2px solid var(--go-2); padding-left: 16px;
+  }
+  .cover .frame .k { color: var(--term-key); } .cover .frame .s { color: var(--term-str); } .cover .frame .n { color: var(--term-num); } .cover .frame .c { color: var(--term-dim); font-style: italic; }
+
+  /* ---------- nav ---------- */
+  #hud {
+    position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 11px; color: var(--term-dim); opacity: .7;
+  }
+  .kbd { border: 1px solid var(--term-dim); border-radius: 3px; padding: 0 5px; }
+  :focus-visible { outline: 2px solid var(--go); outline-offset: 2px; }
+
+  /* ---------- overview & print ---------- */
+  body.overview #stage { display: block; overflow: auto; padding: 24px; }
+  body.overview .deck { position: static; width: auto; height: auto; transform: none !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.overview .slide { display: flex; position: relative; width: 100%; aspect-ratio: 16/9; height: auto; zoom: .32; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; display: block; padding: 0; }
+    .deck { position: static; width: 1280px; height: auto; transform: none !important; }
+    .slide { display: flex; position: relative; height: 720px; page-break-after: always; box-shadow: none; }
+    #hud { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: in .18s ease-out; }
+    @keyframes in { from { opacity: .4; } to { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div id="stage"><div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────── -->
+<section class="slide cover">
+  <div class="frame"><span class="k">$</span> go run .
+[GIN-debug] GET    /albums     --&gt; main.getAlbums
+[GIN-debug] POST   /albums     --&gt; main.postAlbums
+[GIN-debug] Listening and serving HTTP on localhost:8080
+
+<span class="k">$</span> go test -fuzz=Fuzz
+fuzz: elapsed: 0s, gathering baseline coverage: 3/3 completed
+<span class="s">--- FAIL: FuzzReverse (0.03s)</span>
+    reverse_test.go:20: Reverse produced invalid UTF-8 string "\xb5\xc4"
+    Failing input written to testdata/fuzz/FuzzReverse/123f558d22cc0d86
+
+<span class="k">$</span> govulncheck ./...
+Vulnerability #1: GO-2021-0113
+    Found in: golang.org/x/text@v0.3.5
+    Fixed in: golang.org/x/text@v0.3.7
+<span class="n">$ go get golang.org/x/text@v0.3.8</span></div>
+  <p class="eyebrow">Hands-on · ysksm/slides · ② 応用編</p>
+  <h1>Go 言語チュートリアル<br>ハンズオン ② 応用編</h1>
+  <p class="lead">go.dev の公式チュートリアル後半。リレーショナルデータベースへのアクセス、Gin で REST API、ジェネリクス、ファジング、govulncheck による脆弱な依存の検出と修正。項目ごとに独立しているので、必要なところから始められる。</p>
+  <p class="meta"><span>2026-09-15</span><span>go.dev/doc/tutorial</span><span>Go 1.27 時点</span></p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Roadmap</p>
+  <h2>応用編の全体像：5 つのテーマ、それぞれ独立に進められる</h2>
+  <div class="cols cols-52">
+    <div class="steps">
+      <div class="step"><div class="no">A</div><div class="name">データベースアクセス <span class="tag">3–6 枚目</span></div><div class="desc"><code>database/sql</code> + MySQL ドライバ。接続、複数行クエリ、1 行クエリ、INSERT。<b>MySQL が必要</b>（Docker で代用可）</div></div>
+      <div class="step"><div class="no">B</div><div class="name">Gin で RESTful API <span class="tag">7–9 枚目</span></div><div class="desc">サードパーティの Web フレームワーク Gin。JSON を返す GET / POST / パスパラメータ。<code>curl</code> で確認</div></div>
+      <div class="step"><div class="no">C</div><div class="name">ジェネリクス <span class="tag">10–11 枚目</span></div><div class="desc">型パラメータ、型推論、型制約（Go 1.18+）。標準ライブラリのみ</div></div>
+      <div class="step"><div class="no">D</div><div class="name">ファジング <span class="tag">12–14 枚目</span></div><div class="desc"><code>go test -fuzz</code> でランダム入力からバグを 2 つ見つけて直す。標準ライブラリのみ</div></div>
+      <div class="step"><div class="no">E</div><div class="name">govulncheck <span class="tag">15–17 枚目</span></div><div class="desc">既知の脆弱性を持つ依存を検出し、実際に呼んでいるかまで判定して修正。VS Code Go からの利用も</div></div>
+    </div>
+    <div class="stack">
+      <div class="panel handson">
+        <h3>前提</h3>
+        <ul class="small">
+          <li><b>①基礎編</b>の内容（<code>go mod init</code>、<code>go run</code>、<code>go mod tidy</code>、エラー処理、テスト）を済ませていること。</li>
+          <li>Go は最新版推奨。<b>Gin v1.12 は Go 1.25 以上を要求</b>する（古い Go でも自動でツールチェーンが切り替わる）。</li>
+          <li>B と E で <code>curl</code> と <code>go install</code> したコマンドを使う（<code>$(go env GOPATH)/bin</code> を PATH に）。</li>
+          <li>A だけ MySQL サーバーが要る。無ければ 3 枚目の Docker の 1 行で用意する。</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>検証環境と所要時間</h3>
+        <ul class="small">
+          <li>コマンド・出力は go1.24.7 / go1.27.1、gin v1.12.0、govulncheck（2026-09 時点）、Linux で実行して確認した（A はコードと SQL を公式に沿って掲載）。</li>
+          <li>目安：A 25 分、B 20 分、C 15 分、D 20 分、E 15 分。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">A · Accessing a relational database (1/4)</p>
+  <h2>データベースを用意して、テーブルとデータを作る</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li>MySQL を用意する。ローカルに無ければ右上の Docker コマンドで起動（root パスワードは例）。</li>
+          <li>ホームに <code>data-access</code> を作り <code>go mod init example/data-access</code>。</li>
+          <li><code>create-tables.sql</code> を保存し、<code>mysql</code> クライアントで <code>recordings</code> データベースを作って <code>source</code> で流し込む。</li>
+          <li><code>select * from album;</code> で 4 行入っていることを確認。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>使うもの</h3>
+        <ul class="small">
+          <li><b><code>database/sql</code></b>：標準ライブラリの汎用 SQL インターフェース。DB 固有部分は<b>ドライバ</b>が担う。</li>
+          <li>ドライバは <a href="https://github.com/go-sql-driver/mysql">go-sql-driver/mysql</a>（<a href="https://go.dev/wiki/SQLDrivers">SQLDrivers 一覧</a>から選ぶ）。PostgreSQL なら <code>pgx</code>、SQLite なら <code>modernc.org/sqlite</code> など。</li>
+          <li>チュートリアルの流れ：接続 → 複数行クエリ → 1 行クエリ → INSERT。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="c"># MySQL が無ければ Docker で（例）</span>
+<span class="k">$</span> docker run --name mysql-go -e MYSQL_ROOT_PASSWORD=secret \
+    -p 3306:3306 -d mysql:8
+
+<span class="k">$</span> cd &amp;&amp; mkdir data-access &amp;&amp; cd data-access
+<span class="k">$</span> go mod init example/data-access
+
+<span class="title">data-access/create-tables.sql</span>DROP TABLE IF EXISTS album;
+CREATE TABLE album (
+  id         INT AUTO_INCREMENT NOT NULL,
+  title      VARCHAR(128) NOT NULL,
+  artist     VARCHAR(255) NOT NULL,
+  price      DECIMAL(5,2) NOT NULL,
+  PRIMARY KEY (`id`)
+);
+
+INSERT INTO album
+  (title, artist, price)
+VALUES
+  ('Blue Train', 'John Coltrane', 56.99),
+  ('Giant Steps', 'John Coltrane', 63.99),
+  ('Jeru', 'Gerry Mulligan', 17.99),
+  ('Sarah Vaughan', 'Sarah Vaughan', 34.98);
+
+<span class="k">$</span> mysql -h 127.0.0.1 -u root -p
+mysql&gt; create database recordings;
+mysql&gt; use recordings;
+mysql&gt; source /path/to/create-tables.sql
+mysql&gt; select * from album;
+<span class="o">| id | title         | artist         | price |
+|  1 | Blue Train    | John Coltrane  | 56.99 |  … 4 rows</span></div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">A · Accessing a relational database (2/4)</p>
+  <h2>接続する：<code>sql.Open</code> と <code>db.Ping</code></h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>main.go</code> に左下と右のコードを書く（クエリ関数は次の枚で追加。まずは <code>Connected!</code> まで）。</li>
+          <li><code>go get .</code> でドライバを取得（<code>go.mod</code> に <code>github.com/go-sql-driver/mysql</code> が入る）。</li>
+          <li>環境変数 <code>DBUSER</code> / <code>DBPASS</code> を設定して <code>go run .</code>。</li>
+        </ol>
+      </div>
+      <div class="term xs"><span class="title">data-access/main.go（宣言部）</span><span class="k">package</span> main
+
+<span class="k">import</span> (
+    <span class="s">"database/sql"</span>
+    <span class="s">"fmt"</span>
+    <span class="s">"log"</span>
+    <span class="s">"os"</span>
+
+    <span class="s">"github.com/go-sql-driver/mysql"</span>
+)
+
+<span class="k">var</span> db *sql.DB     <span class="c">// パッケージ全体で共有する接続プール</span>
+
+<span class="k">type</span> <span class="f">Album</span> <span class="k">struct</span> {
+    ID     <span class="k">int64</span>
+    Title  <span class="k">string</span>
+    Artist <span class="k">string</span>
+    Price  <span class="k">float32</span>
+}</div>
+    </div>
+    <div class="stack">
+      <div class="term xs"><span class="title">data-access/main.go（main）</span><span class="k">func</span> <span class="f">main</span>() {
+    <span class="c">// Capture connection properties.</span>
+    cfg := mysql.NewConfig()
+    cfg.User = os.Getenv(<span class="s">"DBUSER"</span>)
+    cfg.Passwd = os.Getenv(<span class="s">"DBPASS"</span>)
+    cfg.Net = <span class="s">"tcp"</span>
+    cfg.Addr = <span class="s">"127.0.0.1:3306"</span>
+    cfg.DBName = <span class="s">"recordings"</span>
+
+    <span class="c">// Get a database handle.</span>
+    <span class="k">var</span> err <span class="k">error</span>
+    db, err = sql.Open(<span class="s">"mysql"</span>, cfg.FormatDSN())
+    <span class="k">if</span> err != <span class="k">nil</span> { log.Fatal(err) }
+
+    <span class="k">if</span> err := db.Ping(); err != <span class="k">nil</span> { log.Fatal(err) }
+    fmt.Println(<span class="s">"Connected!"</span>)
+}
+
+<span class="k">$</span> go get .
+go: added filippo.io/edwards25519 v1.1.0
+go: added github.com/go-sql-driver/mysql v1.8.1
+<span class="k">$</span> export DBUSER=root DBPASS=secret &amp;&amp; go run .
+<span class="o">Connected!</span></div>
+      <p class="xs muted"><b>ポイント</b>：認証情報はコードに書かず <code>os.Getenv</code> で受け取る。<code>sql.Open</code> は<b>接続しない</b>（ハンドル生成のみ）ので疎通は <code>db.Ping()</code> で確認する。<code>*sql.DB</code> は接続プールで、プログラム全体で 1 つを共有する。ドライバは <code>import _ "…/mysql"</code> の副作用 import で登録することも多い。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 5 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">A · Accessing a relational database (3/4)</p>
+  <h2>複数行を読む・1 行を読む：<code>Query</code> / <code>QueryRow</code> と <code>Scan</code></h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <p class="small">右の 2 関数を <code>main.go</code> に追加し、<code>main</code> の末尾に下の呼び出しを足して <code>go run .</code>。</p>
+      </div>
+      <div class="term xs"><span class="title">main に追加</span>    albums, err := albumsByArtist(<span class="s">"John Coltrane"</span>)
+    <span class="k">if</span> err != <span class="k">nil</span> { log.Fatal(err) }
+    fmt.Printf(<span class="s">"Albums found: %v\n"</span>, albums)
+    alb, err := albumByID(2)   <span class="c">// ID 2 を直書きして試す</span>
+    <span class="k">if</span> err != <span class="k">nil</span> { log.Fatal(err) }
+    fmt.Printf(<span class="s">"Album found: %v\n"</span>, alb)
+
+<span class="k">$</span> go run .
+<span class="o">Albums found: [{1 Blue Train John Coltrane 56.99} {2 Giant Steps John Coltrane 63.99}]
+Album found: {2 Giant Steps John Coltrane 63.99}</span></div>
+      <div class="panel go">
+        <h3>ポイント</h3>
+        <ul class="xs">
+          <li><b>プレースホルダ <code>?</code></b> に引数を渡す。文字列連結で SQL を組み立てない（SQL インジェクション防止）。</li>
+          <li><code>rows.Next()</code> → <code>rows.Scan(&amp;…)</code> で 1 行ずつ構造体に写す。<b><code>defer rows.Close()</code></b> と最後の <code>rows.Err()</code> を忘れない。</li>
+          <li><code>QueryRow</code> は 1 行専用。該当なしは <code>sql.ErrNoRows</code>。エラーは <code>fmt.Errorf</code> で「どの関数で・何のキーで」を付けて返す。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="k">func</span> <span class="f">albumsByArtist</span>(name <span class="k">string</span>) ([]Album, <span class="k">error</span>) {
+    <span class="k">var</span> albums []Album
+    rows, err := db.Query(<span class="s">"SELECT * FROM album WHERE artist = ?"</span>, name)
+    <span class="k">if</span> err != <span class="k">nil</span> {
+        <span class="k">return</span> <span class="k">nil</span>, fmt.Errorf(<span class="s">"albumsByArtist %q: %v"</span>, name, err)
+    }
+    <span class="k">defer</span> rows.Close()
+    <span class="k">for</span> rows.Next() {   <span class="c">// Scan で列を構造体のフィールドへ</span>
+        <span class="k">var</span> alb Album
+        err := rows.Scan(&amp;alb.ID, &amp;alb.Title, &amp;alb.Artist, &amp;alb.Price)
+        <span class="k">if</span> err != <span class="k">nil</span> {
+            <span class="k">return</span> <span class="k">nil</span>, fmt.Errorf(<span class="s">"albumsByArtist %q: %v"</span>, name, err)
+        }
+        albums = append(albums, alb)
+    }
+    <span class="k">if</span> err := rows.Err(); err != <span class="k">nil</span> {
+        <span class="k">return</span> <span class="k">nil</span>, fmt.Errorf(<span class="s">"albumsByArtist %q: %v"</span>, name, err)
+    }
+    <span class="k">return</span> albums, <span class="k">nil</span>
+}
+
+<span class="k">func</span> <span class="f">albumByID</span>(id <span class="k">int64</span>) (Album, <span class="k">error</span>) {
+    <span class="k">var</span> alb Album
+    row := db.QueryRow(<span class="s">"SELECT * FROM album WHERE id = ?"</span>, id)
+    err := row.Scan(&amp;alb.ID, &amp;alb.Title, &amp;alb.Artist, &amp;alb.Price)
+    <span class="k">if</span> err != <span class="k">nil</span> {
+        <span class="k">if</span> err == sql.ErrNoRows {
+            <span class="k">return</span> alb, fmt.Errorf(<span class="s">"albumsById %d: no such album"</span>, id)
+        }
+        <span class="k">return</span> alb, fmt.Errorf(<span class="s">"albumsById %d: %v"</span>, id, err)
+    }
+    <span class="k">return</span> alb, <span class="k">nil</span>
+}</div>
+  </div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">A · Accessing a relational database (4/4)</p>
+  <h2>行を追加する：<code>Exec</code> と <code>LastInsertId</code></h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>addAlbum</code> を追加し、<code>main</code> の末尾から呼ぶ。</li>
+          <li><code>go run .</code> → 新しい ID が返る。もう一度実行すると ID が増える（毎回 INSERT されるため）。</li>
+          <li><code>mysql</code> で <code>select * from album;</code> して行が増えていることを確認。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>ポイントと発展</h3>
+        <ul class="small">
+          <li>結果行を返さない文（INSERT / UPDATE / DELETE）は <b><code>db.Exec</code></b>。戻り値の <code>sql.Result</code> から <code>LastInsertId()</code> / <code>RowsAffected()</code>。</li>
+          <li>PostgreSQL は <code>LastInsertId</code> 非対応なので <code>INSERT … RETURNING id</code> を <code>QueryRow</code> で読む。</li>
+          <li>実務では <code>context</code> 付きの <code>QueryContext</code> / <code>ExecContext</code> でタイムアウトを付け、複数文は <code>db.Begin()</code> のトランザクションで囲む。</li>
+          <li>詳しくは <a href="https://go.dev/doc/database/">Accessing databases</a>（公式ガイド集）。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="c">// addAlbum adds the specified album to the database,</span>
+<span class="c">// returning the album ID of the new entry</span>
+<span class="k">func</span> <span class="f">addAlbum</span>(alb Album) (<span class="k">int64</span>, <span class="k">error</span>) {
+    result, err := db.Exec(<span class="s">"INSERT INTO album (title, artist, price) VALUES (?, ?, ?)"</span>,
+        alb.Title, alb.Artist, alb.Price)
+    <span class="k">if</span> err != <span class="k">nil</span> {
+        <span class="k">return</span> 0, fmt.Errorf(<span class="s">"addAlbum: %v"</span>, err)
+    }
+    id, err := result.LastInsertId()
+    <span class="k">if</span> err != <span class="k">nil</span> {
+        <span class="k">return</span> 0, fmt.Errorf(<span class="s">"addAlbum: %v"</span>, err)
+    }
+    <span class="k">return</span> id, <span class="k">nil</span>
+}
+
+<span class="title">main に追加</span>    albID, err := addAlbum(Album{
+        Title:  <span class="s">"The Modern Sound of Betty Carter"</span>,
+        Artist: <span class="s">"Betty Carter"</span>,
+        Price:  49.99,
+    })
+    <span class="k">if</span> err != <span class="k">nil</span> { log.Fatal(err) }
+    fmt.Printf(<span class="s">"ID of added album: %v\n"</span>, albID)
+
+<span class="k">$</span> go run .
+<span class="o">Connected!
+Albums found: [{1 Blue Train John Coltrane 56.99} {2 Giant Steps John Coltrane 63.99}]
+Album found: {2 Giant Steps John Coltrane 63.99}
+ID of added album: 5</span></div>
+  </div>
+</section>
+
+<!-- 7 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">B · RESTful API with Go and Gin (1/3)</p>
+  <h2>API を設計し、データ構造を用意する</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li>ホームに <code>web-service-gin</code> を作り <code>go mod init example/web-service-gin</code>。</li>
+          <li><code>main.go</code> に右の <code>album</code> 型と初期データを書く。</li>
+        </ol>
+        <table class="tight xs" style="margin-top:6px">
+          <tr><th>メソッド / パス</th><th>動作</th></tr>
+          <tr><td class="nw"><code>GET /albums</code></td><td>全アルバムを JSON 配列で返す</td></tr>
+          <tr><td class="nw"><code>GET /albums/:id</code></td><td>ID が一致する 1 件を返す。無ければ 404</td></tr>
+          <tr><td class="nw"><code>POST /albums</code></td><td>リクエスト本文の JSON を追加し 201 で返す</td></tr>
+        </table>
+      </div>
+      <div class="panel go">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li><b>Gin</b>（<a href="https://gin-gonic.com/">gin-gonic.com</a>）は高速なルーティングと JSON 処理を持つ Web フレームワーク。標準の <code>net/http</code> だけでも書けるが、チュートリアルは Gin を使う。</li>
+          <li><b>構造体タグ</b> <code>`json:"id"`</code>：JSON にしたときのキー名。Go の公開フィールド名（大文字）と JSON の小文字キーの橋渡し。</li>
+          <li>データは DB の代わりにメモリ上のスライス。再起動すると消える。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="k">$</span> cd &amp;&amp; mkdir web-service-gin &amp;&amp; cd web-service-gin
+<span class="k">$</span> go mod init example/web-service-gin
+
+<span class="title">web-service-gin/main.go（前半）</span><span class="k">package</span> main
+
+<span class="k">import</span> (
+    <span class="s">"net/http"</span>
+
+    <span class="s">"github.com/gin-gonic/gin"</span>
+)
+
+<span class="c">// album represents data about a record album.</span>
+<span class="k">type</span> <span class="f">album</span> <span class="k">struct</span> {
+    ID     <span class="k">string</span>  <span class="s">`json:"id"`</span>
+    Title  <span class="k">string</span>  <span class="s">`json:"title"`</span>
+    Artist <span class="k">string</span>  <span class="s">`json:"artist"`</span>
+    Price  <span class="k">float64</span> <span class="s">`json:"price"`</span>
+}
+
+<span class="c">// albums slice to seed record album data.</span>
+<span class="k">var</span> albums = []album{
+    {ID: <span class="s">"1"</span>, Title: <span class="s">"Blue Train"</span>, Artist: <span class="s">"John Coltrane"</span>, Price: 56.99},
+    {ID: <span class="s">"2"</span>, Title: <span class="s">"Jeru"</span>, Artist: <span class="s">"Gerry Mulligan"</span>, Price: 17.99},
+    {ID: <span class="s">"3"</span>, Title: <span class="s">"Sarah Vaughan and Clifford Brown"</span>,
+        Artist: <span class="s">"Sarah Vaughan"</span>, Price: 39.99},
+}</div>
+  </div>
+</section>
+
+<!-- 8 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">B · RESTful API with Go and Gin (2/3)</p>
+  <h2>ルーターとハンドラを書いて起動、curl で GET</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>getAlbums</code> と <code>main</code> を追加。</li>
+          <li><code>go get .</code> で Gin と依存を取得（Go 1.25 未満なら自動でツールチェーンが切り替わる）。</li>
+          <li><code>go run .</code> でサーバーを起動（このターミナルは占有される）。</li>
+          <li><b>別のターミナル</b>で <code>curl http://localhost:8080/albums</code>。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li><code>gin.Default()</code>：ロガーとリカバリ（panic を 500 に）ミドルウェア付きのルーター。</li>
+          <li>ハンドラは <code>func(c *gin.Context)</code>。<code>c.IndentedJSON(status, value)</code> で構造体を整形 JSON にして返す（本番は <code>c.JSON</code> の方が小さい）。</li>
+          <li><code>router.Run("localhost:8080")</code> でループバックのみ待ち受け。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">main.go（続き）</span><span class="k">func</span> <span class="f">main</span>() {
+    router := gin.Default()
+    router.GET(<span class="s">"/albums"</span>, getAlbums)
+
+    router.Run(<span class="s">"localhost:8080"</span>)
+}
+
+<span class="c">// getAlbums responds with the list of all albums as JSON.</span>
+<span class="k">func</span> <span class="f">getAlbums</span>(c *gin.Context) {
+    c.IndentedJSON(http.StatusOK, albums)
+}
+
+<span class="k">$</span> go get .
+go: added github.com/gin-gonic/gin v1.12.0
+go: added github.com/gin-contrib/sse v1.1.0
+…
+<span class="k">$</span> go run .
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+[GIN-debug] GET    /albums                   --&gt; main.getAlbums (3 handlers)
+[GIN-debug] Listening and serving HTTP on localhost:8080
+
+<span class="c"># 別ターミナルで</span>
+<span class="k">$</span> curl http://localhost:8080/albums
+<span class="o">[
+    {
+        "id": "1",
+        "title": "Blue Train",
+        "artist": "John Coltrane",
+        "price": 56.99
+    },
+    …
+]</span></div>
+  </div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">B · RESTful API with Go and Gin (3/3)</p>
+  <h2>POST で追加、パスパラメータで 1 件取得</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="term xs"><span class="title">main.go（追加分）</span><span class="c">// postAlbums adds an album from JSON received in the request body.</span>
+<span class="k">func</span> <span class="f">postAlbums</span>(c *gin.Context) {
+    <span class="k">var</span> newAlbum album
+    <span class="k">if</span> err := c.BindJSON(&amp;newAlbum); err != <span class="k">nil</span> {
+        <span class="k">return</span>
+    }
+    albums = append(albums, newAlbum)
+    c.IndentedJSON(http.StatusCreated, newAlbum)
+}
+
+<span class="k">func</span> <span class="f">getAlbumByID</span>(c *gin.Context) {
+    id := c.Param(<span class="s">"id"</span>)
+    <span class="k">for</span> _, a := <span class="k">range</span> albums {
+        <span class="k">if</span> a.ID == id {
+            c.IndentedJSON(http.StatusOK, a)
+            <span class="k">return</span>
+        }
+    }
+    c.IndentedJSON(http.StatusNotFound, gin.H{<span class="s">"message"</span>: <span class="s">"album not found"</span>})
+}</div>
+      <div class="panel go">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li><code>c.BindJSON(&amp;v)</code>：本文の JSON を構造体へ。失敗時は 400 を返してくれるので <code>return</code> するだけ。</li>
+          <li><code>/albums/:id</code> の <code>:id</code> はパスパラメータ。<code>c.Param("id")</code> で取り出す。</li>
+          <li><code>gin.H</code> は <code>map[string]any</code> の別名。即席の JSON オブジェクトに。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li>左の 2 関数を追加し、<code>main</code> に <code>router.GET("/albums/:id", getAlbumByID)</code> と <code>router.POST("/albums", postAlbums)</code> を登録。サーバーを再起動（Ctrl+C → <code>go run .</code>）。</li>
+          <li>別ターミナルで下の 3 つの curl を順に打つ。</li>
+        </ol>
+      </div>
+      <div class="term xs"><span class="k">$</span> curl http://localhost:8080/albums \
+    --include --header <span class="s">"Content-Type: application/json"</span> \
+    --request <span class="s">"POST"</span> \
+    --data <span class="s">'{"id": "4","title": "The Modern Sound of Betty Carter",
+             "artist": "Betty Carter","price": 49.99}'</span>
+<span class="o">HTTP/1.1 201 Created
+{
+    "id": "4",
+    "title": "The Modern Sound of Betty Carter",
+    "artist": "Betty Carter",
+    "price": 49.99
+}</span>
+<span class="k">$</span> curl http://localhost:8080/albums/2
+<span class="o">{ "id": "2", "title": "Jeru", "artist": "Gerry Mulligan", "price": 17.99 }</span>
+<span class="k">$</span> curl -i http://localhost:8080/albums/9
+<span class="err">HTTP/1.1 404 Not Found</span>
+{ "message": "album not found" }</div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">C · Getting started with generics (1/2)</p>
+  <h2>同じ処理を型ごとに書く → 型パラメータで 1 つにする</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>generics</code> ディレクトリで <code>go mod init example/generics</code>。</li>
+          <li>まず <code>SumInts</code> と <code>SumFloats</code>（非ジェネリック）と <code>main</code> を書いて <code>go run .</code>。</li>
+          <li><code>SumIntsOrFloats</code> を追加し、<code>main</code> に <b>型引数を明示した呼び出し</b>を足して <code>go run .</code>。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>読み方</h3>
+        <ul class="small">
+          <li><code>[K comparable, V int64 | float64]</code> が<b>型パラメータ</b>。<code>K</code> は「== で比較できる型」、<code>V</code> は int64 か float64 のどちらか（<b>union</b>）。</li>
+          <li>本体は同じコード。<code>var s V</code> のように型パラメータをそのまま型として使う。</li>
+          <li>呼び出し側で <code>SumIntsOrFloats[string, int64](ints)</code> と型引数を与えると、コンパイル時にその型で具体化される。</li>
+          <li>map のキーは比較可能である必要があるので <code>comparable</code> 制約が要る。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">generics/main.go（抜粋）</span><span class="k">func</span> <span class="f">SumInts</span>(m <span class="k">map</span>[<span class="k">string</span>]<span class="k">int64</span>) <span class="k">int64</span> {
+    <span class="k">var</span> s <span class="k">int64</span>
+    <span class="k">for</span> _, v := <span class="k">range</span> m { s += v }
+    <span class="k">return</span> s
+}
+<span class="k">func</span> <span class="f">SumFloats</span>(m <span class="k">map</span>[<span class="k">string</span>]<span class="k">float64</span>) <span class="k">float64</span> {
+    <span class="k">var</span> s <span class="k">float64</span>
+    <span class="k">for</span> _, v := <span class="k">range</span> m { s += v }
+    <span class="k">return</span> s
+}
+<span class="c">// SumIntsOrFloats sums the values of map m. It supports both int64 and float64</span>
+<span class="c">// as types for map values.</span>
+<span class="k">func</span> <span class="f">SumIntsOrFloats</span>[K <span class="k">comparable</span>, V <span class="k">int64</span> | <span class="k">float64</span>](m <span class="k">map</span>[K]V) V {
+    <span class="k">var</span> s V
+    <span class="k">for</span> _, v := <span class="k">range</span> m { s += v }
+    <span class="k">return</span> s
+}
+
+<span class="k">func</span> <span class="f">main</span>() {
+    ints := <span class="k">map</span>[<span class="k">string</span>]<span class="k">int64</span>{<span class="s">"first"</span>: 34, <span class="s">"second"</span>: 12}
+    floats := <span class="k">map</span>[<span class="k">string</span>]<span class="k">float64</span>{<span class="s">"first"</span>: 35.98, <span class="s">"second"</span>: 26.99}
+
+    fmt.Printf(<span class="s">"Non-Generic Sums: %v and %v\n"</span>, SumInts(ints), SumFloats(floats))
+    fmt.Printf(<span class="s">"Generic Sums: %v and %v\n"</span>,
+        SumIntsOrFloats[<span class="k">string</span>, <span class="k">int64</span>](ints),
+        SumIntsOrFloats[<span class="k">string</span>, <span class="k">float64</span>](floats))
+}
+
+<span class="k">$</span> go run .
+<span class="o">Non-Generic Sums: 46 and 62.97
+Generic Sums: 46 and 62.97</span></div>
+  </div>
+</section>
+
+<!-- 11 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">C · Getting started with generics (2/2)</p>
+  <h2>型推論と、名前付きの型制約</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>main</code> に型引数<b>なし</b>の呼び出し <code>SumIntsOrFloats(ints)</code> を追加 → 引数の型から推論される。</li>
+          <li><code>Number</code> インターフェースと <code>SumNumbers</code> を追加して呼ぶ。</li>
+          <li><code>go run .</code> で 4 行とも同じ値になることを確認。</li>
+          <li>試しに <code>map[string]int{}</code> を渡すとコンパイルエラー（<code>int</code> は制約に無い）。制約に <code>int</code> を足すと通る。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>ポイント</h3>
+        <ul class="small">
+          <li><b>型推論</b>は引数からのみ。戻り値だけで決まる型パラメータは明示が必要。</li>
+          <li>制約はインターフェースで定義する。<code>int64 | float64</code> のような union を名前付きにすると再利用できる。<code>~int</code> と書けば <code>type MyInt int</code> のような派生型も許す。</li>
+          <li>「読みやすさが上がるときだけ使う」が公式の指針。まずは具体型で書き、同じ関数を型違いで書きたくなったときに導入する。</li>
+          <li>Go 1.27 では<b>メソッドにも型パラメータ</b>を書けるようになった。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">追加分</span><span class="k">type</span> <span class="f">Number</span> <span class="k">interface</span> {
+    <span class="k">int64</span> | <span class="k">float64</span>
+}
+
+<span class="c">// SumNumbers sums the values of map m. It supports both integers</span>
+<span class="c">// and floats as map values.</span>
+<span class="k">func</span> <span class="f">SumNumbers</span>[K <span class="k">comparable</span>, V Number](m <span class="k">map</span>[K]V) V {
+    <span class="k">var</span> s V
+    <span class="k">for</span> _, v := <span class="k">range</span> m {
+        s += v
+    }
+    <span class="k">return</span> s
+}
+
+<span class="title">main に追加</span>    fmt.Printf(<span class="s">"Generic Sums, type parameters inferred: %v and %v\n"</span>,
+        SumIntsOrFloats(ints),
+        SumIntsOrFloats(floats))
+
+    fmt.Printf(<span class="s">"Generic Sums with Constraint: %v and %v\n"</span>,
+        SumNumbers(ints),
+        SumNumbers(floats))
+
+<span class="k">$</span> go run .
+<span class="o">Non-Generic Sums: 46 and 62.97
+Generic Sums: 46 and 62.97
+Generic Sums, type parameters inferred: 46 and 62.97
+Generic Sums with Constraint: 46 and 62.97</span>
+
+<span class="c"># 制約に無い型を渡すと</span>
+<span class="err">./main.go:30:20: int does not satisfy Number (int missing in int64 | float64)</span></div>
+  </div>
+</section>
+
+<!-- 12 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">D · Getting started with fuzzing (1/3)</p>
+  <h2>題材：文字列を反転する <code>Reverse</code> と、その単体テスト</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>fuzz</code> ディレクトリで <code>go mod init example/fuzz</code>。</li>
+          <li><code>main.go</code> に右の <code>Reverse</code> と <code>main</code> を書いて <code>go run .</code>。</li>
+          <li><code>reverse_test.go</code> に <code>TestReverse</code>（テーブル駆動テスト）を書いて <code>go test</code> → <code>PASS  ok  example/fuzz  0.002s</code>。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>ここでの狙い</h3>
+        <ul class="small">
+          <li>単体テストは<b>人間が思いついた入力</b>しか検証しない。3 ケースは通るが、この <code>Reverse</code> には <b>バグが 2 つ</b>ある（バイト単位で反転している）。</li>
+          <li><b>ファジング</b>は入力を機械的に変異させて大量に流し、panic や「性質」の破れを探す手法。Go 1.18 から <code>go test</code> に標準搭載。</li>
+          <li>テーブル駆動テスト（構造体スライスをループ）は Go の定番の書き方。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">fuzz/main.go</span><span class="k">package</span> main
+<span class="k">import</span> <span class="s">"fmt"</span>
+<span class="k">func</span> <span class="f">main</span>() {
+    input := <span class="s">"The quick brown fox jumped over the lazy dog"</span>
+    rev := Reverse(input)
+    doubleRev := Reverse(rev)
+    fmt.Printf(<span class="s">"original: %q\n"</span>, input)
+    fmt.Printf(<span class="s">"reversed: %q\n"</span>, rev)
+    fmt.Printf(<span class="s">"reversed again: %q\n"</span>, doubleRev)
+}
+<span class="k">func</span> <span class="f">Reverse</span>(s <span class="k">string</span>) <span class="k">string</span> {
+    b := []<span class="k">byte</span>(s)
+    <span class="k">for</span> i, j := 0, len(b)-1; i &lt; len(b)/2; i, j = i+1, j-1 {
+        b[i], b[j] = b[j], b[i]
+    }
+    <span class="k">return</span> <span class="k">string</span>(b)
+}
+<span class="title">fuzz/reverse_test.go</span><span class="k">func</span> <span class="f">TestReverse</span>(t *testing.T) {
+    testcases := []<span class="k">struct</span>{ in, want <span class="k">string</span> }{
+        {<span class="s">"Hello, world"</span>, <span class="s">"dlrow ,olleH"</span>},
+        {<span class="s">" "</span>, <span class="s">" "</span>},
+        {<span class="s">"!12345"</span>, <span class="s">"54321!"</span>},
+    }
+    <span class="k">for</span> _, tc := <span class="k">range</span> testcases {
+        rev := Reverse(tc.in)
+        <span class="k">if</span> rev != tc.want {
+            t.Errorf(<span class="s">"Reverse: %q, want %q"</span>, rev, tc.want)
+        }
+    }
+}</div>
+  </div>
+</section>
+
+<!-- 13 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">D · Getting started with fuzzing (2/3)</p>
+  <h2>ファズテストに書き換えて、1 つ目のバグを見つける</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>reverse_test.go</code> を右の <code>FuzzReverse</code> に置き換える（<code>unicode/utf8</code> を import）。</li>
+          <li><code>go test</code> → シードコーパスだけで走り PASS。</li>
+          <li><code>go test -fuzz=Fuzz</code> → 数秒以内に <b>FAIL</b>。失敗入力が <code>testdata/fuzz/FuzzReverse/</code> に保存される。</li>
+          <li>保存されたファイルを <code>cat</code> して中身を見る。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>読み方</h3>
+        <ul class="small">
+          <li><code>FuzzXxx(f *testing.F)</code>。<code>f.Add</code> で<b>シードコーパス</b>、<code>f.Fuzz</code> にランダム入力を受ける関数を渡す。</li>
+          <li>期待値は書けないので<b>性質</b>で検証する：「2 回反転すると元に戻る」「有効な UTF-8 を渡せば結果も有効」。</li>
+          <li>失敗入力はファイルに残り、以後 <code>go test</code> だけでも毎回再実行される＝<b>回帰テストに自動で昇格</b>。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">fuzz/reverse_test.go</span><span class="k">func</span> <span class="f">FuzzReverse</span>(f *testing.F) {
+    testcases := []<span class="k">string</span>{<span class="s">"Hello, world"</span>, <span class="s">" "</span>, <span class="s">"!12345"</span>}
+    <span class="k">for</span> _, tc := <span class="k">range</span> testcases {
+        f.Add(tc)  <span class="c">// Use f.Add to provide a seed corpus</span>
+    }
+    f.Fuzz(<span class="k">func</span>(t *testing.T, orig <span class="k">string</span>) {
+        rev := Reverse(orig)
+        doubleRev := Reverse(rev)
+        <span class="k">if</span> orig != doubleRev {
+            t.Errorf(<span class="s">"Before: %q, after: %q"</span>, orig, doubleRev)
+        }
+        <span class="k">if</span> utf8.ValidString(orig) &amp;&amp; !utf8.ValidString(rev) {
+            t.Errorf(<span class="s">"Reverse produced invalid UTF-8 string %q"</span>, rev)
+        }
+    })
+}
+
+<span class="k">$</span> go test -fuzz=Fuzz
+fuzz: elapsed: 0s, gathering baseline coverage: 3/3 completed, now fuzzing with 8 workers
+fuzz: minimizing 41-byte failing input file
+<span class="err">--- FAIL: FuzzReverse (0.03s)
+    --- FAIL: FuzzReverse (0.00s)
+        reverse_test.go:20: Reverse produced invalid UTF-8 string "\xb5\xc4"</span>
+
+    Failing input written to testdata/fuzz/FuzzReverse/123f558d22cc0d86
+    To re-run:
+    go test -run=FuzzReverse/123f558d22cc0d86
+FAIL
+<span class="k">$</span> cat testdata/fuzz/FuzzReverse/123f558d22cc0d86
+go test fuzz v1
+string("ĵ")     <span class="c">← 2 バイト文字。バイト単位で反転すると壊れる</span></div>
+  </div>
+</section>
+
+<!-- 14 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">D · Getting started with fuzzing (3/3)</p>
+  <h2>直す → もう 1 つ見つかる → 直す</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><b>修正 1</b>：<code>Reverse</code> を <code>[]rune</code> で反転するよう変更（右上）。<code>go test</code> で保存された失敗入力も通る。</li>
+          <li>再び <code>go test -fuzz=Fuzz</code> → <b>別の失敗</b>：不正な UTF-8（<code>"\xdb"</code> など）は <code>[]rune</code> 変換で置換文字 <code>�</code> になり、2 回反転で元に戻らない。</li>
+          <li><b>修正 2</b>：入力が不正な UTF-8 なら <code>error</code> を返す（右下）。<code>main</code> とファズテストも 2 値を受けるよう直す。</li>
+          <li><code>go test -fuzz=Fuzz -fuzztime 30s</code> → 30 秒回して PASS。</li>
+        </ol>
+      </div>
+      <div class="term xs"><span class="k">$</span> go test -fuzz=Fuzz        <span class="c"># 修正 1 の後</span>
+<span class="err">--- FAIL: FuzzReverse (0.01s)
+        reverse_test.go:17: Before: "\xdb", after: "�"</span>
+    Failing input written to testdata/fuzz/FuzzReverse/a2f306083e514b06
+
+<span class="k">$</span> go test -fuzz=Fuzz -fuzztime 30s   <span class="c"># 修正 2 の後</span>
+fuzz: elapsed: 0s, gathering baseline coverage: 5/5 completed,
+      now fuzzing with 4 workers
+fuzz: elapsed: 3s, execs: 80290 (26763/sec), new interesting: 12 (total: 12)
+…
+fuzz: elapsed: 30s, execs: 1172817 (30281/sec), new interesting: 17 (total: 17)
+<span class="ok">PASS</span>
+ok      example/fuzz  31.025s</div>
+      <p class="xs muted">学び：Go の <code>string</code> はバイト列で、<b>有効な UTF-8 とは限らない</b>。<code>[]rune</code> 変換は不正なバイトを <code>U+FFFD</code> に置き換える。ファジングは「人間が想定しない入力」を機械的に持ってくる。</p>
+    </div>
+    <div class="stack">
+      <div class="term sm"><span class="title">修正 1：rune 単位で反転</span><span class="k">func</span> <span class="f">Reverse</span>(s <span class="k">string</span>) <span class="k">string</span> {
+    r := []<span class="k">rune</span>(s)
+    <span class="k">for</span> i, j := 0, len(r)-1; i &lt; len(r)/2; i, j = i+1, j-1 {
+        r[i], r[j] = r[j], r[i]
+    }
+    <span class="k">return</span> <span class="k">string</span>(r)
+}</div>
+      <div class="term sm"><span class="title">修正 2：不正な UTF-8 はエラーにする（"errors", "unicode/utf8" を import）</span><span class="k">func</span> <span class="f">Reverse</span>(s <span class="k">string</span>) (<span class="k">string</span>, <span class="k">error</span>) {
+    <span class="k">if</span> !utf8.ValidString(s) {
+        <span class="k">return</span> s, errors.New(<span class="s">"input is not valid UTF-8"</span>)
+    }
+    r := []<span class="k">rune</span>(s)
+    <span class="k">for</span> i, j := 0, len(r)-1; i &lt; len(r)/2; i, j = i+1, j-1 {
+        r[i], r[j] = r[j], r[i]
+    }
+    <span class="k">return</span> <span class="k">string</span>(r), <span class="k">nil</span>
+}
+
+<span class="title">ファズテスト側（f.Fuzz の中）</span>        rev, err1 := Reverse(orig)
+        <span class="k">if</span> err1 != <span class="k">nil</span> { <span class="k">return</span> }   <span class="c">// エラーは対象外として続行</span>
+        doubleRev, err2 := Reverse(rev)
+        <span class="k">if</span> err2 != <span class="k">nil</span> { <span class="k">return</span> }</div>
+    </div>
+  </div>
+</section>
+
+<!-- 15 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">E · govulncheck (1/3)</p>
+  <h2>脆弱な依存をわざと入れて、govulncheck を用意する</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>vuln-tutorial</code> で <code>go mod init vuln.tutorial</code>、右の <code>main.go</code>（<code>golang.org/x/text/language</code> を使う）を書いて <code>go mod tidy</code>。</li>
+          <li><b>わざと古い版に下げる</b>：<code>go get golang.org/x/text@v0.3.5</code>。</li>
+          <li><code>go install golang.org/x/vuln/cmd/govulncheck@latest</code>（<code>$(go env GOPATH)/bin</code> に入る）。</li>
+          <li><code>go run . en-US ja xx-zz</code> でプログラムが動くことを確認。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>使うもの</h3>
+        <ul class="small">
+          <li><b>govulncheck</b>：Go チーム提供の脆弱性検査ツール。データ源は <a href="https://vuln.go.dev">Go 脆弱性データベース</a>（<code>GO-YYYY-NNNN</code> 形式の ID）。</li>
+          <li><code>golang.org/x/text</code> v0.3.5 の <code>language.Parse</code> には既知の脆弱性（GO-2021-0113、範囲外読み取りで panic）がある。</li>
+          <li><code>go get pkg@version</code> は依存の版を上下どちらにも動かせる。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term xs"><span class="title">vuln-tutorial/main.go</span><span class="k">package</span> main
+
+<span class="k">import</span> (
+    <span class="s">"fmt"</span>
+    <span class="s">"os"</span>
+
+    <span class="s">"golang.org/x/text/language"</span>
+)
+
+<span class="k">func</span> <span class="f">main</span>() {
+    <span class="k">for</span> _, arg := <span class="k">range</span> os.Args[1:] {
+        tag, err := language.Parse(arg)
+        <span class="k">if</span> err != <span class="k">nil</span> {
+            fmt.Printf(<span class="s">"%s: error: %v\n"</span>, arg, err)
+        } <span class="k">else if</span> tag == language.Und {
+            fmt.Printf(<span class="s">"%s: undefined\n"</span>, arg)
+        } <span class="k">else</span> {
+            fmt.Printf(<span class="s">"%s: tag %s\n"</span>, arg, tag)
+        }
+    }
+}
+
+<span class="k">$</span> go mod tidy
+<span class="k">$</span> go get golang.org/x/text@v0.3.5
+go: downgraded golang.org/x/text v0.42.0 =&gt; v0.3.5
+<span class="k">$</span> go install golang.org/x/vuln/cmd/govulncheck@latest
+<span class="k">$</span> go run . en-US ja xx-zz
+<span class="o">en-US: tag en-US
+ja: tag ja
+xx-zz: error: language: subtag "xx" is well-formed but unknown</span></div>
+  </div>
+</section>
+
+<!-- 16 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">E · govulncheck (2/3)</p>
+  <h2>検査する：自分のコードが実際に呼ぶ脆弱性だけが「affected」になる</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>govulncheck ./...</code> を実行。</li>
+          <li>出力の <code>Example traces found</code> にある <code>main.go:12:29</code> が、自分の <code>language.Parse</code> 呼び出しの位置と一致することを確認。</li>
+          <li><code>govulncheck -show verbose ./...</code> で「import しているだけ」の脆弱性も見てみる。</li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>結果の読み方</h3>
+        <ul class="small">
+          <li><b>Symbol Results</b>：モジュールの版だけでなく<b>コールグラフを解析</b>し、自分のコードから脆弱な関数に到達するものだけを「affected」として、そのコールスタックを示す。</li>
+          <li>import しているだけ・require しているだけのものは件数のみ（下段）。<b>直すべきものが明確</b>で、版番号だけで判定する一般的な SCA ツールより誤検知が少ない。</li>
+          <li>「Fixed in」の版以上に上げれば解消する。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="term"><span class="k">$</span> govulncheck ./...
+=== Symbol Results ===
+
+<span class="err">Vulnerability #1: GO-2021-0113
+    Out-of-bounds read in golang.org/x/text/language</span>
+  More info: https://pkg.go.dev/vuln/GO-2021-0113
+  Module: golang.org/x/text
+    Found in: golang.org/x/text@v0.3.5
+    Fixed in: golang.org/x/text@v0.3.7
+    Example traces found:
+      #1: main.go:12:29: vuln.main calls language.Parse
+
+Your code is affected by 1 vulnerability from 1 module.
+This scan also found 4 vulnerabilities in packages you import and 31
+vulnerabilities in modules you require, but your code doesn't appear to call
+these vulnerabilities.
+Use '-show verbose' for more details.
+
+<span class="c"># 参考：脆弱性データベースの 1 件はこう見える（pkg.go.dev/vuln/GO-2021-0113）</span>
+<span class="d">Due to improper index calculation, an incorrectly formatted language tag
+can cause Parse to panic via an out of bounds read. If Parse is used to
+process untrusted user inputs, this may be used as a vector for a denial
+of service attack.
+Affected: golang.org/x/text/language  &lt; v0.3.7</span></div>
+  </div>
+</section>
+
+<!-- 17 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">E · govulncheck (3/3)</p>
+  <h2>修正して再確認、エディタと CI に組み込む</h2>
+  <div class="cols cols-code">
+    <div class="stack">
+      <div class="panel handson">
+        <h3>やってみよう</h3>
+        <ol class="small">
+          <li><code>go get golang.org/x/text@v0.3.8</code>（「Fixed in」以上の版へ。実務では最新に）。</li>
+          <li><code>govulncheck ./...</code> → <code>No vulnerabilities found.</code></li>
+        </ol>
+      </div>
+      <div class="panel go">
+        <h3>VS Code Go からの利用（Tutorial 10）</h3>
+        <ul class="small">
+          <li><code>go.mod</code> を開き、コマンドパレットで <b>Go: Toggle Vulncheck</b> → 依存の脆弱性が診断として表示される。</li>
+          <li>行にホバーで概要、電球（Quick Fix）から <b>run govulncheck to verify</b> でコールスタック解析、<b>Upgrade</b> で修正版へ更新。</li>
+          <li>裏で <code>gopls</code> が govulncheck を呼んでいる。設定は <a href="https://go.dev/security/vuln/editor">Vulnerability scanning in IDEs</a>。</li>
+        </ul>
+      </div>
+      <div class="panel amber">
+        <h3>CI に入れる</h3>
+        <p class="small">GitHub Actions なら <code>golang/govulncheck-action</code>、または <code>go install …/govulncheck@latest &amp;&amp; govulncheck ./...</code> を 1 ステップ追加。バイナリに対して <code>govulncheck -mode=binary ./app</code> も可。</p>
+      </div>
+    </div>
+    <div class="term"><span class="k">$</span> go get golang.org/x/text@v0.3.8
+go: upgraded golang.org/x/text v0.3.5 =&gt; v0.3.8
+
+<span class="k">$</span> govulncheck ./...
+=== Symbol Results ===
+
+<span class="ok">No vulnerabilities found.</span>
+
+Your code is affected by 0 vulnerabilities.
+This scan also found 3 vulnerabilities in packages you import and 31
+vulnerabilities in modules you require, but your code doesn't appear to call
+these vulnerabilities.
+
+<span class="title">.github/workflows/vuln.yml（例）</span>name: govulncheck
+on: [push, pull_request]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: <span class="s">'stable'</span> }
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...</div>
+  </div>
+</section>
+
+<!-- 18 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Checkpoint</p>
+  <h2>応用編で使った道具と、次に読むもの</h2>
+  <div class="cols" style="grid-template-columns: 1fr;">
+    <table class="tight small">
+      <tr><th style="width:280px">コマンド / パッケージ</th><th>役割</th><th style="width:330px">関連する公式資料</th></tr>
+      <tr><td><code>database/sql</code> + ドライバ</td><td>汎用 SQL API。<code>Query</code> / <code>QueryRow</code> / <code>Exec</code>、プレースホルダ、<code>sql.ErrNoRows</code></td><td><a href="https://go.dev/doc/database/">Accessing databases</a>、<a href="https://go.dev/wiki/SQLDrivers">SQLDrivers</a></td></tr>
+      <tr><td><code>github.com/gin-gonic/gin</code></td><td>ルーティング・JSON バインド・ミドルウェア。標準の <code>net/http</code> で書く道もある</td><td><a href="https://gin-gonic.com/docs/">Gin Docs</a>、<a href="https://go.dev/doc/articles/wiki/">Writing Web Applications</a>（net/http）</td></tr>
+      <tr><td><code>go get .</code> / <code>go get pkg@ver</code></td><td>依存の追加・版の変更。<code>go mod tidy</code> は import 文から整える</td><td><a href="https://go.dev/ref/mod">Go Modules Reference</a></td></tr>
+      <tr><td>型パラメータ <code>[T constraint]</code></td><td>ジェネリック関数・型。<code>comparable</code>、union、<code>~T</code>。1.27 からメソッドにも</td><td><a href="https://go.dev/blog/intro-generics">An Introduction to Generics</a>、<a href="https://go.dev/blog/when-generics">When To Use Generics</a></td></tr>
+      <tr><td><code>go test -fuzz=Fuzz [-fuzztime 30s]</code></td><td>ファジング。<code>testdata/fuzz/</code> のコーパスはコミットして回帰テストにする</td><td><a href="https://go.dev/doc/security/fuzz/">Go Fuzzing</a></td></tr>
+      <tr><td><code>govulncheck ./...</code></td><td>到達可能性つきの脆弱性検査。CI とエディタに組み込む</td><td><a href="https://go.dev/doc/security/vuln/">Go Vulnerability Management</a></td></tr>
+      <tr><td><code>go vet ./...</code> / <code>gofmt</code> / <code>staticcheck</code></td><td>チュートリアルには出ないが、最初から回す価値がある静的検査と整形</td><td><a href="https://go.dev/doc/effective_go">Effective Go</a></td></tr>
+      <tr><td><code>GOTOOLCHAIN</code></td><td>依存が新しい Go を要求すると自動で取得・切替。<code>local</code> で無効化</td><td><a href="https://go.dev/doc/toolchain">Go toolchains</a></td></tr>
+    </table>
+  </div>
+  <p class="small muted">チュートリアル群で<b>扱っていない</b>重要トピック：構造体とメソッド、インターフェース、goroutine と channel、<code>context</code>。<a href="https://go.dev/tour/">A Tour of Go</a> と <a href="https://go.dev/blog/">The Go Blog</a> で補う。</p>
+</section>
+
+<!-- 19 ─────────────────────────────────────────── -->
+<section class="slide">
+  <p class="eyebrow">Wrap-up</p>
+  <h2>まとめ・参考資料</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="panel go">
+        <h3>②応用編で通ったこと</h3>
+        <ul class="small">
+          <li><b>DB</b>：<code>sql.Open</code> は接続しない、<code>Ping</code> で確認。プレースホルダで渡し、<code>Scan</code> で構造体へ。認証情報は環境変数。</li>
+          <li><b>REST API</b>：構造体タグで JSON のキーを決め、Gin のハンドラで <code>IndentedJSON</code> / <code>BindJSON</code> / <code>Param</code>。</li>
+          <li><b>ジェネリクス</b>：型パラメータ・型推論・型制約。必要になってから使う。</li>
+          <li><b>ファジング</b>：性質で検証し、失敗入力を回帰テストとして残す。<code>string</code> は UTF-8 とは限らない。</li>
+          <li><b>govulncheck</b>：「実際に呼んでいるか」まで判定する脆弱性検査を CI とエディタに。</li>
+        </ul>
+      </div>
+      <div class="panel handson">
+        <h3>次にやること</h3>
+        <ul class="small">
+          <li>B の API を A の DB に接続する（メモリのスライスを <code>albumsByArtist</code> 等に置き換える）。</li>
+          <li>B を <code>net/http</code>（Go 1.22+ の <code>mux.HandleFunc("GET /albums/{id}", …)</code>）で書き直し、フレームワークの有無を比べる。</li>
+          <li>自分のプロジェクトで <code>govulncheck ./...</code> と <code>go test -fuzz</code> を試す。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><a href="https://go.dev/doc/tutorial/">Tutorials</a> — 公式チュートリアル一覧（本デッキの出典）</li>
+        <li><a href="https://go.dev/doc/tutorial/database-access">Accessing a relational database</a></li>
+        <li><a href="https://go.dev/doc/tutorial/web-service-gin">Developing a RESTful API with Go and Gin</a></li>
+        <li><a href="https://go.dev/doc/tutorial/generics">Getting started with generics</a></li>
+        <li><a href="https://go.dev/doc/tutorial/fuzz">Getting started with fuzzing</a></li>
+        <li><a href="https://go.dev/doc/tutorial/govulncheck">Find and fix vulnerable dependencies with govulncheck</a> / <a href="https://go.dev/doc/tutorial/govulncheck-ide">… with VS Code Go</a></li>
+        <li><a href="https://github.com/go-sql-driver/mysql">go-sql-driver/mysql</a> / <a href="https://github.com/gin-gonic/gin">gin-gonic/gin</a> / <a href="https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck">golang.org/x/vuln/cmd/govulncheck</a></li>
+        <li><a href="https://go.dev/doc/go1.27">Go 1.27 Release Notes</a> — ジェネリックメソッド、<code>encoding/json</code> の v2 実装化</li>
+        <li>①基礎編：<a href="../go-tutorial-basics/index.html">Go 言語チュートリアル ハンズオン ① 基礎編</a></li>
+      </ul>
+      <p class="xs muted">本デッキは 2026-09-15 時点の go.dev の内容に基づく。コマンド出力は go1.24.7 / go1.27.1、gin v1.12.0、govulncheck（2026-09 時点の DB）で実行したもの。ファジングの失敗入力や脆弱性の件数は実行時期・環境で変わる。A（DB）のコードと SQL は公式チュートリアルに沿って掲載した。</p>
+    </div>
+  </div>
+</section>
+
+</div></div>
+<div id="hud"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">O</span> 一覧 · <span class="kbd">F</span> 全画面 · <span class="kbd">P</span> 印刷/PDF</div>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const deck = document.getElementById('deck');
+  const total = slides.length;
+  slides.forEach((s, i) => { s.dataset.n = i + 1; s.dataset.total = total; s.tabIndex = -1; });
+  let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) || 1, 1), total) - 1;
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), total - 1);
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const w = innerWidth - 32, h = innerHeight - 32;
+    const k = Math.min(w / 1280, h / 720);
+    deck.style.transform = 'translate(' + (-640 * k) + 'px,' + (-360 * k) + 'px) scale(' + k + ')';
+  }
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ov = document.body.classList.contains('overview');
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { if (!ov) { show(cur + 1); e.preventDefault(); } }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { if (!ov) { show(cur - 1); e.preventDefault(); } }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(total - 1);
+    else if (e.key === 'o' || e.key === 'O' || (e.key === 'Escape' && ov)) { document.body.classList.toggle('overview'); fit(); }
+    else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (e.key === 'p' || e.key === 'P') { print(); }
+  });
+  deck.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    if (document.body.classList.contains('overview')) {
+      const s = e.target.closest('.slide'); if (!s) return;
+      document.body.classList.remove('overview'); show(slides.indexOf(s)); fit();
+    } else if (e.clientX > innerWidth * 0.8) show(cur + 1);
+    else if (e.clientX < innerWidth * 0.2) show(cur - 1);
+  });
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1)); tx = null; });
+  addEventListener('hashchange', () => show((parseInt(location.hash.slice(1), 10) || 1) - 1));
+  addEventListener('resize', fit);
+  show(cur); fit();
+})();
+</script>
+</body>
+</html>
