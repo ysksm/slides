@@ -5,7 +5,7 @@
 ## 最重要ルール: 目次はデッキ作業で触らない
 
 - **デッキ Issue（スライドの作成・修正）では、ルートの `README.md` と `index.html` を編集しない。** 変更は `<deck>/` 配下だけに閉じる。
-- 目次の更新は **目次更新の Issue で単独に行う**。デッキ作成後は「目次を更新してほしい」と目次 Issue にコメントする（なければ作る）。
+- 目次の更新は **目次更新の Issue で単独に行う**。デッキ作成後は「目次を更新してほしい」と目次 Issue にコメントする（なければ作る）。カテゴリ案と検索キーワード案を添える。
 - 理由: 並行作業する全 PR が目次の同じ行を編集して必ず競合するため（Issue #23）。
 - Claude Code では PreToolUse フック（`.claude/hooks/guard-toc.sh`）が目次ファイルの編集をブロックする。ブロックされたら回避策を探さず、目次 Issue で行う旨を報告して作業を続ける。`.toc-update` マーカーは `update-toc` Skill 以外で作らない。
 - CI（`check-toc-separation.yml`）は、目次とデッキを同時に変更した PR を落とす。
@@ -22,6 +22,7 @@ Codex では `.agents/skills/` の同名 Skill を使う（`$new-deck` / `$updat
 
 - 手書き HTML デッキは `playwright-overview/index.html` をテンプレートにする（1280x720、← → / O / F / P キー、`#n` ハッシュ）。
 - `<deck>/README.md` の先頭は「H1 = 題名」「リード文に Issue リンクと `全 N 枚`」。目次更新はここを材料にする。
+- 目次はカテゴリ分け + キーワード検索の構成（Issue #44）。1 デッキ = 1 カテゴリで、`index.html` のカードに `data-cat`（カテゴリキー）と `data-keywords`（検索用の別名）を付ける。カテゴリ一覧と手順は `/update-toc` にある。
 - 全スライドをヘッドレス Chrome で描画し、スライド下端（フッター 44px を除く）からのはみ出しがないことを確認する。
 - Marp 製の `claude-code-commands` だけは `src/*.md` を編集して `./build.sh` で再生成する。
 
