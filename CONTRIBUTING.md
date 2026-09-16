@@ -20,8 +20,16 @@
 
 「目次」とは、次の 2 ファイルを指します。
 
-- ルート `README.md` — 「スライド一覧」の表、各スライドの節、「リポジトリ構成」のツリー、「ビルド」「閲覧方法」のデッキ列挙
-- ルート `index.html` — GitHub Pages のトップページ。`.deck` カードの一覧と `<meta name="description">`
+- ルート `README.md` — 「スライド一覧」のカテゴリ別の表と各スライドの節、「リポジトリ構成」のツリー、「閲覧方法」の例外列挙
+- ルート `index.html` — GitHub Pages のトップページ。カテゴリごとの `<section class="cat">` に `.deck` カードを置き、`<meta name="description">` に題名を列挙する
+
+### 目次のカテゴリと検索（Issue #44）
+
+- 目次は **カテゴリ別** です。カテゴリの定義（id・表示名・説明・並び順）は `scripts/categories.tsv` にあり、`index.html` のセクションとカードの `data-category`、`README.md` の `### 表示名` 見出しがこれに対応します。カテゴリ内は新しい順です。
+- `index.html` の検索・絞り込みはページ内の JavaScript が、カードの本文と `data-tags`（検索用の語）から行います。登録時はカードを該当カテゴリのセクションに置き、`data-tags` を書くだけで、JS の変更は不要です。`?q=語&cat=id` の URL で状態を共有できます。
+- `scripts/check-toc.sh` は未登録・枚数・リンク切れに加えて、カードの `data-category` が定義済みか、README の表の行が同じカテゴリの見出しの下にあるかも確認します。
+- **カテゴリを増やす・改名する**のは目次の作り方の変更なので、`scripts/categories.tsv`・`README.md`・`index.html`（と必要なら本文書・`CLAUDE.md` / `AGENTS.md`）を同じ PR で更新します。デッキ作業の PR では `scripts/categories.tsv` を編集しません。
+- デッキ作成者は、目次更新 Issue へのコメントにカテゴリ候補（id）と検索用タグの候補を添えます（`new-deck` Skill）。
 
 ## 作業の流れ
 
@@ -37,7 +45,7 @@
 1. **デッキ作成**: `<deck>/index.html` と `<deck>/README.md` を作る。`README.md` の先頭は「H1 = スライド題名」「リード文に Issue リンクと `全 N 枚`」の形にし、目次更新の材料をそろえておく。目次は触らない。
 2. **PR**: 変更が `<deck>/` 配下だけであることを確認して PR を出す。CI（`.github/workflows/check-toc-separation.yml`）が、目次とデッキを同時に変更している PR を落とす。
 3. **目次更新の依頼**: マージ後、「目次更新」Issue に「`<deck>/` を登録してほしい」とコメントする（未登録デッキが複数あればまとめて 1 回でよい）。
-4. **目次更新**: 目次 Issue のブランチを main の最新から切り、未登録デッキをすべて登録する。この PR の差分はルート `README.md` と `index.html` のみ。
+4. **目次更新**: 目次 Issue のブランチを main の最新から切り、未登録デッキをすべて登録する。各デッキはカテゴリ（`scripts/categories.tsv`）を 1 つ選んで、そのカテゴリの表・節・セクションに置く。この PR の差分はルート `README.md` と `index.html` のみ。
 5. main へのマージで GitHub Pages が再公開される。
 
 目次更新は「main にあるが目次に載っていないデッキを全部載せる」作業なので、どのタイミングで何回やっても結果は同じになります（冪等）。デッキ側の PR がいくつ並行していても目次では競合しません。
@@ -66,4 +74,4 @@ Codex では Claude Code のフックによる編集拒否を前提にせず、�
 
 ## 将来の改善案（今回は実施しない）
 
-- 各デッキに `deck.json`（題名・枚数・形式・Issue・概要・同梱物）を置き、スクリプトでルート `README.md` と `index.html` を生成する。目次更新が完全に自動化され、Skill も「スクリプトを実行する」だけになる。
+- 各デッキに `deck.json`（題名・枚数・形式・Issue・概要・カテゴリ・タグ・同梱物）を置き、スクリプトでルート `README.md` と `index.html` を生成する。目次更新が完全に自動化され、Skill も「スクリプトを実行する」だけになる。

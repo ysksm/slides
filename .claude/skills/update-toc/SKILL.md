@@ -7,6 +7,8 @@ description: 目次更新 Issue で、main にあるが目次（ルート README
 
 ルートの `README.md` と `index.html` を、main に存在するデッキと一致させる。差分はこの 2 ファイルだけにする。デッキ側 `<deck>/` は一切触らない。
 
+目次は **カテゴリ別**（定義は `scripts/categories.tsv`: id・表示名・説明・並び順）。`index.html` はカテゴリごとの `<section class="cat">` にカードを置き、検索・絞り込みはページ内の JS がカードの本文と `data-tags` から行う（登録時に JS を触る必要はない）。`README.md` は「## スライド一覧」の下にカテゴリごとの `### 表示名` 見出しがあり、その下に表と各デッキの `####` 節を置く。カテゴリを増やす・改名するのは目次の作り方の変更なので、`scripts/categories.tsv` と両ファイルを同じ PR で更新し、CLAUDE.md / CONTRIBUTING.md の説明も合わせる（Issue #44）。
+
 ## 0. 前提を確認する
 
 - 今のセッションが **目次更新の Issue** であること。デッキ作成の Issue なら中断し、「目次は目次 Issue で更新する」と報告して終わる（`CLAUDE.md` / `CONTRIBUTING.md`）。
@@ -44,20 +46,24 @@ scripts/check-toc.sh
 | 概要（1〜3 文） | README のリード文を要約 |
 | 同梱物 | `ls <deck>`（research.md, design.md, examples/ など） |
 | キー操作 | README の「閲覧方法」（P 対応かどうか） |
+| カテゴリ | `scripts/categories.tsv` の id から 1 つ選ぶ（デッキ Issue のコメントに候補があればそれを優先）。迷ったら題名・リード文に最も近い説明のカテゴリ |
+| タグ | 検索用の語を 8〜15 個（製品名・技術名・略語・日本語の言い換え。英語と日本語の両方）。`data-tags` にスペース区切りで書く |
 
 ## 3. `README.md` を更新する（4 か所）
 
-新しいデッキは **一覧の先頭** に置く（既存の並びは新しい順）。
+新しいデッキは **そのカテゴリの中の先頭** に置く（カテゴリ内の並びは新しい順。カテゴリの並びは `scripts/categories.tsv` の順で固定）。
 
-1. **「スライド一覧」の表** — `| [題名](<deck>/index.html) | 枚数 | 形式 | [#N](https://github.com/ysksm/slides/issues/N) |` を先頭行に追加。
-2. **各スライドの節** — 表の直後、既存の先頭の節の前に `### [題名](<deck>/index.html)` の節を追加。概要 1 段落 + 箇条書き（開き方・キー操作、同梱物、`詳細: [<deck>/README.md](<deck>/README.md)`）。既存の節の書き方に合わせる。
+1. **カテゴリの表** — 「## スライド一覧」の下の `### <カテゴリ表示名>` 見出し直下の表に、`| [題名](<deck>/index.html) | 枚数 | 形式 | [#N](https://github.com/ysksm/slides/issues/N) |` を先頭行として追加。
+2. **各スライドの節** — 同じカテゴリの表の直後、既存の先頭の `####` 節の前に `#### [題名](<deck>/index.html)` の節を追加。概要 1 段落 + 箇条書き（開き方・キー操作、同梱物、`詳細: [<deck>/README.md](<deck>/README.md)`）。既存の節の書き方に合わせる。
 3. **「リポジトリ構成」のツリー** — `├── <deck>/` の行を先頭に追加。同梱ディレクトリがあれば子要素も書く。列幅（`#` の位置）は既存行に合わせる。
-4. **「閲覧方法」「ビルド」の列挙** — `P` キー対応デッキの列挙、ビルド不要デッキの列挙に必要なら追加する。
+4. **「閲覧方法」の表** — `P` キーや `N` キーに未対応など、共通のキー操作から外れるデッキだけ例外として追記する（対応しているデッキの列挙は不要）。
 
 ## 4. `index.html` を更新する（2 か所）
 
-1. **`<ul class="decks">` の先頭** に `<li class="deck">` を追加。既存カードをコピーして題名・概要・`tag-count`（`N 枚`）・`tag-kind`・`tag-issue`（`Issue #N`）・`.sub` のリンク（README / 同梱 md / 元動画など）を差し替える。Issue が無ければ `tag-issue` を省く。
-2. **`<meta name="description">`** の列挙に題名（短縮形）を追加。
+1. **該当カテゴリの `<section class="cat" data-category="<id>">` 内の `<ul class="decks">` の先頭** に `<li class="deck" data-category="<id>" data-tags="...">` を追加。既存カードをコピーして題名（`<h3>`）・概要・`tag-count`（`N 枚`）・`tag-kind`・`tag-issue`（`Issue #N`）・`.sub` のリンク（README / 同梱 md / 元動画など）を差し替える。Issue が無ければ `tag-issue` を省く。`data-category` はセクションの id と同じにする（`scripts/check-toc.sh` が README の見出しと突き合わせる）。
+2. **`<meta name="description">`** の該当カテゴリの括弧内に題名（短縮形）を追加。
+
+カテゴリのボタン・件数・検索はページ内の JS が `<section class="cat">` と `<li class="deck">` から自動で作るので、JS は変更しない。
 
 ## 5. 検証する
 
@@ -70,6 +76,8 @@ git diff --name-only                                  # README.md と index.html
 
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --screenshot=/tmp/toc.png --window-size=1200,2400 "file://$PWD/index.html"
+# 検索・絞り込みの動作確認（?q= と ?cat= で初期状態を指定できる。hidden 属性の付いたカードが絞り込まれた分）
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --dump-dom "file://$PWD/index.html?q=<新デッキの語>" | grep -c '<li class="deck" hidden'
 ```
 
 ## 6. 後始末とコミット

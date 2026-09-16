@@ -1,0 +1,9 @@
+# 目次（ルート README.md / index.html）のカテゴリ定義。1 行 1 カテゴリ、タブ区切り: id	表示名	説明
+# id は index.html の <section class="cat" data-category> と <li class="deck" data-category> に、表示名は README.md の「### 表示名」見出しに使う。
+# 並び順がそのまま目次の並び順になる。カテゴリを増やす・改名するときは、この行と README.md / index.html を同じ PR で更新する。
+ai-agent	AI エージェント・Claude Code	Claude Code・Codex などのコーディングエージェントの使い方と費用、オーケストレーション、AI を使った自動実装の検討
+testing-tooling	テスト・開発ツール	Playwright や Lint など、テストと開発ツールの解説・活用方法
+language	言語・言語サーバー	Go・TypeScript など言語そのもののチュートリアルと、言語サーバーの調査
+embedded	組み込み Linux	Yocto によるイメージ作成とビルド環境の構築
+web-app	Web アプリ設計	既存システムの UI 置き換えや配信構成の技術検討
+security	セキュリティ・依存関係	ライブラリの脆弱性・不具合の集計と可視化

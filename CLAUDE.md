@@ -5,7 +5,7 @@
 ## 最重要ルール: 目次はデッキ作業で触らない
 
 - **デッキ Issue（スライドの作成・修正）では、ルートの `README.md` と `index.html` を編集しない。** 変更は `<deck>/` 配下だけに閉じる。
-- 目次の更新は **目次更新の Issue で単独に行う**。デッキ作成後は「目次を更新してほしい」と目次 Issue にコメントする（なければ作る）。
+- 目次の更新は **目次更新の Issue で単独に行う**。デッキ作成後は「目次を更新してほしい」と目次 Issue にコメントする（なければ作る）。コメントにはカテゴリ候補（`scripts/categories.tsv` の id）と検索用タグの候補を添える。
 - 理由: 並行作業する全 PR が目次の同じ行を編集して必ず競合するため（Issue #23）。
 - Claude Code では PreToolUse フック（`.claude/hooks/guard-toc.sh`）が目次ファイルの編集をブロックする。ブロックされたら回避策を探さず、目次 Issue で行う旨を報告して作業を続ける。`.toc-update` マーカーは `update-toc` Skill 以外で作らない。
 - CI（`check-toc-separation.yml`）は、目次とデッキを同時に変更した PR を落とす。
@@ -14,7 +14,7 @@
 ## Skill
 
 - `/new-deck` — 新しいデッキを作る（テンプレートのコピー、README の必須形式、はみ出し確認、目次に触らない PR）。
-- `/update-toc` — 目次更新 Issue で、main にあって目次に未登録のデッキをすべて登録する。
+- `/update-toc` — 目次更新 Issue で、main にあって目次に未登録のデッキをすべて登録する。目次はカテゴリ別（定義は `scripts/categories.tsv`）で、`index.html` は検索・絞り込み付き。登録はカテゴリを 1 つ選んでそのセクション・表に置き、`data-tags` に検索用の語を書く（Issue #44）。
 
 Codex では `.agents/skills/` の同名 Skill を使う（`$new-deck` / `$update-toc`）。`AGENTS.md` と `CLAUDE.md`、および `.agents/skills/` と `.claude/skills/` の同名 `SKILL.md` は同じ内容に保つ。
 
