@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>slides — 調査報告・解説スライド集</title>
-<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。カテゴリ（AI エージェント運用 / AI × 自動生成・設計 / テスト・品質 / 開発ツール・言語基盤 / Web アプリ開発 / 組み込み Linux / セキュリティ・データ）とキーワード検索で探せます。Claude Code コマンド一覧、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、自動実装 × AI（DDD フロントエンドの generate 設計）、自動実装と AI の組み合わせ、Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）、Playwright 概要、Oxlint で独自の Lint ルールを作る、tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、tsc --lsp 徹底調査、Redmine の UI を SPA で作る（技術編・構成/導入編）、Yocto 入門、Yocto ビルドホストの構築手順、npm 不具合・脆弱性の時系列集計。">
+<meta name="description" content="調査報告・解説スライドを集めたリポジトリ。カテゴリ（AI エージェント運用 / AI × 自動生成・設計 / テスト・品質 / 開発ツール・言語基盤 / Web アプリ開発 / 組み込み Linux / セキュリティ・データ / プログラミング言語・入門）とキーワード検索で探せます。Claude Code コマンド一覧、Claude Code のトークン使用量と削減策、AI の利用枠とキャッシュの仕組み（動画要約）、Orca（AI エージェント IDE）解説、自動実装 × AI（DDD フロントエンドの generate 設計）、自動実装と AI の組み合わせ、Playwright 活用方法（画面遷移図・デグレ防止・ローカライズ資料）、Playwright 概要、Oxlint で独自の Lint ルールを作る、tgrep 解説（トライグラム索引・エージェント連携・プラグイン化）、tsc --lsp 徹底調査、Redmine の UI を SPA で作る（技術編・構成/導入編）、Yocto 入門、Yocto ビルドホストの構築手順、npm 不具合・脆弱性の時系列集計、Go 言語チュートリアル ハンズオン（基礎編・応用編）。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -488,6 +488,7 @@
         <li><button class="chip" type="button" data-cat="web" aria-pressed="false">Web アプリ開発 <span class="n"></span></button></li>
         <li><button class="chip" type="button" data-cat="embedded" aria-pressed="false">組み込み Linux <span class="n"></span></button></li>
         <li><button class="chip" type="button" data-cat="security" aria-pressed="false">セキュリティ・データ <span class="n"></span></button></li>
+        <li><button class="chip" type="button" data-cat="language" aria-pressed="false">プログラミング言語・入門 <span class="n"></span></button></li>
       </ul>
 
       <p class="count" id="count" role="status" aria-live="polite"></p>
@@ -888,6 +889,56 @@
             <p class="sub">
               <a href="https://github.com/ysksm/slides/blob/main/npm-vulnerability-trends/README.md">README</a>
               <a href="https://github.com/ysksm/slides/blob/main/npm-vulnerability-trends/research.md">詳細設計資料</a>
+            </p>
+          </li>
+
+        </ul>
+      </section>
+
+      <section class="cat" data-cat="language">
+        <h2 class="cat-head">プログラミング言語・入門 <span class="cat-n"></span></h2>
+        <p class="cat-desc">言語そのものを手を動かして学ぶハンズオン。</p>
+        <ul class="decks">
+
+          <li class="deck" data-cat="language" data-keywords="go golang go.dev tutorial ハンズオン 入門 module go mod test workspace json hello world">
+            <a href="go-tutorial-basics/index.html">
+              <h3>Go 言語チュートリアル ハンズオン ① 基礎編 — Hello, World からモジュール・テスト・ワークスペースまで</h3>
+              <p>
+                go.dev の公式チュートリアル前半 4 本を、各ステップの「やってみよう」に沿って手を動かしながら進めます。
+                インストールとツールチェーン、<code>go mod init</code> と Hello, World、外部パッケージ、自作モジュールとエラー処理、
+                スライス・map、単体テスト、ワークスペース、JSON までを実行結果付きで収録。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">プログラミング言語・入門</span>
+                <span class="tag tag-count">20 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #45</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/go-tutorial-basics/README.md">README</a>
+              <a href="https://go.dev/doc/tutorial/">go.dev チュートリアル</a>
+            </p>
+          </li>
+
+          <li class="deck" data-cat="language" data-keywords="go golang gin rest api mysql database generics ジェネリクス fuzzing ファジング govulncheck 脆弱性 ハンズオン 応用">
+            <a href="go-tutorial-advanced/index.html">
+              <h3>Go 言語チュートリアル ハンズオン ② 応用編 — データベース・REST API・ジェネリクス・ファジング・govulncheck</h3>
+              <p>
+                go.dev の公式チュートリアル後半 6 本を手を動かして進めます。MySQL へのアクセス、Gin による REST API、
+                ジェネリクスと型制約、ファジングで見つかるバグの修正、<code>govulncheck</code> による脆弱性検査と
+                CI / VS Code への組み込みを、テーマごとに独立した形で収録。
+              </p>
+              <div class="meta">
+                <span class="tag tag-cat">プログラミング言語・入門</span>
+                <span class="tag tag-count">19 枚</span>
+                <span class="tag tag-kind">HTML</span>
+                <span class="tag tag-issue">Issue #45</span>
+              </div>
+            </a>
+            <p class="sub">
+              <a href="https://github.com/ysksm/slides/blob/main/go-tutorial-advanced/README.md">README</a>
+              <a href="https://go.dev/doc/tutorial/">go.dev チュートリアル</a>
             </p>
           </li>
 

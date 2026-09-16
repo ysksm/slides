@@ -17,6 +17,7 @@
 | [Web アプリ開発](#web) | `web` | 2 | 既存 Web アプリの UI を作り替えるための構成・API・配信の検討。 |
 | [組み込み Linux](#embedded) | `embedded` | 2 | Yocto Project による組み込み Linux ディストリビューションづくり。 |
 | [セキュリティ・データ](#security) | `security` | 1 | 脆弱性情報の収集・分類と、時系列での可視化の設計。 |
+| [プログラミング言語・入門](#language) | `language` | 2 | 言語そのものを手を動かして学ぶハンズオン。 |
 
 <a id="ai"></a>
 
@@ -97,6 +98,17 @@ Yocto Project による組み込み Linux ディストリビューションづ�
 | スライド | 枚数 | 形式 | 関連 Issue |
 |---|---:|---|---|
 | [npm ライブラリの不具合・脆弱性の時系列集計](npm-vulnerability-trends/index.html) | 14 | 手書き HTML + 設計資料 | [#18](https://github.com/ysksm/slides/issues/18) |
+
+<a id="language"></a>
+
+### プログラミング言語・入門
+
+言語そのものを手を動かして学ぶハンズオン。
+
+| スライド | 枚数 | 形式 | 関連 Issue |
+|---|---:|---|---|
+| [Go 言語チュートリアル ハンズオン ① 基礎編](go-tutorial-basics/index.html) | 20 | 手書き HTML | [#45](https://github.com/ysksm/slides/issues/45) |
+| [Go 言語チュートリアル ハンズオン ② 応用編](go-tutorial-advanced/index.html) | 19 | 手書き HTML | [#45](https://github.com/ysksm/slides/issues/45) |
 
 ## 各スライドの詳細
 
@@ -251,6 +263,22 @@ Yocto Project で組み込み Linux ディストリビューションを「自�
 - [詳細設計資料](npm-vulnerability-trends/research.md) / [README](npm-vulnerability-trends/README.md)
 - ← → / Space で移動、O で一覧、F で全画面、P で印刷/PDF。ボタン・スワイプにも対応。
 
+### [Go 言語チュートリアル ハンズオン ① 基礎編 — Hello, World からモジュール・テスト・ワークスペースまで](go-tutorial-basics/index.html)
+
+[go.dev の公式チュートリアル](https://go.dev/doc/tutorial/)のうち前半 4 本（Getting started / Create a Go module（7 パート）/ Multi-module workspaces / Working with JSON）を、各ステップの「やってみよう」に沿って手を動かしながら進めるハンズオンスライド（全 20 枚）。Go のインストールとツールチェーン、`go mod init` と Hello, World、外部パッケージの取り込み、自作モジュールの呼び出しとエラー処理、スライス・map・ループ、単体テスト、`go build` / `go install`、マルチモジュールワークスペース、JSON の扱いまでを、実際に実行して確認したコマンド・コード・実行結果付きで収録。続編は [② 応用編](go-tutorial-advanced/index.html)。
+
+- `go-tutorial-basics/index.html` を開き、← → / Space で移動、Home / End で最初・最後、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#9` など）でスライド番号を直接指定可能
+- 詳細: [go-tutorial-basics/README.md](go-tutorial-basics/README.md)
+
+### [Go 言語チュートリアル ハンズオン ② 応用編 — データベース・REST API・ジェネリクス・ファジング・govulncheck](go-tutorial-advanced/index.html)
+
+[go.dev の公式チュートリアル](https://go.dev/doc/tutorial/)のうち後半 6 本（Accessing a relational database / RESTful API with Go and Gin / Generics / Fuzzing / govulncheck / govulncheck with VS Code Go）を、各ステップの「やってみよう」に沿って手を動かしながら進めるハンズオンスライド（全 19 枚）。テーマごとに独立しているので必要なところから始められる。MySQL へのアクセス、Gin による REST API、ジェネリクスと型制約、ファジングで見つかるバグの修正、`govulncheck` による脆弱性検査と CI / VS Code への組み込みを収録。前編は [① 基礎編](go-tutorial-basics/index.html)。
+
+- `go-tutorial-advanced/index.html` を開き、← → / Space で移動、Home / End で最初・最後、O で一覧、F で全画面、P で印刷/PDF
+- URL のハッシュ（`#9` など）でスライド番号を直接指定可能
+- 詳細: [go-tutorial-advanced/README.md](go-tutorial-advanced/README.md)
+
 ## リポジトリ構成
 
 ```
@@ -282,6 +310,8 @@ slides/
 ├── yocto-build-host/              # [embedded] Yocto ビルドホストの構築手順（ディストロ選択とインストール）
 ├── yocto-intro/                   # [embedded] Yocto 入門（macOS/VM で作る Raspberry Pi・ルーター・x86_64 イメージ）
 ├── npm-vulnerability-trends/      # [security] npm 不具合・脆弱性の時系列集計（設計提案）
+├── go-tutorial-basics/            # [language] Go 言語チュートリアル ハンズオン ① 基礎編
+├── go-tutorial-advanced/          # [language] Go 言語チュートリアル ハンズオン ② 応用編
 ├── index.html                     # GitHub Pages のトップページ（カテゴリ + 検索つきの目次）
 ├── .nojekyll                      # Pages で Jekyll 処理を無効化
 └── .github/workflows/             # GitHub Pages デプロイワークフロー
@@ -298,13 +328,13 @@ slides/
 | 一覧表示 | `O` | Marp 製以外 |
 | 発表者ノート | `N` | `antigravity-tsc-lsp-research` |
 | 全画面 | `F` | すべて |
-| 印刷 / PDF | `P` | `playwright-practices`、`oxlint-custom-rules`、`yocto-build-host`、`yocto-intro`、`redmine-ui-spa-2`、`tgrep-overview`、`redmine-ui-spa`、`playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
+| 印刷 / PDF | `P` | `playwright-practices`、`oxlint-custom-rules`、`go-tutorial-basics`、`go-tutorial-advanced`、`yocto-build-host`、`yocto-intro`、`redmine-ui-spa-2`、`tgrep-overview`、`redmine-ui-spa`、`playwright-overview`、`antigravity-tsc-lsp-research`、`orca`、`ai-scaffolding`、`npm-vulnerability-trends` |
 
 ※ Marp 製の `claude-code-commands` では `P` はプレゼンターモードです。`tsc-lsp`（初版）は `P` に未対応のため、ブラウザの印刷機能を使ってください。
 
 ## ビルド
 
-手書き HTML のスライド（`playwright-practices` / `oxlint-custom-rules` / `yocto-build-host` / `yocto-intro` / `redmine-ui-spa-2` / `tgrep-overview` / `redmine-ui-spa` / `npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
+手書き HTML のスライド（`playwright-practices` / `oxlint-custom-rules` / `go-tutorial-basics` / `go-tutorial-advanced` / `yocto-build-host` / `yocto-intro` / `redmine-ui-spa-2` / `tgrep-overview` / `redmine-ui-spa` / `npm-vulnerability-trends` / `ai-scaffolding` / `orca` / `playwright-overview` / `antigravity-tsc-lsp-research` / `tsc-lsp`）はビルド不要で、HTML を直接編集します。
 
 Marp 製の `claude-code-commands` のみ、ソース（`src/*.md`）を編集したら再生成が必要です。
 
